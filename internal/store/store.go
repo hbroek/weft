@@ -109,6 +109,41 @@ func (s *Store) AddUser(name, display, bio string) (token string, err error) {
 	return token, err
 }
 
+// ResetToken replaces a user's API token and returns the new one (shown once).
+func (s *Store) ResetToken(name string) (string, error) {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	tok := hex.EncodeToString(b)
+	res, err := s.db.Exec(`UPDATE users SET token_hash=? WHERE name=?`, hashToken(tok), name)
+	if err != nil {
+		return "", err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return "", ErrNotFound
+	}
+	return tok, nil
+}
+
+// UserNames lists all user names.
+func (s *Store) UserNames() ([]string, error) {
+	rows, err := s.db.Query(`SELECT name FROM users ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) UserByName(name string) (*User, error) {
 	u := &User{}
 	err := s.db.QueryRow(`SELECT id,name,display,bio FROM users WHERE name=?`, name).Scan(&u.ID, &u.Name, &u.Display, &u.Bio)
