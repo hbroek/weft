@@ -91,9 +91,9 @@ func (s *Store) SaveFeed(feedURL string, p *feed.Parsed) error {
 		if !it.Updated.IsZero() {
 			upd = it.Updated.Unix()
 		}
-		if _, err := tx.Exec(`INSERT OR REPLACE INTO items(feed_url,guid,link,title,text,markdown,published,updated,in_reply_to)
-			VALUES(?,?,?,?,?,?,?,?,?)`, feedURL, it.GUID, it.Link, it.Title, it.Text, it.Markdown,
-			it.Published.Unix(), upd, it.InReplyTo); err != nil {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO items(feed_url,guid,link,title,text,markdown,published,updated,in_reply_to,in_reply_to_feed,root,root_feed)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, feedURL, it.GUID, it.Link, it.Title, it.Text, it.Markdown,
+			it.Published.Unix(), upd, it.InReplyTo, it.InReplyToFeed, it.Root, it.RootFeed); err != nil {
 			return err
 		}
 	}

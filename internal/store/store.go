@@ -36,6 +36,15 @@ type Post struct {
 	Created  time.Time
 	Updated  *time.Time
 	Deleted  bool
+	// Reply links; empty unless the post is a reply.
+	InReplyTo, InReplyToFeed, Root, RootFeed string
+}
+
+// NewPost is the input for AddPost.
+type NewPost struct {
+	UserID                                   int64
+	Title, Markdown, HTML                    string
+	InReplyTo, InReplyToFeed, Root, RootFeed string
 }
 
 const schema = `
@@ -63,7 +72,37 @@ CREATE TABLE IF NOT EXISTS posts (
   html TEXT NOT NULL,
   created INTEGER NOT NULL,
   updated INTEGER,
-  deleted INTEGER NOT NULL DEFAULT 0
+  deleted INTEGER NOT NULL DEFAULT 0,
+  in_reply_to TEXT NOT NULL DEFAULT '',
+  in_reply_to_feed TEXT NOT NULL DEFAULT '',
+  root TEXT NOT NULL DEFAULT '',
+  root_feed TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS replies (
+  id INTEGER PRIMARY KEY,
+  post_id INTEGER NOT NULL REFERENCES posts(id),
+  source TEXT NOT NULL,
+  feed_url TEXT NOT NULL DEFAULT '',
+  author TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  text TEXT NOT NULL DEFAULT '',
+  markdown TEXT NOT NULL DEFAULT '',
+  published INTEGER NOT NULL,
+  updated INTEGER,
+  status TEXT NOT NULL,
+  received INTEGER NOT NULL,
+  UNIQUE(post_id, source)
+);
+CREATE TABLE IF NOT EXISTS wm_queue (
+  id INTEGER PRIMARY KEY,
+  dir TEXT NOT NULL,
+  user_id INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL,
+  target TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_try INTEGER NOT NULL,
+  done INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS follows (
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -88,6 +127,9 @@ CREATE TABLE IF NOT EXISTS items (
   published INTEGER NOT NULL,
   updated INTEGER,
   in_reply_to TEXT NOT NULL DEFAULT '',
+  in_reply_to_feed TEXT NOT NULL DEFAULT '',
+  root TEXT NOT NULL DEFAULT '',
+  root_feed TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (feed_url, guid)
 );
 CREATE INDEX IF NOT EXISTS items_pub ON items(published DESC);
@@ -107,6 +149,12 @@ func Open(path string) (*Store, error) {
 	// Databases created by iteration 1 lack the password columns; errors mean they already exist.
 	db.Exec(`ALTER TABLE users ADD COLUMN pw_salt BLOB`)
 	db.Exec(`ALTER TABLE users ADD COLUMN pw_hash BLOB`)
+	for _, c := range []string{"in_reply_to", "in_reply_to_feed", "root", "root_feed"} {
+		db.Exec(`ALTER TABLE posts ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
+	}
+	for _, c := range []string{"in_reply_to_feed", "root", "root_feed"} {
+		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
+	}
 	return &Store{db: db}, nil
 }
 
@@ -170,6 +218,15 @@ func (s *Store) UserNames() ([]string, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) UserByID(id int64) (*User, error) {
+	u := &User{}
+	err := s.db.QueryRow(`SELECT id,name,display,bio FROM users WHERE id=?`, id).Scan(&u.ID, &u.Name, &u.Display, &u.Bio)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return u, err
+}
+
 func (s *Store) UserByName(name string) (*User, error) {
 	u := &User{}
 	err := s.db.QueryRow(`SELECT id,name,display,bio FROM users WHERE name=?`, name).Scan(&u.ID, &u.Name, &u.Display, &u.Bio)
@@ -188,15 +245,16 @@ func (s *Store) UserByToken(token string) (*User, error) {
 	return u, err
 }
 
-func (s *Store) AddPost(userID int64, title, markdown, html string) (*Post, error) {
+func (s *Store) AddPost(n NewPost) (*Post, error) {
 	now := time.Now()
-	res, err := s.db.Exec(`INSERT INTO posts(user_id,title,markdown,html,created) VALUES(?,?,?,?,?)`,
-		userID, title, markdown, html, now.Unix())
+	res, err := s.db.Exec(`INSERT INTO posts(user_id,title,markdown,html,created,in_reply_to,in_reply_to_feed,root,root_feed) VALUES(?,?,?,?,?,?,?,?,?)`,
+		n.UserID, n.Title, n.Markdown, n.HTML, now.Unix(), n.InReplyTo, n.InReplyToFeed, n.Root, n.RootFeed)
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	return &Post{ID: id, UserID: userID, Title: title, Markdown: markdown, HTML: html, Created: time.Unix(now.Unix(), 0)}, nil
+	return &Post{ID: id, UserID: n.UserID, Title: n.Title, Markdown: n.Markdown, HTML: n.HTML, Created: time.Unix(now.Unix(), 0),
+		InReplyTo: n.InReplyTo, InReplyToFeed: n.InReplyToFeed, Root: n.Root, RootFeed: n.RootFeed}, nil
 }
 
 func scanPost(r interface{ Scan(...any) error }) (*Post, error) {
@@ -204,7 +262,8 @@ func scanPost(r interface{ Scan(...any) error }) (*Post, error) {
 	var created int64
 	var updated sql.NullInt64
 	var del int
-	if err := r.Scan(&p.ID, &p.UserID, &p.Title, &p.Markdown, &p.HTML, &created, &updated, &del); err != nil {
+	if err := r.Scan(&p.ID, &p.UserID, &p.Title, &p.Markdown, &p.HTML, &created, &updated, &del,
+		&p.InReplyTo, &p.InReplyToFeed, &p.Root, &p.RootFeed); err != nil {
 		return nil, err
 	}
 	p.Created = time.Unix(created, 0)
@@ -216,7 +275,7 @@ func scanPost(r interface{ Scan(...any) error }) (*Post, error) {
 	return p, nil
 }
 
-const postCols = `id,user_id,title,markdown,html,created,updated,deleted`
+const postCols = `id,user_id,title,markdown,html,created,updated,deleted,in_reply_to,in_reply_to_feed,root,root_feed`
 
 func (s *Store) Post(userID, id int64) (*Post, error) {
 	p, err := scanPost(s.db.QueryRow(`SELECT `+postCols+` FROM posts WHERE user_id=? AND id=?`, userID, id))

@@ -27,6 +27,20 @@ Following and the timeline: log in, open Following, paste another user's address
 `http://bob.localhost:8080/`) and the feed is discovered from the page. Followed feeds refresh
 every 5 minutes (`-poll`) or on "Refresh now".
 
+Replying: on the Timeline click "Reply" under a post, or use the API with `in_reply_to`
+(and optionally `in_reply_to_feed`). The reply is published in your own feed and a Webmention is
+sent to the parent's site. Replies you receive from people you follow are approved automatically;
+others wait on the Replies page (or `GET /api/replies?status=pending`) until you approve them.
+You can reject an approved reply later.
+
+To try two separate instances on one machine:
+
+```bash
+./bin/ttc user add -db a.db alice && ./bin/ttc user add -db b.db bob   # each prints a token
+./bin/ttc serve -addr :8101 -db a.db -dev &   # http://alice.localhost:8101/
+./bin/ttc serve -addr :8102 -db b.db -dev &   # http://bob.localhost:8102/
+```
+
 The server fetches the URLs users enter, so by default it refuses loopback and private addresses
 (SSRF guard). `make run` passes `-dev` to allow them for local use. Do not use `-dev` when hosting.
 If you run the binary yourself: `./bin/ttc serve -dev`.

@@ -50,6 +50,7 @@ func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request, q *req) bo
 
 func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status int, heading, action, button, del, title, markdown, errMsg string) {
 	d := s.data(r, q, heading)
+	d.ReplyTo, d.ReplyFeed = httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed"))
 	d.Heading, d.Action, d.Button, d.Delete, d.Error = heading, action, button, del, errMsg
 	d.Form.Title, d.Form.Markdown = title, markdown
 	s.show(w, "editor", status, d)
@@ -66,7 +67,7 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	title, body := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown")
-	p, msg := s.create(q.host, title, body)
+	p, msg := s.create(r, q.host, title, body, httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed")))
 	if msg != "" {
 		s.editor(w, r, q, http.StatusBadRequest, "New post", "/compose", "Publish", "", title, body, msg)
 		return
@@ -105,7 +106,7 @@ func (s *Server) edit(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	title, body := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown")
 	path := "/posts/" + itoa(p.ID)
-	if _, msg := s.update(q.host, p.ID, title, body); msg != "" {
+	if _, msg := s.update(r, q.host, p.ID, title, body); msg != "" {
 		s.editor(w, r, q, http.StatusBadRequest, "Edit post", path+"/edit", "Save", path+"/delete", title, body, msg)
 		return
 	}
@@ -117,15 +118,16 @@ func (s *Server) deleteForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if p == nil {
 		return
 	}
-	if err := s.st.DeletePost(q.host.ID, p.ID); err != nil {
+	if err := s.deletePost(r, q.host, p); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// create validates, renders and stores a new post. msg is a user-facing validation error.
-func (s *Server) create(u *store.User, title, markdown string) (*store.Post, string) {
+// create validates, renders and stores a new post, and for a reply, links it into its thread
+// and queues a Webmention to the parent. msg is a user-facing validation error.
+func (s *Server) create(r *http.Request, u *store.User, title, markdown, replyTo, replyFeed string) (*store.Post, string) {
 	if strings.TrimSpace(markdown) == "" {
 		return nil, "Write something first."
 	}
@@ -133,14 +135,23 @@ func (s *Server) create(u *store.User, title, markdown string) (*store.Post, str
 	if err != nil {
 		return nil, err.Error()
 	}
-	p, err := s.st.AddPost(u.ID, title, markdown, html)
+	n := store.NewPost{UserID: u.ID, Title: title, Markdown: markdown, HTML: html}
+	if replyTo != "" {
+		n.InReplyTo = replyTo
+		n.InReplyToFeed, n.Root, n.RootFeed = s.resolveThread(r.Context(), s.base(r), u, replyTo, replyFeed)
+	}
+	p, err := s.st.AddPost(n)
 	if err != nil {
 		return nil, err.Error()
+	}
+	if p.InReplyTo != "" {
+		s.notify(s.postURL(r, p.ID), p.InReplyTo)
 	}
 	return p, ""
 }
 
-func (s *Server) update(u *store.User, id int64, title, markdown string) (*store.Post, string) {
+// update replaces a post's content and, for a reply, tells the parent it changed.
+func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdown string) (*store.Post, string) {
 	if strings.TrimSpace(markdown) == "" {
 		return nil, "Write something first."
 	}
@@ -152,5 +163,19 @@ func (s *Server) update(u *store.User, id int64, title, markdown string) (*store
 	if err != nil {
 		return nil, err.Error()
 	}
+	if p.InReplyTo != "" {
+		s.notify(s.postURL(r, p.ID), p.InReplyTo)
+	}
 	return p, ""
+}
+
+// deletePost tombstones a post and, for a reply, tells the parent it is gone.
+func (s *Server) deletePost(r *http.Request, u *store.User, p *store.Post) error {
+	if err := s.st.DeletePost(u.ID, p.ID); err != nil {
+		return err
+	}
+	if p.InReplyTo != "" {
+		s.notify(s.postURL(r, p.ID), p.InReplyTo)
+	}
+	return nil
 }

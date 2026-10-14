@@ -18,9 +18,9 @@ import (
 )
 
 type tlRow struct {
-	Author, Title, Link, Date, InReplyTo string
-	HTML                                 template.HTML
-	Edited                               bool
+	Author, Title, Link, Date, InReplyTo, ReplyHref string
+	HTML                                            template.HTML
+	Edited                                          bool
 }
 
 type followRow struct{ URL, Title, Err string }
@@ -36,19 +36,33 @@ func httpURL(s string) string {
 
 // remoteHTML renders an untrusted remote item for display: Markdown goes through the safe
 // renderer, plain RSS text is escaped. Remote HTML is never passed through.
-func remoteHTML(it store.TimelineItem) template.HTML {
-	if it.Markdown != "" {
-		if h, err := md.Render(it.Markdown); err == nil {
+func remoteHTML(it store.TimelineItem) template.HTML { return renderRemote(it.Markdown, it.Text) }
+
+func renderRemote(markdown, text string) template.HTML {
+	if markdown != "" {
+		if h, err := md.Render(markdown); err == nil {
 			return template.HTML(h) // goldmark safe mode: raw HTML dropped, dangerous URLs removed
 		}
 	}
 	var b strings.Builder
-	for _, para := range strings.Split(it.Text, "\n\n") {
+	for _, para := range strings.Split(text, "\n\n") {
 		if para = strings.TrimSpace(para); para != "" {
 			b.WriteString("<p>" + strings.ReplaceAll(html.EscapeString(para), "\n", "<br>") + "</p>\n")
 		}
 	}
 	return template.HTML(b.String())
+}
+
+// replyHref links to the compose form prefilled to reply to the item.
+func replyHref(it store.TimelineItem) string {
+	target := httpURL(it.GUID)
+	if target == "" {
+		target = httpURL(it.Link)
+	}
+	if target == "" {
+		return ""
+	}
+	return "/compose?reply_to=" + url.QueryEscape(target) + "&reply_feed=" + url.QueryEscape(it.FeedURL)
 }
 
 func (s *Server) rows(userID int64) ([]tlRow, []store.TimelineItem, error) {
@@ -63,7 +77,8 @@ func (s *Server) rows(userID int64) ([]tlRow, []store.TimelineItem, error) {
 			author = it.FeedURL
 		}
 		out = append(out, tlRow{Author: author, Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
-			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil})
+			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil,
+			ReplyHref: replyHref(it)})
 	}
 	return out, items, nil
 }
@@ -192,17 +207,24 @@ func (s *Server) RefreshAll(ctx context.Context) {
 	}
 }
 
-// StartPoller refreshes followed feeds every interval until ctx is done.
+// StartPoller runs the background work until ctx is done: refreshing followed feeds every
+// interval, and processing the Webmention queues now and then and whenever one is kicked.
 func (s *Server) StartPoller(ctx context.Context, every time.Duration) {
 	go func() {
-		t := time.NewTicker(every)
-		defer t.Stop()
+		feeds := time.NewTicker(every)
+		queues := time.NewTicker(time.Minute) // retries of failed jobs
+		defer feeds.Stop()
+		defer queues.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-t.C:
+			case <-feeds.C:
 				s.RefreshAll(ctx)
+			case <-queues.C:
+				s.ProcessQueues(ctx)
+			case <-s.wake:
+				s.ProcessQueues(ctx)
 			}
 		}
 	}()

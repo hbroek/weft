@@ -27,6 +27,24 @@ type AtomLink struct {
 	Type string `xml:"type,attr"`
 }
 
+// Ref is an element that points at a post or feed: tc:inReplyTo, tc:root, tc:feed, tc:repliesTo.
+type Ref struct {
+	Href string `xml:"href,attr"`
+	Feed string `xml:"feed,attr,omitempty"`
+}
+
+// Context is tc:context. In this version it carries only the parent's URL.
+type Context struct {
+	Href      string `xml:"href,attr"`
+	Retrieved string `xml:"retrieved,attr,omitempty"`
+}
+
+// Replies is tc:replies: the URL of a post's replies feed and the approved count.
+type Replies struct {
+	Href  string `xml:"href,attr"`
+	Count int    `xml:"count,attr"`
+}
+
 type Channel struct {
 	Title         string   `xml:"title"`
 	Link          string   `xml:"link"`
@@ -35,6 +53,8 @@ type Channel struct {
 	Self          AtomLink `xml:"atom:link"`
 	Webmention    string   `xml:"tc:webmention,omitempty"`
 	Following     string   `xml:"tc:following,omitempty"`
+	RepliesTo     *Ref     `xml:"tc:repliesTo"`
+	Depth         int      `xml:"tc:depth,omitempty"`
 	Items         []Item   `xml:"item"`
 }
 
@@ -44,13 +64,18 @@ type GUID struct {
 }
 
 type Item struct {
-	Title       string `xml:"title,omitempty"`
-	GUID        GUID   `xml:"guid"`
-	Link        string `xml:"link"`
-	Description string `xml:"description"`
-	Markdown    string `xml:"source:markdown,omitempty"`
-	PubDate     string `xml:"pubDate"`
-	Updated     string `xml:"tc:updated,omitempty"`
+	Title       string   `xml:"title,omitempty"`
+	GUID        GUID     `xml:"guid"`
+	Link        string   `xml:"link"`
+	Description string   `xml:"description"`
+	Markdown    string   `xml:"source:markdown,omitempty"`
+	PubDate     string   `xml:"pubDate"`
+	Updated     string   `xml:"tc:updated,omitempty"`
+	InReplyTo   *Ref     `xml:"tc:inReplyTo"`
+	Root        *Ref     `xml:"tc:root"`
+	Context     *Context `xml:"tc:context"`
+	Replies     *Replies `xml:"tc:replies"`
+	Feed        *Ref     `xml:"tc:feed"`
 }
 
 func New(c Channel) *RSS {

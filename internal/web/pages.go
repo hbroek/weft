@@ -24,18 +24,22 @@ input[type=text],input[type=password],textarea{width:100%;box-sizing:border-box;
 textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}label{display:block;margin-top:1rem}</style>
 </head><body>
 <header><h1><a href="/">{{.Author}}</a></h1><p>{{.Bio}}</p>
-<nav>{{if .Owner}}<a href="/compose">Compose</a><a href="/timeline">Timeline</a><a href="/following">Following</a>
+<nav>{{if .Owner}}<a href="/compose">Compose</a><a href="/timeline">Timeline</a><a href="/following">Following</a><a href="/replies">Replies</a>
 <form method="post" action="/logout"><button>Log out</button></form>{{else}}<a href="/login">Log in</a>{{end}}</nav></header>
 <main>{{end}}
 {{define "foot"}}</main></body></html>{{end}}
 {{define "posts"}}{{template "head" .}}
 {{range .Posts}}<article class="h-entry">
 {{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{end}}
+{{if .InReplyTo}}<p><small>In reply to <a class="u-in-reply-to" href="{{.InReplyTo}}">{{.InReplyTo}}</a></small></p>{{end}}
 <div class="e-content">{{.HTML}}</div>
 <a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}">{{.Date}}</time></a>
 {{if .Edited}} <time>(edited)</time>{{end}}
 {{if $.Owner}} <a href="{{.URL}}/edit">Edit</a>{{end}}
 </article>{{else}}<p>No posts yet.</p>{{end}}
+{{if .Replies}}<section><h3>Replies</h3>{{range .Replies}}<div class="reply">
+<p><strong>{{.Author}}</strong> <a href="{{.Source}}"><time>{{.Date}}</time></a></p>{{if .Title}}<h4>{{.Title}}</h4>{{end}}{{.HTML}}</div>{{end}}</section>{{end}}
+{{if and .Owner .Pending}}<p><a href="/replies">{{.Pending}} reply(ies) awaiting your approval</a></p>{{end}}
 {{template "foot"}}{{end}}
 {{define "tombstone"}}{{template "head" .}}<p>This post was removed by its author.</p>{{template "foot"}}{{end}}
 {{define "login"}}{{template "head" .}}<form method="post" action="/login">
@@ -47,6 +51,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <p><strong>{{.Author}}</strong>{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div>{{.HTML}}</div>
+<p><a href="{{.ReplyHref}}">Reply</a></p>
 {{if .Link}}<a href="{{.Link}}"><time>{{.Date}}</time></a>{{else}}<time>{{.Date}}</time>{{end}}{{if .Edited}} <time>(edited)</time>{{end}}
 </article>{{else}}<p>Nothing yet. <a href="/following">Follow a feed</a>.</p>{{end}}
 {{template "foot"}}{{end}}
@@ -58,8 +63,20 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <form method="post" action="/following/refresh"><button>Refresh now</button></form>
 <p><small>Your follow list is public: <a href="/following.opml">following.opml</a></small></p>
 {{template "foot"}}{{end}}
+{{define "moderation"}}{{template "head" .}}<h2>Replies to your posts</h2>
+{{range .Moderation}}<article>
+<p><strong>{{.Author}}</strong> on <a href="{{.PostURL}}">your post {{.PostID}}</a> <small>({{.Status}})</small></p>
+{{if .Title}}<h4>{{.Title}}</h4>{{end}}{{.HTML}}
+<p><a href="{{.Source}}">{{.Source}}</a></p>
+<form method="post" action="/replies/{{.ID}}/status">
+{{if ne .Status "approved"}}<button name="status" value="approved">Approve</button>{{end}}
+{{if ne .Status "rejected"}}<button name="status" value="rejected">Reject</button>{{end}}</form>
+</article>{{else}}<p>No replies yet.</p>{{end}}
+{{template "foot"}}{{end}}
 {{define "editor"}}{{template "head" .}}<form method="post" action="{{.Action}}">
-<h2>{{.Heading}}</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+<h2>{{.Heading}}</h2>
+{{if .ReplyTo}}<p>Replying to <a href="{{.ReplyTo}}">{{.ReplyTo}}</a></p><input type="hidden" name="reply_to" value="{{.ReplyTo}}"><input type="hidden" name="reply_feed" value="{{.ReplyFeed}}">{{end}}
+{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label>Markdown <textarea name="markdown" required>{{.Form.Markdown}}</textarea></label>
 <p><button>{{.Button}}</button></p></form>
@@ -70,6 +87,7 @@ type pagePost struct {
 	Title, URL, ISO, Date string
 	HTML                  template.HTML
 	Edited                bool
+	InReplyTo             string
 }
 
 type pageData struct {
@@ -77,6 +95,10 @@ type pageData struct {
 	Owner                                      bool
 	Posts                                      []pagePost
 	Timeline                                   []tlRow
+	Replies                                    []replyRow
+	Moderation                                 []modRow
+	Pending                                    int
+	ReplyTo, ReplyFeed                         string
 	Follows                                    []followRow
 	// forms
 	Error, Action, Heading, Button, Delete string
@@ -103,8 +125,11 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 		d.Posts = append(d.Posts, pagePost{
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
 			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 15:04"),
-			Edited: p.Updated != nil,
+			Edited: p.Updated != nil, InReplyTo: p.InReplyTo,
 		})
+	}
+	if len(posts) == 1 && !posts[0].Deleted {
+		d.Replies, d.Pending = s.repliesFor(q, posts[0].ID)
 	}
 	s.show(w, "posts", http.StatusOK, d)
 }
@@ -157,6 +182,7 @@ func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
 		Webmention: s.base(r) + "/webmention",
 		Following:  s.base(r) + "/following.opml",
 	}
+	counts, _ := s.st.ApprovedCounts(q.host.ID)
 	var last time.Time
 	for _, p := range posts {
 		if p.Created.After(last) {
@@ -165,6 +191,12 @@ func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
 		url := s.postURL(r, p.ID)
 		it := feed.Item{Title: p.Title, GUID: feed.GUID{IsPermaLink: true, Value: url}, Link: url,
 			Description: p.HTML, Markdown: p.Markdown, PubDate: feed.RFC822(p.Created)}
+		it.Replies = &feed.Replies{Href: url + "/replies.xml", Count: counts[p.ID]}
+		if p.InReplyTo != "" {
+			it.InReplyTo = &feed.Ref{Href: p.InReplyTo, Feed: p.InReplyToFeed}
+			it.Root = &feed.Ref{Href: p.Root, Feed: p.RootFeed}
+			it.Context = &feed.Context{Href: p.InReplyTo, Retrieved: feed.RFC822(p.Created)}
+		}
 		if p.Updated != nil {
 			it.Updated = feed.RFC822(*p.Updated)
 			if p.Updated.After(last) {

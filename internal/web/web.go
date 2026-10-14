@@ -29,13 +29,15 @@ type Server struct {
 	st  *store.Store
 	mux *http.ServeMux
 	web *fetch.Client
+	// wake nudges the background worker after a Webmention job is queued.
+	wake chan struct{}
 }
 
 func New(cfg Config, st *store.Store) *Server {
 	if cfg.Scheme == "" {
 		cfg.Scheme = "http"
 	}
-	s := &Server{cfg: cfg, st: st, mux: http.NewServeMux(), web: fetch.New(cfg.AllowPrivate)}
+	s := &Server{cfg: cfg, st: st, mux: http.NewServeMux(), web: fetch.New(cfg.AllowPrivate), wake: make(chan struct{}, 1)}
 	// public pages
 	s.mux.HandleFunc("GET /{$}", s.user(s.home))
 	s.mux.HandleFunc("GET /feed.xml", s.user(s.feed))
@@ -49,6 +51,12 @@ func New(cfg Config, st *store.Store) *Server {
 	s.mux.HandleFunc("GET /posts/{id}/edit", s.user(s.editForm))
 	s.mux.HandleFunc("POST /posts/{id}/edit", s.user(s.edit))
 	s.mux.HandleFunc("POST /posts/{id}/delete", s.user(s.deleteForm))
+	s.mux.HandleFunc("POST /webmention", s.user(s.webmention))
+	s.mux.HandleFunc("GET /posts/{id}/replies.xml", s.user(s.repliesFeed))
+	s.mux.HandleFunc("GET /replies", s.user(s.moderation))
+	s.mux.HandleFunc("POST /replies/{id}/status", s.user(s.moderateForm))
+	s.mux.HandleFunc("GET /api/replies", s.user(s.apiReplies))
+	s.mux.HandleFunc("POST /api/replies/{id}/status", s.user(s.apiModerate))
 	s.mux.HandleFunc("GET /following.opml", s.user(s.opml))
 	s.mux.HandleFunc("GET /timeline", s.user(s.timeline))
 	s.mux.HandleFunc("GET /following", s.user(s.followingPage))

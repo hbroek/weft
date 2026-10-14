@@ -12,6 +12,10 @@ func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 type postReq struct {
 	Title    string `json:"title"`
 	Markdown string `json:"markdown"`
+	// InReplyTo makes the post a reply to the post at this permalink. InReplyToFeed is an
+	// optional hint: the parent's feed URL.
+	InReplyTo     string `json:"in_reply_to"`
+	InReplyToFeed string `json:"in_reply_to_feed"`
 }
 
 type postResp struct {
@@ -44,7 +48,11 @@ func (s *Server) apiCreate(w http.ResponseWriter, r *http.Request, q *req) {
 	if !ok {
 		return
 	}
-	p, msg := s.create(q.host, in.Title, in.Markdown)
+	if in.InReplyTo != "" && httpURL(in.InReplyTo) == "" {
+		http.Error(w, "in_reply_to must be an http(s) URL", http.StatusBadRequest)
+		return
+	}
+	p, msg := s.create(r, q.host, in.Title, in.Markdown, httpURL(in.InReplyTo), httpURL(in.InReplyToFeed))
 	if msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
@@ -66,7 +74,7 @@ func (s *Server) apiUpdate(w http.ResponseWriter, r *http.Request, q *req) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, msg := s.update(q.host, id, in.Title, in.Markdown); msg != "" {
+	if _, msg := s.update(r, q.host, id, in.Title, in.Markdown); msg != "" {
 		code := http.StatusBadRequest
 		if msg == "not found" {
 			code = http.StatusNotFound
@@ -87,8 +95,13 @@ func (s *Server) apiDelete(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	if err := s.st.DeletePost(q.host.ID, id); err != nil {
+	p, err := s.st.Post(q.host.ID, id)
+	if err != nil || p.Deleted {
 		http.NotFound(w, r)
+		return
+	}
+	if err := s.deletePost(r, q.host, p); err != nil {
+		http.Error(w, err.Error(), 500)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

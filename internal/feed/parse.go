@@ -23,6 +23,8 @@ type ParsedItem struct {
 	Published         time.Time
 	Updated           time.Time // zero if never edited
 	InReplyTo         string    // tc:inReplyTo href, if any
+	InReplyToFeed     string
+	Root, RootFeed    string // tc:root
 }
 
 type xmlParsed struct {
@@ -43,7 +45,12 @@ type xmlParsed struct {
 			Updated     string `xml:"https://example.org/ns/textcast/0.1 updated"`
 			InReplyTo   struct {
 				Href string `xml:"href,attr"`
+				Feed string `xml:"feed,attr"`
 			} `xml:"https://example.org/ns/textcast/0.1 inReplyTo"`
+			Root struct {
+				Href string `xml:"href,attr"`
+				Feed string `xml:"feed,attr"`
+			} `xml:"https://example.org/ns/textcast/0.1 root"`
 		} `xml:"item"`
 	} `xml:"channel"`
 }
@@ -96,7 +103,8 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 			GUID: strings.TrimSpace(it.GUID), Link: strings.TrimSpace(it.Link), Title: strings.TrimSpace(it.Title),
 			Text: StripHTML(it.Description), Markdown: strings.TrimSpace(it.Markdown),
 			Published: parseDate(it.PubDate), Updated: parseDate(it.Updated),
-			InReplyTo: strings.TrimSpace(it.InReplyTo.Href),
+			InReplyTo: strings.TrimSpace(it.InReplyTo.Href), InReplyToFeed: strings.TrimSpace(it.InReplyTo.Feed),
+			Root: strings.TrimSpace(it.Root.Href), RootFeed: strings.TrimSpace(it.Root.Feed),
 		}
 		if pi.GUID == "" {
 			pi.GUID = pi.Link
