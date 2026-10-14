@@ -19,6 +19,7 @@ import (
 
 type tlRow struct {
 	Author, Title, Link, Date, InReplyTo, ReplyHref string
+	Target, FeedURL, Mine, Tally                    string
 	HTML                                            template.HTML
 	Edited                                          bool
 }
@@ -53,12 +54,29 @@ func renderRemote(markdown, text string) template.HTML {
 	return template.HTML(b.String())
 }
 
+// itemTarget is the permalink other posts use to point at the item.
+func itemTarget(it store.TimelineItem) string {
+	if t := httpURL(it.GUID); t != "" {
+		return t
+	}
+	return httpURL(it.Link)
+}
+
+// myReaction describes the user's current reaction to target, or "" if none.
+func (s *Server) myReaction(userID int64, target string) string {
+	if target == "" {
+		return ""
+	}
+	x, err := s.st.ActiveReaction(userID, target)
+	if err != nil {
+		return ""
+	}
+	return orStr(x.Emoji, store.DefaultEmoji(x.Polarity)) + " (" + x.Polarity + ")"
+}
+
 // replyHref links to the compose form prefilled to reply to the item.
 func replyHref(it store.TimelineItem) string {
-	target := httpURL(it.GUID)
-	if target == "" {
-		target = httpURL(it.Link)
-	}
+	target := itemTarget(it)
 	if target == "" {
 		return ""
 	}
@@ -78,7 +96,8 @@ func (s *Server) rows(userID int64) ([]tlRow, []store.TimelineItem, error) {
 		}
 		out = append(out, tlRow{Author: author, Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
 			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil,
-			ReplyHref: replyHref(it)})
+			ReplyHref: replyHref(it), Target: itemTarget(it), FeedURL: it.FeedURL, Tally: remoteTallyText(it.Plus, it.Minus),
+			Mine: s.myReaction(userID, itemTarget(it))})
 	}
 	return out, items, nil
 }

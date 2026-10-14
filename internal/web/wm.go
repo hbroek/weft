@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -184,14 +185,14 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 
 	page, err := s.web.Get(ctx, it.Source)
 	if err != nil {
-		if fetch.IsGone(err) { // the sender deleted their reply
-			s.st.DeleteReply(postID, it.Source)
-			return "source gone; reply removed", false
+		if fetch.IsGone(err) { // the sender deleted their reply or reaction
+			s.dropMention(postID, it.Source)
+			return "source gone; removed", false
 		}
 		return err.Error(), true
 	}
-	if !strings.Contains(string(page.Body), it.Target) {
-		s.st.DeleteReply(postID, it.Source)
+	if body := string(page.Body); !strings.Contains(body, it.Target) && !strings.Contains(body, html.EscapeString(it.Target)) {
+		s.dropMention(postID, it.Source)
 		return "source does not link to target", false
 	}
 	feedURL, ok := fetch.FindFeedLink(page.Body, page.URL)
@@ -212,21 +213,42 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 			item = &parsed.Items[i]
 		}
 	}
-	if item == nil || item.InReplyTo != it.Target {
+	trusted, _ := s.st.IsFollowingSite(host.ID, fr.URL, parsed.Link)
+	switch {
+	case item != nil && item.InReplyTo == it.Target:
+		status := store.StatusPending
+		if trusted {
+			status = store.StatusApproved
+		}
+		r := store.Reply{PostID: postID, Source: it.Source, FeedURL: fr.URL, Author: parsed.Title, Title: item.Title,
+			Text: item.Text, Markdown: item.Markdown, Published: item.Published, Status: status}
+		if !item.Updated.IsZero() {
+			r.Updated = &item.Updated
+		}
+		s.st.DeleteReactionIn(postID, it.Source)
+		if err := s.st.UpsertReply(r); err != nil {
+			return err.Error(), true
+		}
+		return "reply " + status, false
+	case item != nil && item.ReactionOf == it.Target && (item.Polarity == store.Plus || item.Polarity == store.Minus):
+		emoji := item.Emoji
+		if emoji == "" || !validEmoji(emoji) {
+			emoji = store.DefaultEmoji(item.Polarity)
+		}
 		s.st.DeleteReply(postID, it.Source)
-		return "plain mention: source feed item is not a reply to target", false
+		if err := s.st.UpsertReactionIn(store.ReactionIn{PostID: postID, Source: it.Source, FeedURL: fr.URL,
+			Author: parsed.Title, Polarity: item.Polarity, Emoji: emoji, Trusted: trusted}); err != nil {
+			return err.Error(), true
+		}
+		return "reaction recorded", false
+	default:
+		s.dropMention(postID, it.Source)
+		return "plain mention: source is neither a reply nor a reaction to target", false
 	}
-	status := store.StatusPending
-	if f, _ := s.st.IsFollowing(host.ID, fr.URL); f {
-		status = store.StatusApproved
-	}
-	r := store.Reply{PostID: postID, Source: it.Source, FeedURL: fr.URL, Author: parsed.Title, Title: item.Title,
-		Text: item.Text, Markdown: item.Markdown, Published: item.Published, Status: status}
-	if !item.Updated.IsZero() {
-		r.Updated = &item.Updated
-	}
-	if err := s.st.UpsertReply(r); err != nil {
-		return err.Error(), true
-	}
-	return "reply " + status, false
+}
+
+// dropMention forgets any reply or reaction previously recorded from source.
+func (s *Server) dropMention(postID int64, source string) {
+	s.st.DeleteReply(postID, source)
+	s.st.DeleteReactionIn(postID, source)
 }

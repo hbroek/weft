@@ -58,3 +58,18 @@ func TestParseRejectsAtom(t *testing.T) {
 		t.Fatal("atom accepted")
 	}
 }
+
+// atom:link rel="self" comes after <link> in our own feeds; it must not clobber the homepage.
+func TestParseIgnoresNamespacedLink(t *testing.T) {
+	x := `<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>T</title>
+<link>https://a.example/</link><atom:link href="https://a.example/feed.xml" rel="self" type="application/rss+xml"/>
+<item><guid>g1</guid><link>https://a.example/p/1</link><atom:link rel="replies" href="https://a.example/p/1/r"/></item>
+</channel></rss>`
+	p, err := Parse([]byte(x), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Link != "https://a.example/" || p.Items[0].Link != "https://a.example/p/1" {
+		t.Errorf("channel link %q, item link %q", p.Link, p.Items[0].Link)
+	}
+}

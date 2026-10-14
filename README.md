@@ -33,6 +33,11 @@ sent to the parent's site. Replies you receive from people you follow are approv
 others wait on the Replies page (or `GET /api/replies?status=pending`) until you approve them.
 You can reject an approved reply later.
 
+Reacting: under each timeline post, 👍 or 👎 sets the polarity (`+` / `-`) and the optional emoji
+box adds nuance. API: `POST /api/reactions {"target","polarity","emoji"}`, `DELETE /api/reactions {"target"}`.
+Reactions are published in your reactions feed and counted at the post only when the sender is
+someone the post's author follows; `GET /api/reactions/received?post_id=N` shows all of them.
+
 To try two separate instances on one machine:
 
 ```bash

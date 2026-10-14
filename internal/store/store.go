@@ -93,6 +93,30 @@ CREATE TABLE IF NOT EXISTS replies (
   received INTEGER NOT NULL,
   UNIQUE(post_id, source)
 );
+CREATE TABLE IF NOT EXISTS reactions (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  target TEXT NOT NULL,
+  target_feed TEXT NOT NULL DEFAULT '',
+  polarity TEXT NOT NULL,
+  emoji TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL,
+  updated INTEGER,
+  deleted INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS reactions_active ON reactions(user_id, target) WHERE deleted=0;
+CREATE TABLE IF NOT EXISTS reactions_in (
+  id INTEGER PRIMARY KEY,
+  post_id INTEGER NOT NULL REFERENCES posts(id),
+  source TEXT NOT NULL,
+  feed_url TEXT NOT NULL DEFAULT '',
+  author TEXT NOT NULL DEFAULT '',
+  polarity TEXT NOT NULL,
+  emoji TEXT NOT NULL,
+  trusted INTEGER NOT NULL DEFAULT 0,
+  created INTEGER NOT NULL,
+  UNIQUE(post_id, source)
+);
 CREATE TABLE IF NOT EXISTS wm_queue (
   id INTEGER PRIMARY KEY,
   dir TEXT NOT NULL,
@@ -130,6 +154,8 @@ CREATE TABLE IF NOT EXISTS items (
   in_reply_to_feed TEXT NOT NULL DEFAULT '',
   root TEXT NOT NULL DEFAULT '',
   root_feed TEXT NOT NULL DEFAULT '',
+  plus INTEGER NOT NULL DEFAULT 0,
+  minus INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (feed_url, guid)
 );
 CREATE INDEX IF NOT EXISTS items_pub ON items(published DESC);
@@ -154,6 +180,9 @@ func Open(path string) (*Store, error) {
 	}
 	for _, c := range []string{"in_reply_to_feed", "root", "root_feed"} {
 		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
+	}
+	for _, c := range []string{"plus", "minus"} {
+		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` INTEGER NOT NULL DEFAULT 0`)
 	}
 	return &Store{db: db}, nil
 }

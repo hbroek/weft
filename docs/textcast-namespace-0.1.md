@@ -1,10 +1,10 @@
 # Textcast Namespace 0.1 (Draft)
 
-Oct 12, 2026 · @Henry
+Oct 12, 2026 · @Henry · revised Oct 14, 2026 (reactions replace likes; `tc:context` may be a bare URL)
 
 ## Status and purpose
 
-This is a first working draft of an RSS 2.0 namespace for textcasting: two-way, Markdown-based publishing where every post lives in its author's own feed. It defines how a post marks itself as a reply, how threads are reassembled, how likes are counted, and how feeds move or get edited.
+This is a first working draft of an RSS 2.0 namespace for textcasting: two-way, Markdown-based publishing where every post lives in its author's own feed. It defines how a post marks itself as a reply, how threads are reassembled, how reactions are counted, and how feeds move or get edited.
 
 The spec only adds what RSS 2.0 lacks. Anything RSS 2.0, Winer's Source namespace or Webmention already covers is reused, not redefined. Elements are marked **required**, **recommended** or **optional**.
 
@@ -14,7 +14,7 @@ The spec only adds what RSS 2.0 lacks. Anything RSS 2.0, Winer's Source namespac
 2. **Markdown is the source of truth.** Authors write Markdown. The feed carries both rendered HTML (for any reader) and the original Markdown (for textcasting apps).
 3. **No length limit.** There are no threads of numbered posts; a long thought is one post.
 4. **Posts are editable.** Edits update the item in place and notify anyone the post replied to.
-5. **You own your words.** Every post, reply and like lives in its author's own feed at its author's own URL.
+5. **You own your words.** Every post, reply and reaction lives in its author's own feed at its author's own URL.
 6. **Public by design.** Everything in a textcast feed is public. Private posts and messages are out of scope.
 7. **Degrade gracefully.** A plain RSS reader that ignores this namespace still shows every post correctly.
 
@@ -43,9 +43,9 @@ The author's profile uses standard RSS 2.0: `<title>` is the author or publicati
 
 | Element | Status | Meaning |
 | --- | --- | --- |
-| `<tc:webmention>` | Required | URL of the author's Webmention endpoint, where replies and likes are sent |
+| `<tc:webmention>` | Required | URL of the author's Webmention endpoint, where replies and reactions are sent |
 | `<tc:following>` | Recommended | URL of an OPML file listing the feeds this author follows; the public follow graph used for trust weighting |
-| `<tc:likesFeed>` | Recommended | URL of the author's separate likes feed |
+| `<tc:reactionsFeed>` | Recommended | URL of the author's separate reactions feed (likes and dislikes) |
 | `<tc:movedTo>` | Optional | New feed URL when the feed has moved; readers update their subscription |
 | `<tc:key>` | Optional | URL of the author's public signing key, for verifiable snapshots |
 
@@ -53,13 +53,13 @@ For update pings, publish either an RSS 2.0 `<cloud>` element (rssCloud) or `<at
 
 ## Item elements
 
-Every post, reply and like is an RSS 2.0 `<item>`.
+Every post, reply and reaction is an RSS 2.0 `<item>`.
 
 ### Core elements
 
 | Element | Status | Rule |
 | --- | --- | --- |
-| `<guid isPermaLink="true">` | Required | The post's HTML permalink. This URL is the post's identity everywhere: in replies, likes and Webmentions. |
+| `<guid isPermaLink="true">` | Required | The post's HTML permalink. This URL is the post's identity everywhere: in replies, reactions and Webmentions. |
 | `<description>` | Required | Rendered HTML of the post. |
 | `<title>` | Optional | Include only if the author gave one. Apps must not invent titles from the first line. |
 | `<source:markdown>` | Recommended | The original Markdown, unaltered. |
@@ -99,20 +99,26 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 </tc:context>
 ```
 
-- Recommended. Plain text, kept brief: no more than about 300 characters.
+- Recommended. In its minimal form it is an empty element carrying only `href` (and `retrieved`): the URL of the parent. A text snippet is optional: plain text, kept brief, no more than about 300 characters.
 - It is a quote for context, not a copy. Apps must not display it as the parent post when the parent is reachable.
 - Optional `signature` attribute: the parent's signature over its own text, verifiable with the parent's `tc:key`.
-- **Required when the parent is not a textcast post.** A reply to a plain RSS 2.0 item treats the parent as if it were already deleted: the link and the snippet are all a reader can rely on.
+- A reply to a plain RSS 2.0 item or any other page treats the parent as if it were already deleted: the link (and the snippet, when present) are all a reader can rely on. The parent may be any URL, textcast or not.
 - Optional `origin` attribute: `author` (written by the replier, the default) or `generated` (summarized by an app, for example with AI). Readers may label generated context, and authors should review it before publishing.
 
-### Like elements
+### Reaction elements
 
-`<tc:likeOf href="…"/>` marks the item as a like (an upvote) of the post at `href`. A like item has no `<title>` and may have an empty `<description>`. Likes are published in the likes feed, not the main feed.
+`<tc:reactionOf href="…" polarity="+" emoji="🎉"/>` marks the item as a reaction to the post at `href`.
 
-### Reply tally elements
+- `href` (required): the permalink of the post reacted to.
+- `polarity` (required): `+` for a positive reaction (a like, an upvote) or `-` for a negative one (a dislike). Every reaction has a polarity, so any app can count and weigh reactions without understanding emoji.
+- `emoji` (optional): one emoji, or a short emoji sequence, adding nuance. When absent, apps show 👍 for `+` and 👎 for `-`. Apps must not treat the emoji as text or markup, and may ignore values that are not emoji.
+
+A reaction item has no `<title>` and an empty `<description>`. A user has at most one active reaction per post: changing it edits the same item in place and sets `tc:updated`; withdrawing it deletes the item (the permalink then returns 410). Reactions are published in the reactions feed, not the main feed.
+
+### Reply and reaction tally elements
 
 - `<tc:replies href="…" count="7"/>` (recommended): the URL of this post's replies feed and the number of approved replies.
-- `<tc:likes count="12"/>` (optional): the number of verified likes received. It is a cache; the likes themselves live in the likers' feeds and can be recounted.
+- `<tc:reactions plus="12" minus="2"><tc:emoji value="🎉" count="4"/></tc:reactions>` (optional): the number of verified positive and negative reactions received, with an optional per-emoji breakdown. Only reactions from senders the post's author follows are counted by default. It is a cache; the reactions themselves live in the reactors' feeds and can be recounted.
 
 ## Replies feed
 
@@ -130,7 +136,7 @@ Each `<item>` is a reference to a reply, not a full copy:
 - `<description>`: a short excerpt for display.
 - `<author>` or `<tc:feed href="…"/>`: who wrote it, by feed URL.
 - `<tc:inReplyTo>`: the reply's parent. Required when `tc:depth` is greater than 1, so deeper items can be placed in the tree.
-- `<tc:likes count="…"/>`: the reply's like tally, if known.
+- `<tc:reactions plus="…" minus="…"/>`: the reply's reaction tally, if known.
 
 ### Cached subtrees
 
@@ -140,11 +146,13 @@ With `tc:depth` of 2 or 3, one fetch returns most of a conversation. Readers reb
 
 The replies feed is the curated view: only approved replies. The raw view is every item anywhere whose `tc:inReplyTo` or `tc:root` points into the thread, as an index sees it. Apps should let readers switch between them.
 
-## Likes feed
+## Reactions feed
 
-Likes go in a separate feed, linked from the main feed's `tc:likesFeed`, so they don't bury posts for subscribers. Each like is an item with a `guid` permalink of its own and a `tc:likeOf`. Each like is also sent to the liked post's Webmention endpoint.
+Reactions go in a separate feed, linked from the main feed's `tc:reactionsFeed`, so they don't bury posts for subscribers. Each reaction is an item with a `guid` permalink of its own (an HTML page) and a `tc:reactionOf`. Each reaction is also sent to the reacted post's Webmention endpoint.
 
-Only upvotes are public. A downvote is a private moderation signal to the post owner, not a feed item; its mechanism is an open question.
+A person's feeds share one identity: the channel `<link>` (homepage) of the main feed and the reactions feed are the same. Receivers use it to recognise that a reaction comes from someone they follow, even though they follow the main feed.
+
+Reactions are public. Private flags to a post owner are out of scope.
 
 ## Permalink page requirements
 
@@ -152,9 +160,9 @@ Every item's `guid` must resolve to an HTML page. Webmention verification, searc
 
 - `<link rel="alternate" type="application/rss+xml" href="…">` pointing to the author's feed.
 - `<link rel="webmention" href="…">` pointing to the author's endpoint.
-- For a reply or like, a visible `<a href>` to the parent or liked post. Webmention receivers check for this link.
+- For a reply or reaction, a visible `<a href>` to the parent or reacted-to post. Webmention receivers check for this link.
 
-Recommended for IndieWeb compatibility: microformats2 markup (`h-entry`, with `u-in-reply-to` on replies and `u-like-of` on likes).
+Recommended for IndieWeb compatibility: microformats2 markup (`h-entry`, with `u-in-reply-to` on replies and `u-like-of` on reactions).
 
 ## Processing rules
 
@@ -168,18 +176,18 @@ Recommended for IndieWeb compatibility: microformats2 markup (`h-entry`, with `u
 ### Receiving a Webmention
 
 1. Fetch the source URL and confirm it links to the target post. If not, reject it.
-2. Read the source's feed item. If it has `tc:inReplyTo` matching the target, treat it as a reply; if it has `tc:likeOf`, treat it as a like; otherwise it is a plain mention.
-3. Apply moderation: auto-approve senders the author follows (from `tc:following`), queue others, drop blocked domains.
-4. On approval, add the reply to the post's replies feed and update `tc:replies` and `tc:likes` counts.
+2. Read the source's feed item. If it has `tc:inReplyTo` matching the target, treat it as a reply; if it has `tc:reactionOf` matching the target with a `polarity` of `+` or `-`, treat it as a reaction; otherwise it is a plain mention and is ignored.
+3. Apply moderation: auto-approve senders the author follows (from `tc:following`), queue others, drop blocked domains. Reactions are recorded once verified, but only those from followed senders count in the public tally.
+4. On approval, add the reply to the post's replies feed and update the `tc:replies` and `tc:reactions` counts.
 5. **Bubble up.** If this post is itself a reply, re-send its own Webmention to its parent. Under the Webmention spec, a re-sent Webmention means the source changed, so the parent refreshes its cached subtree. Repeat up to the root, or stop at the parent's `tc:depth`.
 
 ### Editing a post
 
-Update the item in place, set `tc:updated`, and re-send Webmentions to every post it replied to or liked. The `guid` never changes.
+Update the item in place, set `tc:updated`, and re-send Webmentions to every post it replied to or reacted to. The `guid` never changes.
 
 ### Deleting a post
 
-The permalink returns HTTP 410 Gone, ideally with a small tombstone page. Remove the item from the feed and re-send Webmentions; receivers seeing 410 remove the reply or like. Replies to the deleted post keep their own place in the tree.
+The permalink returns HTTP 410 Gone, ideally with a small tombstone page. Remove the item from the feed and re-send Webmentions; receivers seeing 410 remove the reply or reaction. Replies to the deleted post keep their own place in the tree.
 
 ### Moving a feed
 
@@ -222,7 +230,7 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
   <description>Notes on the open web.</description>
   <tc:webmention>https://alice.example/webmention</tc:webmention>
   <tc:following>https://alice.example/following.opml</tc:following>
-  <tc:likesFeed>https://alice.example/likes.xml</tc:likesFeed>
+  <tc:reactionsFeed>https://alice.example/reactions.xml</tc:reactionsFeed>
   <cloud domain="rpc.example.org" port="80" path="/rsscloud/pleaseNotify"
          registerProcedure="" protocol="http-post"/>
 
@@ -234,7 +242,7 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
     <pubDate>Mon, 12 Oct 2026 21:00:00 -0400</pubDate>
     <category>textcasting</category>
     <tc:replies href="https://alice.example/2026/10/12/notes/replies.xml" count="1"/>
-    <tc:likes count="1"/>
+    <tc:reactions plus="1" minus="0"/>
   </item>
 </channel>
 </rss>
@@ -259,14 +267,14 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 </item>
 ```
 
-### Carol's like, in her likes feed
+### Carol's reaction, in her reactions feed
 
 ```xml
 <item>
-  <guid isPermaLink="true">https://carol.example/likes/2026-10-12-1</guid>
+  <guid isPermaLink="true">https://carol.example/reactions/2026-10-12-1</guid>
   <description/>
   <pubDate>Mon, 12 Oct 2026 22:20:00 -0400</pubDate>
-  <tc:likeOf href="https://alice.example/2026/10/12/notes"/>
+  <tc:reactionOf href="https://alice.example/2026/10/12/notes" polarity="+" emoji="🎉"/>
 </item>
 ```
 
@@ -289,7 +297,7 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
     <description>Search and threads are what's missing.</description>
     <tc:feed href="https://bob.example/feed.xml"/>
     <tc:inReplyTo href="https://alice.example/2026/10/12/notes"/>
-    <tc:likes count="3"/>
+    <tc:reactions plus="3" minus="0"/>
   </item>
 
   <item>
@@ -314,7 +322,6 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 ## Out of scope
 
 - Private posts and direct messages.
-- Public downvotes.
 - Search and index protocols.
 - Moderation policy. The spec carries signals; each app and index decides what to do with them.
 
@@ -324,6 +331,7 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 - [ ] Should replies also send a Webmention to the root, so root authors see all thread activity?
 - [ ] Signature format for `tc:context` and `tc:key`, or drop signing from 0.1 entirely.
 - [ ] Maximum length for `tc:context`: is about 300 characters right?
-- [ ] How private downvotes or flags reach a post owner.
+- [ ] How private flags (as opposed to public `-` reactions) reach a post owner.
+- [ ] Weighting reactions by the trust graph beyond "followed or not".
 - [ ] Whether to require the Webmention Vouch extension for senders the receiver doesn't follow.
 - [ ] Default and maximum `tc:depth` for replies feeds, to keep cache sizes bounded.

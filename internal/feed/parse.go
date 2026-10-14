@@ -13,6 +13,7 @@ import (
 type Parsed struct {
 	Title, Link, Description string
 	Webmention, Following    string
+	ReactionsFeed            string
 	Items                    []ParsedItem
 }
 
@@ -25,24 +26,44 @@ type ParsedItem struct {
 	InReplyTo         string    // tc:inReplyTo href, if any
 	InReplyToFeed     string
 	Root, RootFeed    string // tc:root
+	// tc:reactionOf: set when the item is a reaction rather than a post.
+	ReactionOf, Polarity, Emoji string
+	Plus, Minus                 int // tc:reactions tally
+}
+
+// plainLinks collects <link> elements. encoding/xml matches an unqualified name in any
+// namespace, so atom:link (rel="self") would otherwise overwrite the real link.
+type plainLinks []struct {
+	XMLName xml.Name
+	Text    string `xml:",chardata"`
+}
+
+func (l plainLinks) first() string {
+	for _, e := range l {
+		if e.XMLName.Space == "" && strings.TrimSpace(e.Text) != "" {
+			return strings.TrimSpace(e.Text)
+		}
+	}
+	return ""
 }
 
 type xmlParsed struct {
 	XMLName xml.Name `xml:"rss"`
 	Channel struct {
-		Title       string `xml:"title"`
-		Link        string `xml:"link"`
-		Description string `xml:"description"`
-		Webmention  string `xml:"https://example.org/ns/textcast/0.1 webmention"`
-		Following   string `xml:"https://example.org/ns/textcast/0.1 following"`
-		Items       []struct {
-			Title       string `xml:"title"`
-			GUID        string `xml:"guid"`
-			Link        string `xml:"link"`
-			Description string `xml:"description"`
-			PubDate     string `xml:"pubDate"`
-			Markdown    string `xml:"http://source.scripting.com/ markdown"`
-			Updated     string `xml:"https://example.org/ns/textcast/0.1 updated"`
+		Title         string     `xml:"title"`
+		Link          plainLinks `xml:"link"`
+		Description   string     `xml:"description"`
+		Webmention    string     `xml:"https://example.org/ns/textcast/0.1 webmention"`
+		Following     string     `xml:"https://example.org/ns/textcast/0.1 following"`
+		ReactionsFeed string     `xml:"https://example.org/ns/textcast/0.1 reactionsFeed"`
+		Items         []struct {
+			Title       string     `xml:"title"`
+			GUID        string     `xml:"guid"`
+			Link        plainLinks `xml:"link"`
+			Description string     `xml:"description"`
+			PubDate     string     `xml:"pubDate"`
+			Markdown    string     `xml:"http://source.scripting.com/ markdown"`
+			Updated     string     `xml:"https://example.org/ns/textcast/0.1 updated"`
 			InReplyTo   struct {
 				Href string `xml:"href,attr"`
 				Feed string `xml:"feed,attr"`
@@ -51,6 +72,15 @@ type xmlParsed struct {
 				Href string `xml:"href,attr"`
 				Feed string `xml:"feed,attr"`
 			} `xml:"https://example.org/ns/textcast/0.1 root"`
+			ReactionOf struct {
+				Href     string `xml:"href,attr"`
+				Polarity string `xml:"polarity,attr"`
+				Emoji    string `xml:"emoji,attr"`
+			} `xml:"https://example.org/ns/textcast/0.1 reactionOf"`
+			Reactions struct {
+				Plus  int `xml:"plus,attr"`
+				Minus int `xml:"minus,attr"`
+			} `xml:"https://example.org/ns/textcast/0.1 reactions"`
 		} `xml:"item"`
 	} `xml:"channel"`
 }
@@ -94,17 +124,20 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 		return nil, errors.New("not an RSS 2.0 feed: " + err.Error())
 	}
 	p := &Parsed{
-		Title: strings.TrimSpace(x.Channel.Title), Link: strings.TrimSpace(x.Channel.Link),
+		Title: strings.TrimSpace(x.Channel.Title), Link: x.Channel.Link.first(),
 		Description: strings.TrimSpace(x.Channel.Description),
 		Webmention:  strings.TrimSpace(x.Channel.Webmention), Following: strings.TrimSpace(x.Channel.Following),
+		ReactionsFeed: strings.TrimSpace(x.Channel.ReactionsFeed),
 	}
 	for _, it := range x.Channel.Items {
 		pi := ParsedItem{
-			GUID: strings.TrimSpace(it.GUID), Link: strings.TrimSpace(it.Link), Title: strings.TrimSpace(it.Title),
+			GUID: strings.TrimSpace(it.GUID), Link: it.Link.first(), Title: strings.TrimSpace(it.Title),
 			Text: StripHTML(it.Description), Markdown: strings.TrimSpace(it.Markdown),
 			Published: parseDate(it.PubDate), Updated: parseDate(it.Updated),
 			InReplyTo: strings.TrimSpace(it.InReplyTo.Href), InReplyToFeed: strings.TrimSpace(it.InReplyTo.Feed),
 			Root: strings.TrimSpace(it.Root.Href), RootFeed: strings.TrimSpace(it.Root.Feed),
+			ReactionOf: strings.TrimSpace(it.ReactionOf.Href), Polarity: strings.TrimSpace(it.ReactionOf.Polarity),
+			Emoji: strings.TrimSpace(it.ReactionOf.Emoji), Plus: max(it.Reactions.Plus, 0), Minus: max(it.Reactions.Minus, 0),
 		}
 		if pi.GUID == "" {
 			pi.GUID = pi.Link

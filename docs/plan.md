@@ -39,22 +39,22 @@ docs/
 
 Each ends with something runnable and a test.
 
-### 0. Skeleton
+### 0. Skeleton (done)
 Go module, `git init`, the SQLite schema (users, posts, reactions, follows, mentions, sessions), config, and `ttc serve`. Host-based routing for `*.localhost`. Test: the server starts and answers on two hostnames.
 
-### 1. One user publishes
+### 1. One user publishes (done)
 Admin CLI creates a user and a token. `POST /api/posts` takes Markdown with an optional title. The server renders HTML and stores both. Output: the permalink page (HTML with the discovery `<link>` tags) and `/feed.xml` as valid RSS 2.0 with `source:markdown` and `tc:webmention`. Test: the feed parses, untitled posts have no `<title>`, and plain-RSS rendering is correct.
 
-### 2. Web UI for humans
+### 2. Web UI for humans (done)
 Login (password plus session cookie), a compose form (Markdown with an optional title), a timeline of own posts, edit and delete (edit sets `tc:updated`; delete returns 410 plus a tombstone). Test: browser-driven or HTTP-level, using a form login.
 
-### 3. Follow and read
+### 3. Follow and read (done)
 A follow list per user, published as OPML at `tc:following`. A feed fetcher (polling) parses RSS 2.0 with or without `tc:`. A timeline page of followed feeds. Test: Bob follows Alice and sees her post, titled or not.
 
-### 4. Replies and Webmention
+### 4. Replies and Webmention (done)
 Reply composer (`tc:inReplyTo`, `tc:root`, `tc:context` as URL). On publish, send a Webmention to the parent. The receiver verifies the source, reads the source's feed item, applies auto-approve or queue, and writes the replies feed (depth 1) and `tc:replies` counts. Test: two server instances on different ports, Bob replies to Alice across them, and Alice's replies feed shows it.
 
-### 5. Reactions
+### 5. Reactions (done)
 `tc:reactionOf` items in a separate reactions feed (`tc:likesFeed`), sent by Webmention, tallied at the parent. + and - buttons (shown as 👍 and 👎) plus an optional emoji picker in the UI. Test: a cross-instance reaction is counted, and removing it (410) lowers the count.
 
 ### 6. Threads, moderation, bubble-up

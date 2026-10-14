@@ -39,6 +39,27 @@ type Context struct {
 	Retrieved string `xml:"retrieved,attr,omitempty"`
 }
 
+// ReactionRef is tc:reactionOf: the item is a reaction to the post at Href. Polarity is "+" or "-";
+// Emoji is optional nuance.
+type ReactionRef struct {
+	Href     string `xml:"href,attr"`
+	Polarity string `xml:"polarity,attr"`
+	Emoji    string `xml:"emoji,attr,omitempty"`
+}
+
+// EmojiCount is one entry of a reaction tally breakdown.
+type EmojiCount struct {
+	Value string `xml:"value,attr"`
+	Count int    `xml:"count,attr"`
+}
+
+// Reactions is tc:reactions: a post's tally of verified reactions from trusted senders.
+type Reactions struct {
+	Plus  int          `xml:"plus,attr"`
+	Minus int          `xml:"minus,attr"`
+	Emoji []EmojiCount `xml:"tc:emoji"`
+}
+
 // Replies is tc:replies: the URL of a post's replies feed and the approved count.
 type Replies struct {
 	Href  string `xml:"href,attr"`
@@ -53,6 +74,7 @@ type Channel struct {
 	Self          AtomLink `xml:"atom:link"`
 	Webmention    string   `xml:"tc:webmention,omitempty"`
 	Following     string   `xml:"tc:following,omitempty"`
+	ReactionsFeed string   `xml:"tc:reactionsFeed,omitempty"`
 	RepliesTo     *Ref     `xml:"tc:repliesTo"`
 	Depth         int      `xml:"tc:depth,omitempty"`
 	Items         []Item   `xml:"item"`
@@ -64,18 +86,20 @@ type GUID struct {
 }
 
 type Item struct {
-	Title       string   `xml:"title,omitempty"`
-	GUID        GUID     `xml:"guid"`
-	Link        string   `xml:"link"`
-	Description string   `xml:"description"`
-	Markdown    string   `xml:"source:markdown,omitempty"`
-	PubDate     string   `xml:"pubDate"`
-	Updated     string   `xml:"tc:updated,omitempty"`
-	InReplyTo   *Ref     `xml:"tc:inReplyTo"`
-	Root        *Ref     `xml:"tc:root"`
-	Context     *Context `xml:"tc:context"`
-	Replies     *Replies `xml:"tc:replies"`
-	Feed        *Ref     `xml:"tc:feed"`
+	Title       string       `xml:"title,omitempty"`
+	GUID        GUID         `xml:"guid"`
+	Link        string       `xml:"link"`
+	Description string       `xml:"description"`
+	Markdown    string       `xml:"source:markdown,omitempty"`
+	PubDate     string       `xml:"pubDate"`
+	Updated     string       `xml:"tc:updated,omitempty"`
+	InReplyTo   *Ref         `xml:"tc:inReplyTo"`
+	Root        *Ref         `xml:"tc:root"`
+	Context     *Context     `xml:"tc:context"`
+	Replies     *Replies     `xml:"tc:replies"`
+	ReactionOf  *ReactionRef `xml:"tc:reactionOf"`
+	Reactions   *Reactions   `xml:"tc:reactions"`
+	Feed        *Ref         `xml:"tc:feed"`
 }
 
 func New(c Channel) *RSS {
