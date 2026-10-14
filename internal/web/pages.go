@@ -24,7 +24,7 @@ input[type=text],input[type=password],textarea{width:100%;box-sizing:border-box;
 textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}label{display:block;margin-top:1rem}</style>
 </head><body>
 <header><h1><a href="/">{{.Author}}</a></h1><p>{{.Bio}}</p>
-<nav>{{if .Owner}}<a href="/compose">Compose</a>
+<nav>{{if .Owner}}<a href="/compose">Compose</a><a href="/timeline">Timeline</a><a href="/following">Following</a>
 <form method="post" action="/logout"><button>Log out</button></form>{{else}}<a href="/login">Log in</a>{{end}}</nav></header>
 <main>{{end}}
 {{define "foot"}}</main></body></html>{{end}}
@@ -42,6 +42,22 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <h2>Log in to {{.Author}}</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Password <input type="password" name="password" autofocus required></label>
 <p><button>Log in</button></p></form>{{template "foot"}}{{end}}
+{{define "timeline"}}{{template "head" .}}<h2>Timeline</h2>
+{{range .Timeline}}<article>
+<p><strong>{{.Author}}</strong>{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
+{{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
+<div>{{.HTML}}</div>
+{{if .Link}}<a href="{{.Link}}"><time>{{.Date}}</time></a>{{else}}<time>{{.Date}}</time>{{end}}{{if .Edited}} <time>(edited)</time>{{end}}
+</article>{{else}}<p>Nothing yet. <a href="/following">Follow a feed</a>.</p>{{end}}
+{{template "foot"}}{{end}}
+{{define "following"}}{{template "head" .}}<h2>Following</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+<form method="post" action="/following"><label>Feed or site URL <input type="text" name="url" placeholder="http://bob.localhost:8080/" required></label>
+<p><button>Follow</button></p></form>
+<ul>{{range .Follows}}<li>{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}} <small>{{.URL}}{{if .Err}} <span class="err">{{.Err}}</span>{{end}}</small>
+<form method="post" action="/following/remove" style="display:inline"><input type="hidden" name="url" value="{{.URL}}"><button class="linkbtn">Unfollow</button></form></li>{{else}}<li>Not following anyone yet.</li>{{end}}</ul>
+<form method="post" action="/following/refresh"><button>Refresh now</button></form>
+<p><small>Your follow list is public: <a href="/following.opml">following.opml</a></small></p>
+{{template "foot"}}{{end}}
 {{define "editor"}}{{template "head" .}}<form method="post" action="{{.Action}}">
 <h2>{{.Heading}}</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
@@ -60,6 +76,8 @@ type pageData struct {
 	Title, FeedURL, WebmentionURL, Author, Bio string
 	Owner                                      bool
 	Posts                                      []pagePost
+	Timeline                                   []tlRow
+	Follows                                    []followRow
 	// forms
 	Error, Action, Heading, Button, Delete string
 	Form                                   struct{ Title, Markdown string }
@@ -137,6 +155,7 @@ func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
 		Title: q.host.Display, Link: s.base(r) + "/", Description: q.host.Bio,
 		Self:       feed.AtomLink{Href: s.base(r) + "/feed.xml", Rel: "self", Type: "application/rss+xml"},
 		Webmention: s.base(r) + "/webmention",
+		Following:  s.base(r) + "/following.opml",
 	}
 	var last time.Time
 	for _, p := range posts {

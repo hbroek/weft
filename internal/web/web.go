@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/hbroek/text-thread-casting/internal/fetch"
 	"github.com/hbroek/text-thread-casting/internal/store"
 )
 
@@ -18,19 +19,23 @@ type Config struct {
 	BaseDomain string
 	// Scheme is "http" or "https", used in absolute URLs.
 	Scheme string
+	// AllowPrivate lets the server fetch feeds from loopback and private addresses.
+	// Needed for local development and tests; leave off when hosting.
+	AllowPrivate bool
 }
 
 type Server struct {
 	cfg Config
 	st  *store.Store
 	mux *http.ServeMux
+	web *fetch.Client
 }
 
 func New(cfg Config, st *store.Store) *Server {
 	if cfg.Scheme == "" {
 		cfg.Scheme = "http"
 	}
-	s := &Server{cfg: cfg, st: st, mux: http.NewServeMux()}
+	s := &Server{cfg: cfg, st: st, mux: http.NewServeMux(), web: fetch.New(cfg.AllowPrivate)}
 	// public pages
 	s.mux.HandleFunc("GET /{$}", s.user(s.home))
 	s.mux.HandleFunc("GET /feed.xml", s.user(s.feed))
@@ -44,7 +49,17 @@ func New(cfg Config, st *store.Store) *Server {
 	s.mux.HandleFunc("GET /posts/{id}/edit", s.user(s.editForm))
 	s.mux.HandleFunc("POST /posts/{id}/edit", s.user(s.edit))
 	s.mux.HandleFunc("POST /posts/{id}/delete", s.user(s.deleteForm))
+	s.mux.HandleFunc("GET /following.opml", s.user(s.opml))
+	s.mux.HandleFunc("GET /timeline", s.user(s.timeline))
+	s.mux.HandleFunc("GET /following", s.user(s.followingPage))
+	s.mux.HandleFunc("POST /following", s.user(s.followForm))
+	s.mux.HandleFunc("POST /following/remove", s.user(s.unfollowForm))
+	s.mux.HandleFunc("POST /following/refresh", s.user(s.refreshForm))
 	// REST API (bearer token)
+	s.mux.HandleFunc("GET /api/timeline", s.user(s.apiTimeline))
+	s.mux.HandleFunc("GET /api/following", s.user(s.apiFollowing))
+	s.mux.HandleFunc("POST /api/following", s.user(s.apiFollow))
+	s.mux.HandleFunc("DELETE /api/following", s.user(s.apiUnfollow))
 	s.mux.HandleFunc("POST /api/posts", s.user(s.apiCreate))
 	s.mux.HandleFunc("PUT /api/posts/{id}", s.user(s.apiUpdate))
 	s.mux.HandleFunc("DELETE /api/posts/{id}", s.user(s.apiDelete))

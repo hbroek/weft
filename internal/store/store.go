@@ -65,6 +65,32 @@ CREATE TABLE IF NOT EXISTS posts (
   updated INTEGER,
   deleted INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS follows (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  feed_url TEXT NOT NULL,
+  added INTEGER NOT NULL,
+  PRIMARY KEY (user_id, feed_url)
+);
+CREATE TABLE IF NOT EXISTS feeds (
+  url TEXT PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  link TEXT NOT NULL DEFAULT '',
+  fetched INTEGER NOT NULL DEFAULT 0,
+  error TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS items (
+  feed_url TEXT NOT NULL,
+  guid TEXT NOT NULL,
+  link TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  text TEXT NOT NULL DEFAULT '',
+  markdown TEXT NOT NULL DEFAULT '',
+  published INTEGER NOT NULL,
+  updated INTEGER,
+  in_reply_to TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (feed_url, guid)
+);
+CREATE INDEX IF NOT EXISTS items_pub ON items(published DESC);
 CREATE INDEX IF NOT EXISTS posts_user ON posts(user_id, created DESC);
 `
 

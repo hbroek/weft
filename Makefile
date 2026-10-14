@@ -23,7 +23,7 @@ test:
 	go test ./...
 
 run: build
-	./bin/ttc serve -addr $(ADDR) -domain $(DOMAIN) -db $(DB)
+	./bin/ttc serve -addr $(ADDR) -domain $(DOMAIN) -db $(DB) -dev
 
 users: build
 	./bin/ttc user list -db $(DB)

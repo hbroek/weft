@@ -23,6 +23,14 @@ curl -XPOST -H "Authorization: Bearer $TOKEN" \
   -d '{"title":"Optional","markdown":"Hello *world*"}' http://alice.localhost:8080/api/posts
 ```
 
+Following and the timeline: log in, open Following, paste another user's address (for example
+`http://bob.localhost:8080/`) and the feed is discovered from the page. Followed feeds refresh
+every 5 minutes (`-poll`) or on "Refresh now".
+
+The server fetches the URLs users enter, so by default it refuses loopback and private addresses
+(SSRF guard). `make run` passes `-dev` to allow them for local use. Do not use `-dev` when hosting.
+If you run the binary yourself: `./bin/ttc serve -dev`.
+
 `make help` lists the other targets, including `token` to issue a fresh API token.
 Settings: `DB` (default `ttc.db`), `ADDR` (`:8080`), `DOMAIN` (`localhost`).
 

@@ -34,6 +34,7 @@ type Channel struct {
 	LastBuildDate string   `xml:"lastBuildDate"`
 	Self          AtomLink `xml:"atom:link"`
 	Webmention    string   `xml:"tc:webmention,omitempty"`
+	Following     string   `xml:"tc:following,omitempty"`
 	Items         []Item   `xml:"item"`
 }
 
