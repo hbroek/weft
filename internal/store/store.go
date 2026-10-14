@@ -46,7 +46,14 @@ CREATE TABLE IF NOT EXISTS users (
   bio TEXT NOT NULL DEFAULT '',
   email TEXT NOT NULL DEFAULT '',
   token_hash TEXT NOT NULL DEFAULT '',
+  pw_salt BLOB,
+  pw_hash BLOB,
   created INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  expires INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS posts (
   id INTEGER PRIMARY KEY,
@@ -71,6 +78,9 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	// Databases created by iteration 1 lack the password columns; errors mean they already exist.
+	db.Exec(`ALTER TABLE users ADD COLUMN pw_salt BLOB`)
+	db.Exec(`ALTER TABLE users ADD COLUMN pw_hash BLOB`)
 	return &Store{db: db}, nil
 }
 
@@ -171,4 +181,31 @@ func (s *Store) RecentPosts(userID int64, limit int) ([]*Post, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// UpdatePost replaces a post's title and content and stamps its update time.
+func (s *Store) UpdatePost(userID, id int64, title, markdown, html string) (*Post, error) {
+	res, err := s.db.Exec(`UPDATE posts SET title=?,markdown=?,html=?,updated=? WHERE user_id=? AND id=? AND deleted=0`,
+		title, markdown, html, time.Now().Unix(), userID, id)
+	if err != nil {
+		return nil, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, ErrNotFound
+	}
+	return s.Post(userID, id)
+}
+
+// DeletePost tombstones a post and discards its content. The id stays reserved so the
+// permalink can answer 410 Gone.
+func (s *Store) DeletePost(userID, id int64) error {
+	res, err := s.db.Exec(`UPDATE posts SET deleted=1,title='',markdown='',html='',updated=? WHERE user_id=? AND id=? AND deleted=0`,
+		time.Now().Unix(), userID, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

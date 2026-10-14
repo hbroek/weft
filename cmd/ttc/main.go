@@ -15,7 +15,8 @@ import (
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   ttc serve    [-addr :8080] [-domain localhost] [-scheme http] [-db ttc.db]
-  ttc user add [-db ttc.db] [-display NAME] [-bio TEXT] USERNAME`)
+  ttc user add [-db ttc.db] [-display NAME] [-bio TEXT] [-password PW] USERNAME
+  ttc user passwd [-db ttc.db] -password PW USERNAME`)
 	os.Exit(2)
 }
 
@@ -39,13 +40,14 @@ func main() {
 		log.Printf("listening on %s, users at <name>.%s", *addr, *domain)
 		log.Fatal(http.ListenAndServe(*addr, web.New(web.Config{BaseDomain: *domain, Scheme: *scheme}, st)))
 	case "user":
-		if len(os.Args) < 3 || os.Args[2] != "add" {
+		if len(os.Args) < 3 || (os.Args[2] != "add" && os.Args[2] != "passwd") {
 			usage()
 		}
-		fs := flag.NewFlagSet("user add", flag.ExitOnError)
+		fs := flag.NewFlagSet("user "+os.Args[2], flag.ExitOnError)
 		db := fs.String("db", "ttc.db", "SQLite file")
 		display := fs.String("display", "", "display name")
 		bio := fs.String("bio", "", "bio")
+		pw := fs.String("password", "", "login password for the web UI (min 8 characters)")
 		fs.Parse(os.Args[3:])
 		if fs.NArg() != 1 {
 			usage()
@@ -55,9 +57,23 @@ func main() {
 			log.Fatal(err)
 		}
 		defer st.Close()
+		if os.Args[2] == "passwd" {
+			if err := st.SetPassword(fs.Arg(0), *pw); err != nil {
+				log.Fatal(err)
+			}
+			return
+		}
+		if *pw != "" && len(*pw) < 8 {
+			log.Fatal("password must be at least 8 characters")
+		}
 		tok, err := st.AddUser(fs.Arg(0), *display, *bio)
 		if err != nil {
 			log.Fatal(err)
+		}
+		if *pw != "" {
+			if err := st.SetPassword(fs.Arg(0), *pw); err != nil {
+				log.Fatal(err)
+			}
 		}
 		fmt.Println(tok)
 	default:

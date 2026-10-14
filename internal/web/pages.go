@@ -1,0 +1,168 @@
+package web
+
+import (
+	"html/template"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/hbroek/text-thread-casting/internal/feed"
+	"github.com/hbroek/text-thread-casting/internal/store"
+)
+
+var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Title}}</title>
+<link rel="alternate" type="application/rss+xml" href="{{.FeedURL}}">
+<link rel="webmention" href="{{.WebmentionURL}}">
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem}
+article{margin:2rem 0;border-bottom:1px solid #8884;padding-bottom:1rem}time{color:#888;font-size:.85em}
+nav a,nav button{margin-right:1rem}nav form{display:inline}
+nav button,.linkbtn{background:none;border:0;padding:0;font:inherit;color:LinkText;cursor:pointer;text-decoration:underline}
+input[type=text],input[type=password],textarea{width:100%;box-sizing:border-box;font:inherit;padding:.4rem}
+textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}label{display:block;margin-top:1rem}</style>
+</head><body>
+<header><h1><a href="/">{{.Author}}</a></h1><p>{{.Bio}}</p>
+<nav>{{if .Owner}}<a href="/compose">Compose</a>
+<form method="post" action="/logout"><button>Log out</button></form>{{else}}<a href="/login">Log in</a>{{end}}</nav></header>
+<main>{{end}}
+{{define "foot"}}</main></body></html>{{end}}
+{{define "posts"}}{{template "head" .}}
+{{range .Posts}}<article class="h-entry">
+{{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{end}}
+<div class="e-content">{{.HTML}}</div>
+<a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}">{{.Date}}</time></a>
+{{if .Edited}} <time>(edited)</time>{{end}}
+{{if $.Owner}} <a href="{{.URL}}/edit">Edit</a>{{end}}
+</article>{{else}}<p>No posts yet.</p>{{end}}
+{{template "foot"}}{{end}}
+{{define "tombstone"}}{{template "head" .}}<p>This post was removed by its author.</p>{{template "foot"}}{{end}}
+{{define "login"}}{{template "head" .}}<form method="post" action="/login">
+<h2>Log in to {{.Author}}</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+<label>Password <input type="password" name="password" autofocus required></label>
+<p><button>Log in</button></p></form>{{template "foot"}}{{end}}
+{{define "editor"}}{{template "head" .}}<form method="post" action="{{.Action}}">
+<h2>{{.Heading}}</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+<label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
+<label>Markdown <textarea name="markdown" required>{{.Form.Markdown}}</textarea></label>
+<p><button>{{.Button}}</button></p></form>
+{{if .Delete}}<form method="post" action="{{.Delete}}" onsubmit="return confirm('Delete this post?')"><button class="linkbtn">Delete post</button></form>{{end}}
+{{template "foot"}}{{end}}`))
+
+type pagePost struct {
+	Title, URL, ISO, Date string
+	HTML                  template.HTML
+	Edited                bool
+}
+
+type pageData struct {
+	Title, FeedURL, WebmentionURL, Author, Bio string
+	Owner                                      bool
+	Posts                                      []pagePost
+	// forms
+	Error, Action, Heading, Button, Delete string
+	Form                                   struct{ Title, Markdown string }
+}
+
+func (s *Server) data(r *http.Request, q *req, title string) pageData {
+	return pageData{Title: title, FeedURL: s.base(r) + "/feed.xml", WebmentionURL: s.base(r) + "/webmention",
+		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner}
+}
+
+func (s *Server) show(w http.ResponseWriter, name string, status int, d pageData) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := layout.ExecuteTemplate(w, name, d); err != nil {
+		// headers are sent; nothing more to do than log through the body
+		w.Write([]byte("template error"))
+	}
+}
+
+func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, title string, posts []*store.Post) {
+	d := s.data(r, q, title)
+	for _, p := range posts {
+		d.Posts = append(d.Posts, pagePost{
+			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
+			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 15:04"),
+			Edited: p.Updated != nil,
+		})
+	}
+	s.show(w, "posts", http.StatusOK, d)
+}
+
+func (s *Server) home(w http.ResponseWriter, r *http.Request, q *req) {
+	posts, err := s.st.RecentPosts(q.host.ID, 50)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	s.renderPosts(w, r, q, q.host.Display, posts)
+}
+
+func postID(r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	return id, err == nil
+}
+
+func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
+	id, ok := postID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	p, err := s.st.Post(q.host.ID, id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if p.Deleted {
+		s.show(w, "tombstone", http.StatusGone, s.data(r, q, "Post removed"))
+		return
+	}
+	title := p.Title
+	if title == "" {
+		title = q.host.Display
+	}
+	s.renderPosts(w, r, q, title, []*store.Post{p})
+}
+
+func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
+	posts, err := s.st.RecentPosts(q.host.ID, 100)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	ch := feed.Channel{
+		Title: q.host.Display, Link: s.base(r) + "/", Description: q.host.Bio,
+		Self:       feed.AtomLink{Href: s.base(r) + "/feed.xml", Rel: "self", Type: "application/rss+xml"},
+		Webmention: s.base(r) + "/webmention",
+	}
+	var last time.Time
+	for _, p := range posts {
+		if p.Created.After(last) {
+			last = p.Created
+		}
+		url := s.postURL(r, p.ID)
+		it := feed.Item{Title: p.Title, GUID: feed.GUID{IsPermaLink: true, Value: url}, Link: url,
+			Description: p.HTML, Markdown: p.Markdown, PubDate: feed.RFC822(p.Created)}
+		if p.Updated != nil {
+			it.Updated = feed.RFC822(*p.Updated)
+			if p.Updated.After(last) {
+				last = *p.Updated
+			}
+		}
+		ch.Items = append(ch.Items, it)
+	}
+	if last.IsZero() {
+		last = time.Now()
+	}
+	ch.LastBuildDate = feed.RFC822(last)
+	b, err := feed.New(ch).Marshal()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
+	w.Write(b)
+}
