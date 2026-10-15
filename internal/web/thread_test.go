@@ -213,3 +213,27 @@ func TestThreadReplyLoopDoesNotVanish(t *testing.T) {
 		t.Errorf("posts in a reply loop disappeared:\n%s", page)
 	}
 }
+
+// A reply to a reply sent without a feed hint (as an API client that only knows the post URL does)
+// must still learn the thread root from the parent's own feed, not make the parent the root.
+func TestReplyToReplyWithoutFeedHintKeepsRoot(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	ctx := t.Context()
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	ua := alice.post(t, `{"markdown":"Root question"}`)
+	ub := bob.post(t, `{"markdown":"First answer","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
+	settle(ctx, alice, bob)
+
+	// Alice answers Bob's reply knowing only its URL
+	alice.post(t, `{"markdown":"Follow-up","in_reply_to":"`+ub+`"}`)
+	if f := alice.get("/feed.xml"); !strings.Contains(f, `<tc:root href="`+ua+`"`) {
+		t.Fatalf("root should stay Alice's first post:\n%s", f)
+	}
+	settle(ctx, alice, bob)
+
+	// Bob answers Alice's follow-up, again with no feed hint: he must find the root through her page
+	bob.post(t, `{"markdown":"Third","in_reply_to":"`+alice.base+`/posts/2"}`)
+	if f := bob.get("/feed.xml"); strings.Count(f, `<tc:root href="`+ua+`"`) != 2 {
+		t.Fatalf("both of Bob's replies should have Alice's first post as root:\n%s", f)
+	}
+}

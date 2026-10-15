@@ -2,4 +2,4 @@
 *.db-*
 /bin/
 .env
-ttc-agent*.json
+*agent*.json

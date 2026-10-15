@@ -37,6 +37,14 @@ func (s *Server) resolveThread(ctx context.Context, base string, u *store.User, 
 	if it, err := s.st.ItemByGUID(parent); err == nil {
 		return it.FeedURL, rootOr(it.Root, parent), pick(it.Root != "", it.RootFeed, it.FeedURL)
 	}
+	// Replies to replies often arrive without a feed (the API only knows the post's URL). Without
+	// the feed there is no way to learn the parent's own tc:root, and the parent would wrongly
+	// become the root of the thread, so find the feed first.
+	if feedHint == "" {
+		if feedHint = s.discoverFeed(ctx, u.ID, parent); feedHint != "" {
+			parentFeed, rootFeed = feedHint, feedHint
+		}
+	}
 	if feedHint != "" {
 		if res, err := s.web.Get(ctx, feedHint); err == nil {
 			if p, err := feed.Parse(res.Body, time.Now()); err == nil {
@@ -49,6 +57,26 @@ func (s *Server) resolveThread(ctx context.Context, base string, u *store.User, 
 		}
 	}
 	return
+}
+
+// discoverFeed finds the feed that publishes the post at u: from a reply this user received, or
+// from the discovery link on the post's page.
+func (s *Server) discoverFeed(ctx context.Context, userID int64, u string) string {
+	if rs, err := s.st.RepliesForUser(userID, ""); err == nil {
+		for _, r := range rs {
+			if r.Source == u && r.FeedURL != "" {
+				return r.FeedURL
+			}
+		}
+	}
+	res, err := s.web.Get(ctx, u)
+	if err != nil || !res.LooksLikeHTML() {
+		return ""
+	}
+	if link, ok := fetch.FindFeedLink(res.Body, res.URL); ok {
+		return link
+	}
+	return ""
 }
 
 func rootOr(root, parent string) string { return pick(root != "", root, parent) }
