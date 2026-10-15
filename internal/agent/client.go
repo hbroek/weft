@@ -88,6 +88,8 @@ type Reply struct {
 	Author string `json:"author"`
 	Text   string `json:"text"`
 	Status string `json:"status"`
+
+	Published time.Time `json:"published"`
 }
 
 type Posted struct {

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"sync"
+	"time"
 )
 
 // Config bounds what the agent may do, so two agents can never talk forever.
@@ -61,6 +63,12 @@ func New(c *Client, b Brain, cfg Config) *Agent {
 	return a
 }
 
+// seenKey identifies a post by URL and publication time, so that a reset database which hands out
+// the same URLs again does not make the agent skip brand-new posts.
+func seenKey(link string, published time.Time) string {
+	return fmt.Sprintf("%s@%d", link, published.Unix())
+}
+
 func (a *Agent) persona() Persona { return Persona{Name: a.Cfg.Persona, Style: a.Cfg.Style} }
 
 func (a *Agent) save() {
@@ -89,11 +97,11 @@ func (a *Agent) RunCycle(ctx context.Context) (acted int, err error) {
 		if budget == 0 || ctx.Err() != nil {
 			break
 		}
-		if it.FeedURL == a.C.FeedURL() || a.state.Seen[it.Link] {
+		if it.FeedURL == a.C.FeedURL() || a.state.Seen[seenKey(it.Link, it.Published)] {
 			continue
 		}
-		a.state.Seen[it.Link] = true
-		n, err := a.handle(ctx, it, it.Link, it.FeedURL, &budget)
+		a.state.Seen[seenKey(it.Link, it.Published)] = true
+		n, err := a.handle(ctx, it, it.Link, it.FeedURL, seenKey(it.Link, it.Published), &budget)
 		acted += n
 		if err != nil {
 			a.Cfg.Log.Printf("%s: %v", it.Link, err)
@@ -108,12 +116,13 @@ func (a *Agent) RunCycle(ctx context.Context) (acted int, err error) {
 			continue
 		}
 		for _, r := range rs {
-			if budget == 0 || a.state.Seen[r.Source] {
+			if budget == 0 || a.state.Seen[seenKey(r.Source, r.Published)] {
 				continue
 			}
-			a.state.Seen[r.Source] = true
+			key := seenKey(r.Source, r.Published)
+			a.state.Seen[key] = true
 			it := Item{FeedTitle: r.Author, Text: r.Text, Link: r.Source}
-			n, err := a.handle(ctx, it, r.Source, "", &budget)
+			n, err := a.handle(ctx, it, r.Source, "", key, &budget)
 			acted += n
 			if err != nil {
 				a.Cfg.Log.Printf("%s: %v", r.Source, err)
@@ -136,12 +145,12 @@ func (a *Agent) RunCycle(ctx context.Context) (acted int, err error) {
 	return acted, nil
 }
 
-func (a *Agent) handle(ctx context.Context, it Item, target, targetFeed string, budget *int) (acted int, err error) {
+func (a *Agent) handle(ctx context.Context, it Item, target, targetFeed, key string, budget *int) (acted int, err error) {
 	// Never answer a post without knowing the conversation it belongs to. If the thread cannot be
 	// read, leave the post unhandled so that the next cycle tries again.
 	thread, err := a.C.Thread(ctx, target)
 	if err != nil || len(thread) == 0 {
-		delete(a.state.Seen, target)
+		delete(a.state.Seen, key)
 		if err == nil {
 			err = errors.New("empty thread")
 		}
