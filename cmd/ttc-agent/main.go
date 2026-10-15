@@ -7,12 +7,30 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/hbroek/text-thread-casting/internal/agent"
 )
 
+// loadEnv reads KEY=VALUE lines from path into the environment, without overriding variables already set.
+func loadEnv(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimPrefix(strings.TrimSpace(line), "export ")
+		k, v, ok := strings.Cut(line, "=")
+		k, v = strings.TrimSpace(k), strings.Trim(strings.TrimSpace(v), `"'`)
+		if ok && k != "" && !strings.HasPrefix(k, "#") && os.Getenv(k) == "" {
+			os.Setenv(k, v)
+		}
+	}
+}
+
 func main() {
+	loadEnv(".env")
 	base := flag.String("base", "", "the agent user's instance, e.g. http://dana.localhost:8080")
 	token := flag.String("token", os.Getenv("TTC_TOKEN"), "API token (or TTC_TOKEN)")
 	mode := flag.String("brain", "claude", "claude or stub")

@@ -71,7 +71,7 @@ each, and can write an occasional note. A lifetime budget (`-max`, default 20) s
 
 ```bash
 make token NAME=dana                        # prints the token
-export ANTHROPIC_API_KEY=...                # for the real brain
+# put ANTHROPIC_API_KEY=... in .env (read from the current directory), or export it
 ./bin/ttc-agent -base http://dana.localhost:8080 -token TOKEN -persona Dana-bot -post-every 10
 ./bin/ttc-agent -base ... -token ... -brain stub -once    # deterministic, no API key needed
 ```
