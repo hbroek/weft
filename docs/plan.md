@@ -60,7 +60,7 @@ Reply composer (`tc:inReplyTo`, `tc:root`, `tc:context` as URL). On publish, sen
 ### 6. Threads, bubble-up, orphans (done)
 Thread view built from `tc:root` and `tc:inReplyTo`. Curated and raw views, with unapprove and re-approve. Bubble-up Webmention to ancestors. Orphan handling (rejected, offline, deleted). Edit and delete re-notify.
 
-### 7. Agent and end-to-end scenario
+### 7. Agent and end-to-end scenario (done)
 `ttc-agent`: poll followed feeds through the public API, pick posts to react to or reply to, use the Claude API for the text, and post as its user. A stub mode gives deterministic output. The `e2e/` test starts three instances with four users, one of them an agent, and runs the scenario in the Goal. Assertions cover feeds, replies feeds, reaction counts and the thread view.
 
 ### Optional: vouching (web of trust)

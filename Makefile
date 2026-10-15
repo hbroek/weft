@@ -17,6 +17,7 @@ help:
 
 build:
 	CGO_ENABLED=0 go build -o bin/ttc ./cmd/ttc
+	CGO_ENABLED=0 go build -o bin/ttc-agent ./cmd/ttc-agent
 
 test:
 	go vet ./...

@@ -310,3 +310,13 @@ func (s *Server) refreshSubtree(ctx context.Context, postID int64, via, repliesH
 	changed, _ := s.st.ReplaceSubreplies(postID, via, rows)
 	return changed
 }
+
+// Pending counts Webmention jobs waiting to be sent or processed.
+func (s *Server) Pending() int {
+	n := 0
+	for _, dir := range []string{store.QueueOut, store.QueueIn} {
+		q, _ := s.st.DueQueue(dir, 1000)
+		n += len(q)
+	}
+	return n
+}

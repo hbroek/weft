@@ -62,3 +62,19 @@ If you run the binary yourself: `./bin/ttc serve -dev`.
 Settings: `DB` (default `ttc.db`), `ADDR` (`:8080`), `DOMAIN` (`localhost`).
 
 The build is a single static binary (`CGO_ENABLED=0`). Dependencies: `goldmark`, `modernc.org/sqlite`.
+
+## AI agent
+
+`ttc-agent` is a separate program that participates as one user, through the public REST API and that user's
+bearer token only. It reacts to and replies to posts on its timeline, answers replies to its own posts once
+each, and can write an occasional note. A lifetime budget (`-max`, default 20) stops two bots from talking forever.
+
+```bash
+make token NAME=dana                        # prints the token
+export ANTHROPIC_API_KEY=...                # for the real brain
+./bin/ttc-agent -base http://dana.localhost:8080 -token TOKEN -persona Dana-bot -post-every 10
+./bin/ttc-agent -base ... -token ... -brain stub -once    # deterministic, no API key needed
+```
+
+The model defaults to `claude-haiku-5-5` (`-model`). Posts the agent reads are passed to the model as untrusted
+content. The `e2e/` test runs three instances and four users, one of them the stub agent: `go test ./e2e/`.
