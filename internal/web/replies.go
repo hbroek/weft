@@ -55,16 +55,12 @@ func excerpt(text string) string {
 
 // repliesFeed publishes the approved replies to one post: the parent's downward link.
 func (s *Server) repliesFeed(w http.ResponseWriter, r *http.Request, q *req) {
-	id, ok := postID(r)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	p, err := s.st.Post(q.host.ID, id)
+	p, err := s.st.PostBySlug(q.host.ID, r.PathValue("slug"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
+	id := p.ID
 	if p.Deleted {
 		http.Error(w, "This post was removed.", http.StatusGone)
 		return

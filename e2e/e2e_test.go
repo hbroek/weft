@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -170,7 +171,7 @@ func TestRoundTripWithAgent(t *testing.T) {
 	if len(rs) != 2 || !authors["Bob"] || !authors["Dana"] {
 		t.Fatalf("approved replies: %+v", rs)
 	}
-	replies := get(t, alice, "/posts/1/replies.xml")
+	replies := get(t, alice, strings.TrimPrefix(root.URL, alice.Base)+"/replies.xml")
 	if !strings.Contains(replies, "I do.") || !strings.Contains(replies, "Dana-bot here") {
 		t.Fatalf("replies feed:\n%s", replies)
 	}
@@ -188,11 +189,11 @@ func TestRoundTripWithAgent(t *testing.T) {
 
 	// Alice answers Dana's reply; the agent notices a reply to its own post and answers back
 	// exactly once (a budget keeps two bots from talking forever).
-	dr := (func() agent.Reply { // Dana's own post is in her feed; reply to it from Alice
-		d := get(t, dana, "/feed.xml")
-		i := strings.Index(d, `<guid isPermaLink="true">`)
-		return agent.Reply{Source: d[i+len(`<guid isPermaLink="true">`) : i+strings.Index(d[i:], "</guid>")]}
-	})()
+	m := regexp.MustCompile(`<link>(` + regexp.QuoteMeta(dana.Base) + `/posts/[^<]+)</link>`).FindStringSubmatch(get(t, dana, "/feed.xml"))
+	if m == nil {
+		t.Fatal("no post link in Dana's feed")
+	}
+	dr := agent.Reply{Source: m[1]}
 	if _, err := alice.Post(ctx, "", "Thanks Dana!", dr.Source, dana.FeedURL()); err != nil {
 		t.Fatal(err)
 	}

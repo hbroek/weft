@@ -29,11 +29,11 @@ func TestSubtreeCachingAndBubbleUp(t *testing.T) {
 	settle(ctx, all...)
 
 	// Bob approved Carol, so his replies feed carries her
-	if rf := bob.get("/posts/1/replies.xml"); !strings.Contains(rf, uc) {
+	if rf := bob.get(pathOf(ub) + "/replies.xml"); !strings.Contains(rf, uc) {
 		t.Fatalf("bob's replies feed lacks carol's reply:\n%s", rf)
 	}
 	// Bob's server bubbled the change; Alice's feed now caches Carol one level down
-	rf := alice.get("/posts/1/replies.xml")
+	rf := alice.get(pathOf(ua) + "/replies.xml")
 	if !strings.Contains(rf, "<tc:depth>2</tc:depth>") || strings.Count(rf, "<item>") != 2 ||
 		!strings.Contains(rf, `<guid isPermaLink="true">`+uc+`<`) || !strings.Contains(rf, `<tc:inReplyTo href="`+ub+`">`) ||
 		!strings.Contains(rf, `<tc:feed href="`+carol.base+`/feed.xml">Carol<`) {
@@ -43,14 +43,14 @@ func TestSubtreeCachingAndBubbleUp(t *testing.T) {
 	// Carol edits: the change travels carol -> bob -> alice with no manual step
 	carol.call(t, "PUT", "/api/posts/1", `{"markdown":"Count me in, edited.","in_reply_to":"`+ub+`"}`, 200)
 	settle(ctx, all...)
-	if rf := alice.get("/posts/1/replies.xml"); !strings.Contains(rf, "edited.") {
+	if rf := alice.get(pathOf(ua) + "/replies.xml"); !strings.Contains(rf, "edited.") {
 		t.Errorf("edit did not bubble up to alice:\n%s", rf)
 	}
 
 	// Bob un-approves Carol: the cached subtree under him shrinks, and Alice hears about it
 	bob.call(t, "POST", "/api/replies/1/status", `{"status":"rejected"}`, 204)
 	settle(ctx, all...)
-	if rf := alice.get("/posts/1/replies.xml"); strings.Contains(rf, uc) || strings.Count(rf, "<item>") != 1 {
+	if rf := alice.get(pathOf(ua) + "/replies.xml"); strings.Contains(rf, uc) || strings.Count(rf, "<item>") != 1 {
 		t.Errorf("rejection did not bubble up:\n%s", rf)
 	}
 
@@ -69,12 +69,28 @@ func TestBubbleUpTerminatesOnCycles(t *testing.T) {
 	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
 	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
 	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
-	// two posts that claim to reply to each other (a cycle no honest app produces)
-	ua := alice.base + "/posts/1"
-	ub := bob.base + "/posts/1"
-	alice.post(t, `{"markdown":"a","in_reply_to":"`+ub+`"}`)
-	bob.post(t, `{"markdown":"b","in_reply_to":"`+ua+`"}`)
+	ua, ub := replyCycle(t, alice, bob)
+	settle(t.Context(), alice, bob)
+	// an edit of either post notifies the other; the notifications must still die out
+	alice.call(t, "PUT", "/api/posts/1", `{"markdown":"a, edited"}`, 200)
+	bob.call(t, "PUT", "/api/posts/1", `{"markdown":"b, edited"}`, 200)
 	settle(t.Context(), alice, bob) // panics if the queues never drain
+	_, _ = ua, ub
+}
+
+// replyCycle makes two posts that claim to reply to each other, which the API cannot produce
+// (a reply's parent must exist first) but a hostile feed can. Alice's post is first, then
+// Bob replies to it, then Alice's row is rewritten to reply to Bob's.
+func replyCycle(t *testing.T, alice, bob *instance) (ua, ub string) {
+	t.Helper()
+	ua = alice.post(t, `{"markdown":"LOOP-A"}`)
+	ub = bob.post(t, `{"markdown":"LOOP-B","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
+	_, err := alice.s.st.RawDBForTests().Exec(`UPDATE posts SET in_reply_to=?, in_reply_to_feed=?, root=?, root_feed=? WHERE id=1`,
+		ub, bob.base+"/feed.xml", ua, alice.base+"/feed.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return
 }
 
 // loginCookie logs the instance's user in through the real form and returns the session cookie.
@@ -204,9 +220,7 @@ func TestThreadOrphanParentOfflineFallsBackToRoot(t *testing.T) {
 
 func TestThreadReplyLoopDoesNotVanish(t *testing.T) {
 	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
-	ua, ub := alice.base+"/posts/1", bob.base+"/posts/1"
-	alice.post(t, `{"markdown":"LOOP-A","in_reply_to":"`+ub+`","in_reply_to_feed":"`+bob.base+`/feed.xml"}`)
-	bob.post(t, `{"markdown":"LOOP-B","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
+	ua, _ := replyCycle(t, alice, bob)
 	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
 	page := threadPageOf(alice, loginCookie(t, alice), ua, "raw")
 	if !strings.Contains(page, "LOOP-A") || !strings.Contains(page, "LOOP-B") {
@@ -225,14 +239,14 @@ func TestReplyToReplyWithoutFeedHintKeepsRoot(t *testing.T) {
 	settle(ctx, alice, bob)
 
 	// Alice answers Bob's reply knowing only its URL
-	alice.post(t, `{"markdown":"Follow-up","in_reply_to":"`+ub+`"}`)
+	uf := alice.post(t, `{"markdown":"Follow-up","in_reply_to":"`+ub+`"}`)
 	if f := alice.get("/feed.xml"); !strings.Contains(f, `<tc:root href="`+ua+`"`) {
 		t.Fatalf("root should stay Alice's first post:\n%s", f)
 	}
 	settle(ctx, alice, bob)
 
 	// Bob answers Alice's follow-up, again with no feed hint: he must find the root through her page
-	bob.post(t, `{"markdown":"Third","in_reply_to":"`+alice.base+`/posts/2"}`)
+	bob.post(t, `{"markdown":"Third","in_reply_to":"`+uf+`"}`)
 	if f := bob.get("/feed.xml"); strings.Count(f, `<tc:root href="`+ua+`"`) != 2 {
 		t.Fatalf("both of Bob's replies should have Alice's first post as root:\n%s", f)
 	}

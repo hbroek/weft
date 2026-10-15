@@ -73,3 +73,20 @@ func TestParseIgnoresNamespacedLink(t *testing.T) {
 		t.Errorf("channel link %q, item link %q", p.Link, p.Items[0].Link)
 	}
 }
+
+func TestParseKeysItemsByPermalinkAndKeepsGUIDAsIdentity(t *testing.T) {
+	const doc = `<rss version="2.0"><channel><title>x</title>
+<item><guid isPermaLink="false">urn:uuid:0194f3a0-1111-7222-8333-444455556666</guid><link>https://a.example/posts/hello-k3x9</link><description>one</description></item>
+<item><guid>https://b.example/p/2</guid><description>two</description></item>
+</channel></rss>`
+	p, err := Parse([]byte(doc), time.Now())
+	if err != nil || len(p.Items) != 2 {
+		t.Fatalf("%v %+v", err, p)
+	}
+	if a := p.Items[0]; a.GUID != "https://a.example/posts/hello-k3x9" || a.UID != "urn:uuid:0194f3a0-1111-7222-8333-444455556666" {
+		t.Errorf("an item is filed under its permalink and keeps its guid as identity: %+v", a)
+	}
+	if b := p.Items[1]; b.GUID != "https://b.example/p/2" {
+		t.Errorf("without a link the guid is the key: %+v", b)
+	}
+}

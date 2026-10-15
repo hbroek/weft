@@ -105,7 +105,7 @@ func countNodes(n *tnode) int {
 
 // resolveRoot finds the thread a post belongs to: a post that carries no tc:root is its own root.
 func (b *threadBuilder) resolveRoot(target string) (root, rootFeed string) {
-	if id, ok := localPostID(b.base, target); ok {
+	if id, ok := b.s.localPostID(b.q.host.ID, b.base, target); ok {
 		if p, err := b.s.st.Post(b.q.host.ID, id); err == nil && p.Root != "" {
 			return p.Root, p.RootFeed
 		}
@@ -173,7 +173,7 @@ func (b *threadBuilder) raw(root, rootFeed string) *tnode {
 	}
 	host := b.q.host.ID
 	var localIDs []int64
-	if id, ok := localPostID(b.base, root); ok {
+	if id, ok := b.s.localPostID(b.q.host.ID, b.base, root); ok {
 		if p, err := b.s.st.Post(host, id); err == nil && !p.Deleted {
 			add(b.localNode(p))
 			localIDs = append(localIDs, p.ID)
@@ -347,7 +347,7 @@ func sortTree(n *tnode) {
 
 func (b *threadBuilder) curated(root, rootFeed string) *tnode {
 	var rn *tnode
-	if id, ok := localPostID(b.base, root); ok {
+	if id, ok := b.s.localPostID(b.q.host.ID, b.base, root); ok {
 		if p, err := b.s.st.Post(b.q.host.ID, id); err == nil && !p.Deleted {
 			rn = b.localNode(p)
 		}
@@ -403,7 +403,7 @@ func (b *threadBuilder) childrenOf(n *tnode) []*tnode {
 	if n.expanded || n.Tombstone {
 		return nil
 	}
-	if id, ok := localPostID(b.base, n.URL); ok {
+	if id, ok := b.s.localPostID(b.q.host.ID, b.base, n.URL); ok {
 		return b.localChildren(id)
 	}
 	href := n.repliesHref

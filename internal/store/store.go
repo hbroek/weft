@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"regexp"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -30,6 +31,8 @@ type User struct {
 type Post struct {
 	ID       int64
 	UserID   int64
+	UID      string // stable identity (UUIDv7); published as the feed item's guid
+	Slug     string // the permalink's last segment; unique per user, never changes
 	Title    string
 	Markdown string
 	HTML     string
@@ -198,6 +201,17 @@ func Open(path string) (*Store, error) {
 		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 	}
 	db.Exec(`ALTER TABLE items ADD COLUMN replies_href TEXT NOT NULL DEFAULT ''`)
+	for _, c := range []string{"uid", "slug"} {
+		db.Exec(`ALTER TABLE posts ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS posts_slug ON posts(user_id, slug) WHERE slug != ''`); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := backfillIdentity(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	for _, c := range []string{"root", "replies_href"} {
 		db.Exec(`ALTER TABLE replies ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 	}
@@ -296,14 +310,77 @@ func (s *Store) UserByToken(token string) (*User, error) {
 
 func (s *Store) AddPost(n NewPost) (*Post, error) {
 	now := time.Now()
-	res, err := s.db.Exec(`INSERT INTO posts(user_id,title,markdown,html,created,in_reply_to,in_reply_to_feed,root,root_feed) VALUES(?,?,?,?,?,?,?,?,?)`,
-		n.UserID, n.Title, n.Markdown, n.HTML, now.Unix(), n.InReplyTo, n.InReplyToFeed, n.Root, n.RootFeed)
+	uid := newUID()
+	var res sql.Result
+	var slug string
+	var err error
+	for try := 0; try < 8; try++ { // a collision in the 4-character suffix is rare; draw again
+		slug = Slug(n.Title, n.Markdown)
+		res, err = s.db.Exec(`INSERT INTO posts(user_id,uid,slug,title,markdown,html,created,in_reply_to,in_reply_to_feed,root,root_feed) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			n.UserID, uid, slug, n.Title, n.Markdown, n.HTML, now.Unix(), n.InReplyTo, n.InReplyToFeed, n.Root, n.RootFeed)
+		if err == nil || !strings.Contains(err.Error(), "UNIQUE") {
+			break
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	return &Post{ID: id, UserID: n.UserID, Title: n.Title, Markdown: n.Markdown, HTML: n.HTML, Created: time.Unix(now.Unix(), 0),
+	return &Post{ID: id, UserID: n.UserID, UID: uid, Slug: slug, Title: n.Title, Markdown: n.Markdown, HTML: n.HTML, Created: time.Unix(now.Unix(), 0),
 		InReplyTo: n.InReplyTo, InReplyToFeed: n.InReplyToFeed, Root: n.Root, RootFeed: n.RootFeed}, nil
+}
+
+// backfillIdentity gives posts made before uid and slug existed an identity.
+func backfillIdentity(db *sql.DB) error {
+	rows, err := db.Query(`SELECT id,title,markdown FROM posts WHERE uid='' OR slug=''`)
+	if err != nil {
+		return err
+	}
+	type old struct {
+		id        int64
+		title, md string
+	}
+	var todo []old
+	for rows.Next() {
+		var o old
+		if err := rows.Scan(&o.id, &o.title, &o.md); err != nil {
+			rows.Close()
+			return err
+		}
+		todo = append(todo, o)
+	}
+	rows.Close()
+	for _, o := range todo {
+		for try := 0; try < 8; try++ {
+			_, err = db.Exec(`UPDATE posts SET uid=?, slug=? WHERE id=?`, newUID(), Slug(o.title, o.md), o.id)
+			if err == nil || !strings.Contains(err.Error(), "UNIQUE") {
+				break
+			}
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PostBySlug finds a user's post by the last segment of its permalink.
+func (s *Store) PostBySlug(userID int64, slug string) (*Post, error) {
+	p, err := scanPost(s.db.QueryRow(`SELECT `+postCols+` FROM posts WHERE user_id=? AND slug=?`, userID, slug))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return p, err
+}
+
+// SlugByID returns the slug of a post, whoever owns it.
+func (s *Store) SlugByID(id int64) (string, error) {
+	var slug string
+	err := s.db.QueryRow(`SELECT slug FROM posts WHERE id=?`, id).Scan(&slug)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return slug, err
 }
 
 func scanPost(r interface{ Scan(...any) error }) (*Post, error) {
@@ -311,7 +388,7 @@ func scanPost(r interface{ Scan(...any) error }) (*Post, error) {
 	var created int64
 	var updated sql.NullInt64
 	var del int
-	if err := r.Scan(&p.ID, &p.UserID, &p.Title, &p.Markdown, &p.HTML, &created, &updated, &del,
+	if err := r.Scan(&p.ID, &p.UserID, &p.UID, &p.Slug, &p.Title, &p.Markdown, &p.HTML, &created, &updated, &del,
 		&p.InReplyTo, &p.InReplyToFeed, &p.Root, &p.RootFeed); err != nil {
 		return nil, err
 	}
@@ -324,7 +401,7 @@ func scanPost(r interface{ Scan(...any) error }) (*Post, error) {
 	return p, nil
 }
 
-const postCols = `id,user_id,title,markdown,html,created,updated,deleted,in_reply_to,in_reply_to_feed,root,root_feed`
+const postCols = `id,user_id,uid,slug,title,markdown,html,created,updated,deleted,in_reply_to,in_reply_to_feed,root,root_feed`
 
 func (s *Store) Post(userID, id int64) (*Post, error) {
 	p, err := scanPost(s.db.QueryRow(`SELECT `+postCols+` FROM posts WHERE user_id=? AND id=?`, userID, id))

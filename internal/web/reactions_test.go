@@ -53,7 +53,7 @@ func TestReactionRoundTripAcrossInstances(t *testing.T) {
 	if !strings.Contains(f, `<tc:reactions plus="0" minus="1">`) || !strings.Contains(f, `<tc:emoji value="😕" count="1">`) {
 		t.Errorf("tally after change:\n%s", f)
 	}
-	if !strings.Contains(alice.get("/posts/1"), "😕 1") {
+	if !strings.Contains(alice.get(pathOf(ua)), "😕 1") {
 		t.Errorf("permalink page does not show the tally")
 	}
 
@@ -89,7 +89,7 @@ func TestReactionRoundTripAcrossInstances(t *testing.T) {
 	if got := alice.call(t, "GET", "/api/reactions/received?post_id=1", "", 200); strings.TrimSpace(got) != "[]" {
 		t.Errorf("removed reaction still received: %s", got)
 	}
-	if strings.Contains(alice.get("/posts/1"), "😕") {
+	if strings.Contains(alice.get(pathOf(ua)), "😕") {
 		t.Errorf("tally still shown")
 	}
 

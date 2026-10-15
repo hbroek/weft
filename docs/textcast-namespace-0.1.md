@@ -59,7 +59,8 @@ Every post, reply and reaction is an RSS 2.0 `<item>`.
 
 | Element | Status | Rule |
 | --- | --- | --- |
-| `<guid isPermaLink="true">` | Required | The post's HTML permalink. This URL is the post's identity everywhere: in replies, reactions and Webmentions. |
+| `<guid isPermaLink="false">` | Required | The post's identity: `urn:uuid:` plus a UUID (version 7 recommended) made once when the post is created. It is not a URL and never changes, so the post stays the same post if its author moves to another host. |
+| `<link>` | Required | The post's HTML permalink: the author's host plus a slug, such as `https://alice.example/posts/the-reader-half-k3x9`. This URL is the post's address in replies (`tc:inReplyTo`, `tc:root`), reactions and Webmentions. It is the only URL that serves the post. The slug is built from the title or the first words of a note plus a short random suffix, is unique in the author's namespace, and never changes after publishing, even if the post is edited. A deleted post keeps its slug reserved. |
 | `<description>` | Required | Rendered HTML of the post. |
 | `<title>` | Optional | Include only if the author gave one. Apps must not invent titles from the first line. |
 | `<source:markdown>` | Recommended | The original Markdown, unaltered. |
@@ -77,7 +78,7 @@ Every post, reply and reaction is an RSS 2.0 `<item>`.
               feed="https://alice.example/feed.xml"/>
 ```
 
-- `href` (required): the parent's permalink, equal to the parent's `guid`.
+- `href` (required): the parent's permalink, equal to the parent's `<link>`.
 - `feed` (recommended): the parent's feed URL, so readers can fetch it directly.
 
 `<tc:root>` names the post that started the thread, like email's `References` header. Any reply can be placed in its conversation even if middle posts disappear.
@@ -158,7 +159,7 @@ Reactions are public. Private flags to a post owner are out of scope.
 
 ## Permalink page requirements
 
-Every item's `guid` must resolve to an HTML page. Webmention verification, search engines and people without feed readers all depend on it. The page must include:
+Every item's `<link>` must resolve to an HTML page. Webmention verification, search engines and people without feed readers all depend on it. The page must include:
 
 - `<link rel="alternate" type="application/rss+xml" href="…">` pointing to the author's feed.
 - `<link rel="webmention" href="…">` pointing to the author's endpoint.
@@ -185,7 +186,7 @@ Recommended for IndieWeb compatibility: microformats2 markup (`h-entry`, with `u
 
 ### Editing a post
 
-Update the item in place, set `tc:updated`, and re-send Webmentions to every post it replied to or reacted to. The `guid` never changes.
+Update the item in place, set `tc:updated`, and re-send Webmentions to every post it replied to or reacted to. The `guid` and the `link` never change.
 
 ### Deleting a post
 
@@ -211,7 +212,7 @@ In every case, replies further down the branch stay attached to their own parent
 
 A textcast app can reply to an item in any RSS 2.0 feed, not just textcast feeds. The parent needs no `tc:` elements and its author needs no textcast app. The reply is built as if the parent were already deleted:
 
-1. **Point up.** `tc:inReplyTo href` is the item's `guid` when `isPermaLink` is true, otherwise its `<link>`. The `feed` attribute is required here, since nothing else identifies the source feed.
+1. **Point up.** `tc:inReplyTo href` is the item's `<link>`, or its `guid` when `isPermaLink` is true and there is no link. The `feed` attribute is required here, since nothing else identifies the source feed.
 2. **Set the root.** The non-textcast item has no thread ancestry, so it is the root: `tc:root` equals `tc:inReplyTo`.
 3. **Carry context.** `tc:context` is required. The app can draft it from the item's title and description, by excerpting or summarizing with AI, marked `origin="generated"`. The author can edit it before publishing.
 4. **Notify if possible.** If the item's page advertises a Webmention endpoint, send one. If not, the parent's author is never notified; the reply is still found through indexes and by readers following both feeds.
@@ -238,12 +239,13 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 
   <item>
     <!-- No <title>: a short note -->
-    <guid isPermaLink="true">https://alice.example/2026/10/12/notes</guid>
+    <guid isPermaLink="false">urn:uuid:0194f3a0-5c1e-7a52-9d0b-3c7a5e2f1b44</guid>
+    <link>https://alice.example/posts/rss-plus-links-already-gives-you-w3kp</link>
     <description>&lt;p&gt;RSS plus links already gives you a social web. Who's building the &lt;em&gt;reader&lt;/em&gt; half?&lt;/p&gt;</description>
     <source:markdown>RSS plus links already gives you a social web. Who's building the *reader* half?</source:markdown>
     <pubDate>Mon, 12 Oct 2026 21:00:00 -0400</pubDate>
     <category>textcasting</category>
-    <tc:replies href="https://alice.example/2026/10/12/notes/replies.xml" count="1"/>
+    <tc:replies href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp/replies.xml" count="1"/>
     <tc:reactions plus="1" minus="0"/>
   </item>
 </channel>
@@ -255,7 +257,8 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 ```xml
 <item>
   <title>The reader half is the hard part</title>
-  <guid isPermaLink="true">https://bob.example/posts/reader-half</guid>
+  <guid isPermaLink="false">urn:uuid:0194f3b8-90aa-7c13-8e21-6d4f0a9b7c25</guid>
+  <link>https://bob.example/posts/reader-half</link>
   <description>&lt;p&gt;Search and threads are what's missing. Here's a sketch…&lt;/p&gt;</description>
   <source:markdown>Search and threads are what's missing. Here's a sketch…</source:markdown>
   <pubDate>Mon, 12 Oct 2026 22:15:00 -0400</pubDate>
@@ -295,7 +298,8 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
   <item>
     <title>The reader half is the hard part</title>
     <link>https://bob.example/posts/reader-half</link>
-    <guid isPermaLink="true">https://bob.example/posts/reader-half</guid>
+    <guid isPermaLink="false">urn:uuid:0194f3b8-90aa-7c13-8e21-6d4f0a9b7c25</guid>
+  <link>https://bob.example/posts/reader-half</link>
     <description>Search and threads are what's missing.</description>
     <tc:feed href="https://bob.example/feed.xml"/>
     <tc:inReplyTo href="https://alice.example/2026/10/12/notes"/>

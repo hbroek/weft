@@ -18,14 +18,17 @@ type Parsed struct {
 }
 
 type ParsedItem struct {
-	GUID, Link, Title string
-	Text              string // description with markup removed; safe to show once escaped
-	Markdown          string // source:markdown, if the feed has it
-	Published         time.Time
-	Updated           time.Time // zero if never edited
-	InReplyTo         string    // tc:inReplyTo href, if any
-	InReplyToFeed     string
-	Root, RootFeed    string // tc:root
+	// GUID is the key the reader files the item under: the item's permalink when it has one,
+	// otherwise its guid. UID is the item's own guid, its identity if its URL changes (a textcast
+	// post's is urn:uuid:…).
+	GUID, UID, Link, Title string
+	Text                   string // description with markup removed; safe to show once escaped
+	Markdown               string // source:markdown, if the feed has it
+	Published              time.Time
+	Updated                time.Time // zero if never edited
+	InReplyTo              string    // tc:inReplyTo href, if any
+	InReplyToFeed          string
+	Root, RootFeed         string // tc:root
 	// tc:reactionOf: set when the item is a reaction rather than a post.
 	ReactionOf, Polarity, Emoji string
 	Plus, Minus                 int    // tc:reactions tally
@@ -142,7 +145,7 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 	}
 	for _, it := range x.Channel.Items {
 		pi := ParsedItem{
-			GUID: strings.TrimSpace(it.GUID), Link: it.Link.first(), Title: strings.TrimSpace(it.Title),
+			UID: strings.TrimSpace(it.GUID), Link: it.Link.first(), Title: strings.TrimSpace(it.Title),
 			Text: StripHTML(it.Description), Markdown: strings.TrimSpace(it.Markdown),
 			Published: parseDate(it.PubDate), Updated: parseDate(it.Updated),
 			InReplyTo: strings.TrimSpace(it.InReplyTo.Href), InReplyToFeed: strings.TrimSpace(it.InReplyTo.Feed),
@@ -155,8 +158,9 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 		if it.Replies.Count != nil {
 			pi.RepliesCount = *it.Replies.Count
 		}
+		pi.GUID = pi.Link
 		if pi.GUID == "" {
-			pi.GUID = pi.Link
+			pi.GUID = pi.UID
 		}
 		if pi.GUID == "" {
 			continue // cannot identify the item

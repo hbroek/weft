@@ -7,8 +7,10 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -56,7 +58,7 @@ func TestPublishAndFeed(t *testing.T) {
 		t.Fatalf("untitled: got %d %s", w.Code, w.Body)
 	}
 	w := do(s, "POST", host, "/api/posts", tok, `{"title":"Essay","markdown":"# hi\n\nbody"}`)
-	if w.Code != 201 || !strings.Contains(w.Body.String(), "http://alice.localhost:8080/posts/2") {
+	if w.Code != 201 || !regexp.MustCompile(`http://alice\.localhost:8080/posts/essay-[a-z0-9]{4}"`).MatchString(w.Body.String()) {
 		t.Fatalf("titled: %d %s", w.Code, w.Body)
 	}
 
@@ -71,6 +73,7 @@ func TestPublishAndFeed(t *testing.T) {
 			Items      []struct {
 				Title    *string `xml:"title"`
 				GUID     string  `xml:"guid"`
+				Link     string  `xml:"link"`
 				Desc     string  `xml:"description"`
 				Markdown string  `xml:"markdown"`
 			} `xml:"item"`
@@ -96,7 +99,12 @@ func TestPublishAndFeed(t *testing.T) {
 		t.Errorf("source:markdown missing: %q", note.Markdown)
 	}
 
-	pw := do(s, "GET", host, "/posts/1", "", "")
+	// identity and address are separate: the guid is a UUID, the link a readable slug
+	if !regexp.MustCompile(`^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(note.GUID) ||
+		!regexp.MustCompile(`^http://alice\.localhost:8080/posts/a-short-note-script-x-script-[a-z0-9]{4}$`).MatchString(note.Link) {
+		t.Errorf("guid %q link %q", note.GUID, note.Link)
+	}
+	pw := do(s, "GET", host, pathOf(note.Link), "", "")
 	body, _ := io.ReadAll(pw.Body)
 	if pw.Code != http.StatusOK || !strings.Contains(string(body), `rel="webmention"`) || !strings.Contains(string(body), `type="application/rss+xml"`) {
 		t.Errorf("permalink page missing discovery links: %d", pw.Code)
@@ -137,4 +145,10 @@ func TestVerboseLogsAPICallsWithoutTokens(t *testing.T) {
 	if buf.Len() != 0 {
 		t.Errorf("logging without -v: %s", buf.String())
 	}
+}
+
+// pathOf returns the path part of a URL, for requests sent straight to a handler.
+func pathOf(u string) string {
+	x, _ := url.Parse(u)
+	return x.Path
 }

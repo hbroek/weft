@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -58,8 +59,9 @@ func TestHumanFlow(t *testing.T) {
 
 	// compose
 	w = form(s, "POST", "/compose", ck, url.Values{"markdown": {"first *post*"}}, "")
-	if w.Code != 303 || w.Header().Get("Location") != "/posts/1" {
-		t.Fatalf("compose: %d %s", w.Code, w.Header().Get("Location"))
+	loc := w.Header().Get("Location")
+	if w.Code != 303 || !regexp.MustCompile(`^/posts/first-post-[a-z0-9]{4}$`).MatchString(loc) {
+		t.Fatalf("compose: %d %s", w.Code, loc)
 	}
 	if w := form(s, "POST", "/compose", ck, url.Values{"markdown": {" "}}, ""); w.Code != 400 {
 		t.Fatalf("empty compose: %d", w.Code)
@@ -78,8 +80,12 @@ func TestHumanFlow(t *testing.T) {
 	if !strings.Contains(feed, "<tc:updated>") || !strings.Contains(feed, "<title>Now titled</title>") || strings.Contains(feed, "sneaky") {
 		t.Fatalf("feed after edit:\n%s", feed)
 	}
-	if page := do(s, "GET", host, "/posts/1", "", "").Body.String(); strings.Contains(page, "/edit") {
-		t.Errorf("edit link shown to anonymous visitor")
+	// the title changed but the permalink must not: its slug is frozen when the post is made
+	if w := do(s, "GET", host, loc, "", ""); w.Code != 200 || strings.Contains(w.Body.String(), "/edit") {
+		t.Errorf("permalink after edit: %d, or edit link shown to anonymous visitor", w.Code)
+	}
+	if w := do(s, "GET", host, "/posts/1", "", ""); w.Code != 404 {
+		t.Errorf("the numeric id must not be a second way to the post: %d", w.Code)
 	}
 
 	// API edit and delete with the bearer token
@@ -100,11 +106,11 @@ func TestHumanFlow(t *testing.T) {
 	}
 
 	// deleted permalink: 410 tombstone, gone from feed, content discarded
-	w = do(s, "GET", host, "/posts/1", "", "")
+	w = do(s, "GET", host, loc, "", "")
 	if w.Code != http.StatusGone || !strings.Contains(w.Body.String(), "removed") || strings.Contains(w.Body.String(), "via api") {
 		t.Fatalf("tombstone: %d", w.Code)
 	}
-	if feed := do(s, "GET", host, "/feed.xml", "", "").Body.String(); strings.Contains(feed, "/posts/1<") {
+	if feed := do(s, "GET", host, "/feed.xml", "", "").Body.String(); strings.Contains(feed, loc+"<") {
 		t.Errorf("deleted post still in feed")
 	}
 

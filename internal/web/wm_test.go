@@ -98,7 +98,7 @@ func TestReplyRoundTripAcrossInstances(t *testing.T) {
 			t.Errorf("bob's feed lacks %s:\n%s", want, bf)
 		}
 	}
-	if !strings.Contains(bob.get("/posts/1"), `class="u-in-reply-to" href="`+ua+`"`) {
+	if !strings.Contains(bob.get(pathOf(ub1)), `class="u-in-reply-to" href="`+ua+`"`) {
 		t.Errorf("bob's permalink page must link to the parent")
 	}
 	settle(ctx, alice, bob) // Bob's queue sends the Webmention; Alice's verifies his page and feed
@@ -107,21 +107,21 @@ func TestReplyRoundTripAcrossInstances(t *testing.T) {
 	if r := alice.call(t, "GET", "/api/replies?status=pending", "", 200); !strings.Contains(r, ub1) {
 		t.Fatalf("pending replies: %s", r)
 	}
-	if strings.Contains(alice.get("/posts/1/replies.xml"), "<item>") || strings.Contains(alice.get("/posts/1"), "Search and threads") {
+	if strings.Contains(alice.get(pathOf(ua)+"/replies.xml"), "<item>") || strings.Contains(alice.get(pathOf(ua)), "Search and threads") {
 		t.Errorf("unapproved reply is visible")
 	}
-	if !strings.Contains(alice.get("/feed.xml"), `<tc:replies href="`+alice.base+`/posts/1/replies.xml" count="0">`) {
+	if !strings.Contains(alice.get("/feed.xml"), `<tc:replies href="`+ua+`/replies.xml" count="0">`) {
 		t.Errorf("expected count 0")
 	}
 
 	alice.call(t, "POST", "/api/replies/1/status", `{"status":"approved"}`, 204)
-	rf := alice.get("/posts/1/replies.xml")
+	rf := alice.get(pathOf(ua) + "/replies.xml")
 	for _, want := range []string{`<tc:repliesTo href="` + ua + `">`, "<tc:depth>2</tc:depth>", "<title>The reader half</title>", `<tc:feed href="` + bob.base + `/feed.xml">`, `<tc:inReplyTo href="` + ua + `">`} {
 		if !strings.Contains(rf, want) {
 			t.Errorf("replies feed lacks %s:\n%s", want, rf)
 		}
 	}
-	if !strings.Contains(alice.get("/feed.xml"), `count="1"`) || !strings.Contains(alice.get("/posts/1"), "Search and threads are missing.") {
+	if !strings.Contains(alice.get("/feed.xml"), `count="1"`) || !strings.Contains(alice.get(pathOf(ua)), "Search and threads are missing.") {
 		t.Errorf("approved reply not shown")
 	}
 
@@ -136,14 +136,14 @@ func TestReplyRoundTripAcrossInstances(t *testing.T) {
 	// A reply from a followed author is approved automatically.
 	ub2 := bob.post(t, `{"markdown":"Second thought.","in_reply_to":"`+ua+`"}`)
 	settle(ctx, alice, bob)
-	if !strings.Contains(alice.get("/posts/1/replies.xml"), "Second thought.") {
+	if !strings.Contains(alice.get(pathOf(ua)+"/replies.xml"), "Second thought.") {
 		t.Fatalf("followed author's reply should be auto-approved")
 	}
 
 	// Editing re-notifies; the reply text updates in place.
 	bob.call(t, "PUT", "/api/posts/2", `{"markdown":"Second thought, edited.","in_reply_to":"`+ua+`"}`, 200)
 	settle(ctx, alice, bob)
-	if rf := alice.get("/posts/1/replies.xml"); !strings.Contains(rf, "edited.") || strings.Count(rf, "<item>") != 3 {
+	if rf := alice.get(pathOf(ua) + "/replies.xml"); !strings.Contains(rf, "edited.") || strings.Count(rf, "<item>") != 3 {
 		t.Errorf("edit not reflected:\n%s", rf)
 	}
 
@@ -151,13 +151,13 @@ func TestReplyRoundTripAcrossInstances(t *testing.T) {
 	bob.call(t, "DELETE", "/api/posts/2", "", 204)
 	settle(ctx, alice, bob)
 	// two items remain: Bob's first reply, and Alice's own reply to it, cached one level down
-	if rf := alice.get("/posts/1/replies.xml"); strings.Contains(rf, ub2) || strings.Count(rf, "<item>") != 2 {
+	if rf := alice.get(pathOf(ua) + "/replies.xml"); strings.Contains(rf, ub2) || strings.Count(rf, "<item>") != 2 {
 		t.Errorf("deleted reply still listed:\n%s", rf)
 	}
 
 	// Un-approving hides a reply again without deleting it.
 	alice.call(t, "POST", "/api/replies/1/status", `{"status":"rejected"}`, 204)
-	if rf := alice.get("/posts/1/replies.xml"); strings.Contains(rf, "<item>") {
+	if rf := alice.get(pathOf(ua) + "/replies.xml"); strings.Contains(rf, "<item>") {
 		t.Errorf("rejected reply (and the subtree under it) still listed:\n%s", rf)
 	}
 }

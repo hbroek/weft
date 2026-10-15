@@ -47,7 +47,7 @@ func New(cfg Config, st *store.Store) *Server {
 	// public pages
 	s.mux.HandleFunc("GET /{$}", s.user(s.home))
 	s.mux.HandleFunc("GET /feed.xml", s.user(s.feed))
-	s.mux.HandleFunc("GET /posts/{id}", s.user(s.permalink))
+	s.mux.HandleFunc("GET /posts/{slug}", s.user(s.permalink))
 	// human UI (session cookie)
 	s.mux.HandleFunc("GET /login", s.user(s.loginForm))
 	s.mux.HandleFunc("POST /login", s.user(s.login))
@@ -66,7 +66,7 @@ func New(cfg Config, st *store.Store) *Server {
 	s.mux.HandleFunc("POST /api/reactions", s.user(s.apiReact))
 	s.mux.HandleFunc("DELETE /api/reactions", s.user(s.apiUnreact))
 	s.mux.HandleFunc("GET /api/reactions/received", s.user(s.apiReactionsReceived))
-	s.mux.HandleFunc("GET /posts/{id}/replies.xml", s.user(s.repliesFeed))
+	s.mux.HandleFunc("GET /posts/{slug}/replies.xml", s.user(s.repliesFeed))
 	s.mux.HandleFunc("GET /replies", s.user(s.moderation))
 	s.mux.HandleFunc("POST /replies/{id}/status", s.user(s.moderateForm))
 	s.mux.HandleFunc("GET /api/replies", s.user(s.apiReplies))
@@ -144,8 +144,13 @@ func (s *Server) hostUser(host string) string {
 
 func (s *Server) base(r *http.Request) string { return s.cfg.Scheme + "://" + r.Host }
 
+// postURL is a post's permanent address: the author's host plus the post's slug.
 func (s *Server) postURL(r *http.Request, id int64) string {
-	return fmt.Sprintf("%s/posts/%d", s.base(r), id)
+	slug, err := s.st.SlugByID(id)
+	if err != nil {
+		return s.base(r) + "/posts/"
+	}
+	return s.base(r) + "/posts/" + slug
 }
 
 type ctxKey struct{}

@@ -6,7 +6,6 @@ import (
 	"html"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,7 +24,7 @@ const maxWMAttempts = 6
 // items and arbitrary pages work.
 func (s *Server) resolveThread(ctx context.Context, base string, u *store.User, parent, feedHint string) (parentFeed, root, rootFeed string) {
 	parentFeed, root, rootFeed = feedHint, parent, feedHint
-	if id, ok := localPostID(base, parent); ok {
+	if id, ok := s.localPostID(u.ID, base, parent); ok {
 		if p, err := s.st.Post(u.ID, id); err == nil {
 			own := base + "/feed.xml"
 			if p.Root != "" {
@@ -88,14 +87,18 @@ func pick(c bool, a, b string) string {
 	return b
 }
 
-// localPostID recognises base+"/posts/{id}".
-func localPostID(base, raw string) (int64, bool) {
-	rest, ok := strings.CutPrefix(raw, base+"/posts/")
-	if !ok {
+// localPostID recognises base+"/posts/{slug}" as one of the user's own posts. The slug is the
+// post's only public address.
+func (s *Server) localPostID(userID int64, base, raw string) (int64, bool) {
+	slug, ok := strings.CutPrefix(raw, base+"/posts/")
+	if !ok || slug == "" || strings.ContainsAny(slug, "/?#") {
 		return 0, false
 	}
-	id, err := strconv.ParseInt(rest, 10, 64)
-	return id, err == nil
+	p, err := s.st.PostBySlug(userID, slug)
+	if err != nil {
+		return 0, false
+	}
+	return p.ID, true
 }
 
 // notify queues an outgoing Webmention.
@@ -122,7 +125,7 @@ func (s *Server) webmention(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	tu, _ := url.Parse(target)
-	id, ok := localPostID(s.base(r), tu.Scheme+"://"+tu.Host+tu.Path)
+	id, ok := s.localPostID(q.host.ID, s.base(r), tu.Scheme+"://"+tu.Host+tu.Path)
 	if !ok {
 		http.Error(w, "target is not a post on this site", http.StatusBadRequest)
 		return
@@ -203,7 +206,7 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 	if err != nil {
 		return "bad target", false
 	}
-	postID, ok := localPostID(tu.Scheme+"://"+tu.Host, tu.Scheme+"://"+tu.Host+tu.Path)
+	postID, ok := s.localPostID(host.ID, tu.Scheme+"://"+tu.Host, tu.Scheme+"://"+tu.Host+tu.Path)
 	if !ok {
 		return "target is not a post", false
 	}

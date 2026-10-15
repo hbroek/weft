@@ -180,12 +180,7 @@ func postID(r *http.Request) (int64, bool) {
 }
 
 func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
-	id, ok := postID(r)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	p, err := s.st.Post(q.host.ID, id)
+	p, err := s.st.PostBySlug(q.host.ID, r.PathValue("slug"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -221,7 +216,7 @@ func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
 			last = p.Created
 		}
 		url := s.postURL(r, p.ID)
-		it := feed.Item{Title: p.Title, GUID: feed.GUID{IsPermaLink: true, Value: url}, Link: url,
+		it := feed.Item{Title: p.Title, GUID: feed.GUID{Value: "urn:uuid:" + p.UID}, Link: url,
 			Description: p.HTML, Markdown: p.Markdown, PubDate: feed.RFC822(p.Created)}
 		it.Replies = &feed.Replies{Href: url + "/replies.xml", Count: counts[p.ID]}
 		it.Reactions = &feed.Reactions{}

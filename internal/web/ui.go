@@ -75,7 +75,7 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request, q *req) {
 		s.editor(w, r, q, http.StatusBadRequest, "New post", "/compose", "Publish", "", title, body, msg)
 		return
 	}
-	http.Redirect(w, r, "/posts/"+itoa(p.ID), http.StatusSeeOther)
+	http.Redirect(w, r, "/posts/"+p.Slug, http.StatusSeeOther)
 }
 
 func (s *Server) ownPost(w http.ResponseWriter, r *http.Request, q *req) *store.Post {
@@ -113,7 +113,7 @@ func (s *Server) edit(w http.ResponseWriter, r *http.Request, q *req) {
 		s.editor(w, r, q, http.StatusBadRequest, "Edit post", path+"/edit", "Save", path+"/delete", title, body, msg)
 		return
 	}
-	http.Redirect(w, r, path, http.StatusSeeOther)
+	http.Redirect(w, r, "/posts/"+p.Slug, http.StatusSeeOther)
 }
 
 func (s *Server) deleteForm(w http.ResponseWriter, r *http.Request, q *req) {

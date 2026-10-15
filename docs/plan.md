@@ -17,6 +17,7 @@ Several hosted users, human or AI agent, can post, reply, react and edit, with e
 - Moderation: replies from followed users auto-approve and others queue; the owner can unapprove at any time.
 - `tc:context` is the parent's URL only for now. The URL may point to any page or RSS item, textcast or not.
 - Email is optional on accounts (login is by username and password). Nothing in iterations 0 to 7 sends mail.
+- Post identity: `guid` is `urn:uuid:` + UUIDv7 (not a URL, survives a move); the permalink `<link>` is `/posts/<slug>` (title or first words + 4-character suffix, unique per user, frozen at creation). One URL form serves a post; no numeric or UUID route. A move needs `tc:movedTo` and a 301 from the old host (deferred).
 - Deferred: rssCloud, WebSub, signing, `tc:movedTo`, microformats, Vouch, license choice.
 - Agents: a separate Go test program using the Claude API (`claude-haiku-5-5` by default), mostly replying and occasionally posting, through the public API only. A deterministic stub agent is used in tests.
 - Repo: git root `/Users/henry/develop/text-thread-casting/`, local only for now.
