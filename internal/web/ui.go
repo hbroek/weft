@@ -82,12 +82,7 @@ func (s *Server) ownPost(w http.ResponseWriter, r *http.Request, q *req) *store.
 	if !s.requireOwner(w, r, q) {
 		return nil
 	}
-	id, ok := postID(r)
-	if !ok {
-		http.NotFound(w, r)
-		return nil
-	}
-	p, err := s.st.Post(q.host.ID, id)
+	p, err := s.st.PostBySlug(q.host.ID, r.PathValue("slug"))
 	if err != nil || p.Deleted {
 		http.NotFound(w, r)
 		return nil
@@ -97,7 +92,7 @@ func (s *Server) ownPost(w http.ResponseWriter, r *http.Request, q *req) *store.
 
 func (s *Server) editForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if p := s.ownPost(w, r, q); p != nil {
-		path := "/posts/" + itoa(p.ID)
+		path := "/posts/" + p.Slug
 		s.editor(w, r, q, http.StatusOK, "Edit post", path+"/edit", "Save", path+"/delete", p.Title, p.Markdown, "")
 	}
 }
@@ -108,7 +103,7 @@ func (s *Server) edit(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	title, body := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown")
-	path := "/posts/" + itoa(p.ID)
+	path := "/posts/" + p.Slug
 	if _, msg := s.update(r, q.host, p.ID, title, body); msg != "" {
 		s.editor(w, r, q, http.StatusBadRequest, "Edit post", path+"/edit", "Save", path+"/delete", title, body, msg)
 		return

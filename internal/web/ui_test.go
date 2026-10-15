@@ -72,7 +72,10 @@ func TestHumanFlow(t *testing.T) {
 	}
 
 	// edit sets the updated stamp and keeps the permalink
-	w = form(s, "POST", "/posts/1/edit", ck, url.Values{"title": {"Now titled"}, "markdown": {"edited"}}, "")
+	w = form(s, "POST", loc+"/edit", ck, url.Values{"title": {"Now titled"}, "markdown": {"edited"}}, "")
+	if g := form(s, "GET", loc+"/edit", ck, nil, ""); g.Code != 200 || !strings.Contains(g.Body.String(), "edited") {
+		t.Fatalf("edit form: %d %s %s", g.Code, loc, g.Body.String())
+	}
 	if w.Code != 303 {
 		t.Fatalf("edit: %d", w.Code)
 	}
