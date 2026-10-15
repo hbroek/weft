@@ -121,3 +121,37 @@ func TestFollowRefusesPrivateByDefault(t *testing.T) {
 		t.Errorf("file url: %d", w.Code)
 	}
 }
+
+// On one instance, a follower sees a new post at once; no waiting for the poll.
+func TestLocalFollowerSeesPostImmediately(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "l.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	s := New(Config{BaseDomain: "localhost", AllowPrivate: true}, st)
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+	port := ts.URL[strings.LastIndex(ts.URL, ":")+1:]
+	atok, _ := st.AddUser("alice", "Alice", "")
+	btok, _ := st.AddUser("bob", "Bob", "")
+	ah, bh := "alice.localhost:"+port, "bob.localhost:"+port
+
+	if w := do(s, "POST", bh, "/api/following", btok, `{"url":"http://`+ah+`/"}`); w.Code != 200 {
+		t.Fatalf("follow: %d %s", w.Code, w.Body)
+	}
+	// do() calls the handler directly, so make the post over HTTP like a real client
+	req, _ := http.NewRequest("POST", ts.URL+"/api/posts", strings.NewReader(`{"markdown":"fresh news"}`))
+	req.Host = ah
+	req.Header.Set("Authorization", "Bearer "+atok)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil || res.StatusCode != 201 {
+		t.Fatalf("post: %v %v", err, res)
+	}
+	res.Body.Close()
+
+	w := do(s, "GET", bh, "/api/timeline", btok, "")
+	if !strings.Contains(w.Body.String(), "fresh news") {
+		t.Fatalf("bob's timeline should show alice's new post right away:\n%s", w.Body)
+	}
+}

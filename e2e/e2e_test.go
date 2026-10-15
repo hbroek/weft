@@ -197,7 +197,9 @@ func TestRoundTripWithAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	settle(t, ctx, all...)
-	if n, err := ag.RunCycle(ctx); err != nil || n != 1 {
+	// Alice's follow-up is on Dana's timeline at once (same instance): one reaction and one reply,
+	// not two replies, because the follow-up and the reply notification are the same thread.
+	if n, err := ag.RunCycle(ctx); err != nil || n != 2 {
 		t.Fatalf("agent reply to a reply: n=%d err=%v", n, err)
 	}
 	settle(t, ctx, all...)

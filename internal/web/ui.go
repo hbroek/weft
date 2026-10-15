@@ -1,8 +1,11 @@
 package web
 
 import (
+	"context"
 	"net/http"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/hbroek/text-thread-casting/internal/md"
 	"github.com/hbroek/text-thread-casting/internal/store"
@@ -147,6 +150,7 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown, replyTo
 	if p.InReplyTo != "" {
 		s.notify(s.postURL(r, p.ID), p.InReplyTo)
 	}
+	s.refreshOwnFeed(r)
 	return p, ""
 }
 
@@ -166,6 +170,7 @@ func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdow
 	if p.InReplyTo != "" {
 		s.notify(s.postURL(r, p.ID), p.InReplyTo)
 	}
+	s.refreshOwnFeed(r)
 	return p, ""
 }
 
@@ -177,5 +182,20 @@ func (s *Server) deletePost(r *http.Request, u *store.User, p *store.Post) error
 	if p.InReplyTo != "" {
 		s.notify(s.postURL(r, p.ID), p.InReplyTo)
 	}
+	s.refreshOwnFeed(r)
 	return nil
+}
+
+// refreshOwnFeed updates this instance's cached copy of the host user's feed right after a change,
+// when anyone on this instance follows it, so local followers see it at once instead of at the next
+// poll. Followers on other instances still wait for their own poll: RSS is pull-based.
+func (s *Server) refreshOwnFeed(r *http.Request) {
+	own := s.base(r) + "/feed.xml"
+	urls, err := s.st.FollowedFeedURLs()
+	if err != nil || !slices.Contains(urls, own) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+	defer cancel()
+	s.Refresh(ctx, own)
 }
