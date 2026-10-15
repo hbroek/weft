@@ -24,7 +24,7 @@ test:
 	go test ./...
 
 run: build
-	./bin/ttc serve -addr $(ADDR) -domain $(DOMAIN) -db $(DB) -dev
+	./bin/ttc serve -addr $(ADDR) -domain $(DOMAIN) -db $(DB) -dev $(if $(VERBOSE),-v)
 
 users: build
 	./bin/ttc user list -db $(DB)

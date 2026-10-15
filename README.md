@@ -58,6 +58,8 @@ The server fetches the URLs users enter, so by default it refuses loopback and p
 (SSRF guard). `make run` passes `-dev` to allow them for local use. Do not use `-dev` when hosting.
 If you run the binary yourself: `./bin/ttc serve -dev`.
 
+`make run VERBOSE=1` (or `ttc serve -v`) logs every API call and inbound Webmention: host, method, path, status, time, and the start of the request body. Tokens are never logged.
+
 `make help` lists the other targets, including `token` to issue a fresh API token.
 Settings: `DB` (default `ttc.db`), `ADDR` (`:8080`), `DOMAIN` (`localhost`).
 

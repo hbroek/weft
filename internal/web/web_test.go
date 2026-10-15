@@ -1,10 +1,13 @@
 package web
 
 import (
+	"bytes"
 	"encoding/xml"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -100,5 +103,38 @@ func TestPublishAndFeed(t *testing.T) {
 	}
 	if w := do(s, "GET", host, "/posts/99", "", ""); w.Code != 404 {
 		t.Errorf("missing post: %d", w.Code)
+	}
+}
+
+func TestVerboseLogsAPICallsWithoutTokens(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	st, err := store.Open(filepath.Join(t.TempDir(), "v.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	tok, _ := st.AddUser("alice", "Alice", "")
+	s := New(Config{BaseDomain: "localhost", Verbose: true}, st)
+	if w := do(s, "POST", "alice.localhost:8080", "/api/posts", tok, `{"markdown":"hello logs"}`); w.Code != 201 {
+		t.Fatalf("post: %d", w.Code)
+	}
+	do(s, "GET", "alice.localhost:8080", "/api/timeline", "bad-token", "")
+	do(s, "GET", "alice.localhost:8080", "/feed.xml", "", "")
+	out := buf.String()
+	for _, want := range []string{"api alice.localhost:8080 POST /api/posts -> 201", `{"markdown":"hello logs"}`, "GET /api/timeline -> 401"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, tok) || strings.Contains(out, "bad-token") || strings.Contains(out, "/feed.xml") {
+		t.Errorf("log leaks a token or logs a non-API request:\n%s", out)
+	}
+	buf.Reset()
+	s2 := New(Config{BaseDomain: "localhost"}, st)
+	do(s2, "GET", "alice.localhost:8080", "/api/timeline", tok, "")
+	if buf.Len() != 0 {
+		t.Errorf("logging without -v: %s", buf.String())
 	}
 }

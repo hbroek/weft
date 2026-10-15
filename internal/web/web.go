@@ -2,12 +2,16 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/hbroek/text-thread-casting/internal/fetch"
 	"github.com/hbroek/text-thread-casting/internal/store"
@@ -22,6 +26,8 @@ type Config struct {
 	// AllowPrivate lets the server fetch feeds from loopback and private addresses.
 	// Needed for local development and tests; leave off when hosting.
 	AllowPrivate bool
+	// Verbose logs every API call (and inbound Webmention) with its status and timing.
+	Verbose bool
 }
 
 type Server struct {
@@ -83,7 +89,45 @@ func New(cfg Config, st *store.Store) *Server {
 	return s
 }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Verbose && (strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/webmention") {
+		s.logged(w, r)
+		return
+	}
+	s.mux.ServeHTTP(w, r)
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(c int) {
+	w.status = c
+	w.ResponseWriter.WriteHeader(c)
+}
+
+// logged serves r and logs one line: host, method, path, request body (cut short), status, time.
+// Tokens travel in the Authorization header, which is never logged.
+func (s *Server) logged(w http.ResponseWriter, r *http.Request) {
+	var body string
+	if r.Body != nil && r.Method != http.MethodGet {
+		b, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+		r.Body = io.NopCloser(bytes.NewReader(b))
+		body = strings.Join(strings.Fields(string(b)), " ")
+		if rs := []rune(body); len(rs) > 200 {
+			body = string(rs[:200]) + "…"
+		}
+	}
+	sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	start := time.Now()
+	s.mux.ServeHTTP(sw, r)
+	line := fmt.Sprintf("api %s %s %s -> %d (%s)", r.Host, r.Method, r.URL.RequestURI(), sw.status, time.Since(start).Round(time.Millisecond))
+	if body != "" {
+		line += " " + body
+	}
+	log.Print(line)
+}
 
 // hostUser extracts the user name from the Host header, or "" if it is not a user host.
 func (s *Server) hostUser(host string) string {
