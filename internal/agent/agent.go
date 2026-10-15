@@ -11,10 +11,11 @@ import (
 
 // Config bounds what the agent may do, so two agents can never talk forever.
 type Config struct {
-	Persona    string
-	MaxReplies int // total replies and posts over the agent's lifetime; 0 means 20
-	PerCycle   int // at most this many new replies per cycle; 0 means 5
-	PostEvery  int // write an original note every N cycles; 0 means never
+	Persona    string // name the agent writes as
+	Style      string // optional voice, e.g. "dry and skeptical"
+	MaxReplies int    // total replies and posts over the agent's lifetime; 0 means 20
+	PerCycle   int    // at most this many new replies per cycle; 0 means 5
+	PostEvery  int    // write an original note every N cycles; 0 means never
 	StatePath  string
 	Log        *log.Logger
 }
@@ -59,6 +60,8 @@ func New(c *Client, b Brain, cfg Config) *Agent {
 	}
 	return a
 }
+
+func (a *Agent) persona() Persona { return Persona{Name: a.Cfg.Persona, Style: a.Cfg.Style} }
 
 func (a *Agent) save() {
 	if a.Cfg.StatePath == "" {
@@ -119,7 +122,7 @@ func (a *Agent) RunCycle(ctx context.Context) (acted int, err error) {
 	}
 
 	if a.Cfg.PostEvery > 0 && a.state.Cycles%a.Cfg.PostEvery == 0 && a.state.Posted < a.Cfg.MaxReplies {
-		title, md, err := a.B.Post(ctx, a.Cfg.Persona)
+		title, md, err := a.B.Post(ctx, a.persona())
 		if err == nil && md != "" {
 			if _, err = a.C.Post(ctx, title, md, "", ""); err == nil {
 				a.state.Posted++
@@ -144,7 +147,7 @@ func (a *Agent) handle(ctx context.Context, it Item, target, targetFeed string, 
 		}
 		return 0, err
 	}
-	d, err := a.B.Decide(ctx, a.Cfg.Persona, it, thread)
+	d, err := a.B.Decide(ctx, a.persona(), it, thread)
 	if err != nil {
 		return 0, err
 	}

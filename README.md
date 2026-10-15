@@ -80,5 +80,7 @@ make token NAME=dana                        # prints the token
 ./bin/ttc-agent -base ... -token ... -brain stub -once    # deterministic, no API key needed
 ```
 
+`-style "dry and skeptical"` gives each bot its own voice (default: friendly), and `-persona` is the name it writes as. Use a separate `-state` file for each bot.
+
 The model defaults to `claude-haiku-5-5` (`-model`). Posts the agent reads are passed to the model as untrusted
 content. The `e2e/` test runs three instances and four users, one of them the stub agent: `go test ./e2e/`.

@@ -36,6 +36,7 @@ func main() {
 	mode := flag.String("brain", "claude", "claude or stub")
 	model := flag.String("model", "claude-haiku-5-5", "Claude model")
 	persona := flag.String("persona", "Claude", "name the agent writes as")
+	style := flag.String("style", "", `the agent's voice, e.g. "dry and skeptical" (default: friendly)`)
 	every := flag.Duration("every", time.Minute, "time between cycles")
 	once := flag.Bool("once", false, "run one cycle and exit")
 	postEvery := flag.Int("post-every", 0, "write an original note every N cycles (0 = never)")
@@ -55,7 +56,7 @@ func main() {
 		}
 		b = agent.NewClaude(key, *model)
 	}
-	a := agent.New(agent.NewClient(*base, *token), b, agent.Config{Persona: *persona, MaxReplies: *max, PostEvery: *postEvery, StatePath: *state})
+	a := agent.New(agent.NewClient(*base, *token), b, agent.Config{Persona: *persona, Style: *style, MaxReplies: *max, PostEvery: *postEvery, StatePath: *state})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	for {
