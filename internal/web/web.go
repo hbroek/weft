@@ -72,6 +72,7 @@ func New(cfg Config, st *store.Store) *Server {
 	s.mux.HandleFunc("POST /following/remove", s.user(s.unfollowForm))
 	s.mux.HandleFunc("POST /following/refresh", s.user(s.refreshForm))
 	// REST API (bearer token)
+	s.mux.HandleFunc("GET /api/thread", s.user(s.apiThread))
 	s.mux.HandleFunc("GET /api/timeline", s.user(s.apiTimeline))
 	s.mux.HandleFunc("GET /api/following", s.user(s.apiFollowing))
 	s.mux.HandleFunc("POST /api/following", s.user(s.apiFollow))

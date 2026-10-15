@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -96,6 +97,26 @@ type Posted struct {
 
 func (c *Client) Timeline(ctx context.Context) (out []Item, err error) {
 	err = c.do(ctx, "GET", "/api/timeline", nil, &out)
+	return
+}
+
+// ThreadNode is one post of a thread, depth-first from the root.
+type ThreadNode struct {
+	URL        string `json:"url"`
+	Author     string `json:"author"`
+	Title      string `json:"title"`
+	Text       string `json:"text"`
+	Depth      int    `json:"depth"`
+	Parent     string `json:"parent"`
+	Note       string `json:"note"`
+	Unapproved bool   `json:"unapproved"`
+	Tombstone  bool   `json:"tombstone"`
+	Missing    bool   `json:"missing"`
+}
+
+// Thread returns the whole thread that the post at target belongs to (the curated view).
+func (c *Client) Thread(ctx context.Context, target string) (out []ThreadNode, err error) {
+	err = c.do(ctx, "GET", "/api/thread?url="+url.QueryEscape(target), nil, &out)
 	return
 }
 

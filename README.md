@@ -67,7 +67,7 @@ The build is a single static binary (`CGO_ENABLED=0`). Dependencies: `goldmark`,
 
 `ttc-agent` is a separate program that participates as one user, through the public REST API and that user's
 bearer token only. It reacts to and replies to posts on its timeline, answers replies to its own posts once
-each, and can write an occasional note. A lifetime budget (`-max`, default 20) stops two bots from talking forever.
+each, and can write an occasional note. Before answering it reads the whole thread (`GET /api/thread?url=`) and gives the model the conversation, and it replies at most once per thread per cycle; if the thread cannot be read it waits for the next cycle. A lifetime budget (`-max`, default 20) stops two bots from talking forever.
 
 ```bash
 make token NAME=dana                        # prints the token

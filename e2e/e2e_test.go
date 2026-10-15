@@ -181,6 +181,11 @@ func TestRoundTripWithAgent(t *testing.T) {
 		t.Fatalf("alice's feed lacks the tallies:\n%s", feed)
 	}
 
+	// The agent can read the whole conversation from any post in it, root first.
+	if th, err := dana.Thread(ctx, root.URL); err != nil || len(th) != 3 || th[0].URL != root.URL || th[0].Depth != 0 || th[1].Depth != 1 {
+		t.Fatalf("thread for the agent: %+v err=%v", th, err)
+	}
+
 	// Alice answers Dana's reply; the agent notices a reply to its own post and answers back
 	// exactly once (a budget keeps two bots from talking forever).
 	dr := (func() agent.Reply { // Dana's own post is in her feed; reply to it from Alice

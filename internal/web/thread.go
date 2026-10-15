@@ -77,19 +77,22 @@ func (s *Server) thread(w http.ResponseWriter, r *http.Request, q *req) {
 	if r.URL.Query().Get("view") == "raw" {
 		view = "raw"
 	}
+	tree, root := s.buildThread(r, q, target, view)
+	d := s.data(r, q, "Thread")
+	d.Thread = &threadPage{Root: tree, View: view, RootURL: root, CuratedHref: threadHref(root, "curated"), RawHref: threadHref(root, "raw"), Count: countNodes(tree)}
+	s.show(w, "thread", http.StatusOK, d)
+}
+
+// buildThread resolves the thread that target belongs to and returns its tree and root URL.
+func (s *Server) buildThread(r *http.Request, q *req, target, view string) (*tnode, string) {
 	ctx, cancel := context.WithTimeout(r.Context(), threadTimeout)
 	defer cancel()
 	b := &threadBuilder{s: s, r: r, q: q, ctx: ctx, base: s.base(r), own: s.base(r) + "/feed.xml", feeds: map[string]*feed.Parsed{}}
 	root, rootFeed := b.resolveRoot(target)
-	var tree *tnode
 	if view == "raw" {
-		tree = b.raw(root, rootFeed)
-	} else {
-		tree = b.curated(root, rootFeed)
+		return b.raw(root, rootFeed), root
 	}
-	d := s.data(r, q, "Thread")
-	d.Thread = &threadPage{Root: tree, View: view, RootURL: root, CuratedHref: threadHref(root, "curated"), RawHref: threadHref(root, "raw"), Count: countNodes(tree)}
-	s.show(w, "thread", http.StatusOK, d)
+	return b.curated(root, rootFeed), root
 }
 
 func countNodes(n *tnode) int {

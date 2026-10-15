@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"sync"
@@ -30,6 +31,8 @@ type Agent struct {
 	Cfg   Config
 	mu    sync.Mutex
 	state state
+	// answered holds the thread roots replied to during the current cycle.
+	answered map[string]bool
 }
 
 func New(c *Client, b Brain, cfg Config) *Agent {
@@ -72,6 +75,7 @@ func (a *Agent) RunCycle(ctx context.Context) (acted int, err error) {
 	defer a.mu.Unlock()
 	defer a.save()
 	a.state.Cycles++
+	a.answered = map[string]bool{}
 	budget := a.Cfg.PerCycle
 
 	tl, err := a.C.Timeline(ctx)
@@ -130,9 +134,25 @@ func (a *Agent) RunCycle(ctx context.Context) (acted int, err error) {
 }
 
 func (a *Agent) handle(ctx context.Context, it Item, target, targetFeed string, budget *int) (acted int, err error) {
-	d, err := a.B.Decide(ctx, a.Cfg.Persona, it)
+	// Never answer a post without knowing the conversation it belongs to. If the thread cannot be
+	// read, leave the post unhandled so that the next cycle tries again.
+	thread, err := a.C.Thread(ctx, target)
+	if err != nil || len(thread) == 0 {
+		delete(a.state.Seen, target)
+		if err == nil {
+			err = errors.New("empty thread")
+		}
+		return 0, err
+	}
+	d, err := a.B.Decide(ctx, a.Cfg.Persona, it, thread)
 	if err != nil {
 		return 0, err
+	}
+	// One reply per conversation per cycle: the first reply may already change the discussion.
+	if root := thread[0].URL; a.answered[root] {
+		d.Reply = ""
+	} else if d.Reply != "" {
+		a.answered[root] = true
 	}
 	// Reactions need a feed to be tallied against; replies to a reply may not know one.
 	if d.Polarity != "" && targetFeed != "" {

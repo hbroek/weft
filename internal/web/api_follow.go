@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/hbroek/text-thread-casting/internal/feed"
 )
 
 type timelineJSON struct {
@@ -105,4 +107,46 @@ func (s *Server) apiUnfollow(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type threadNodeJSON struct {
+	URL        string `json:"url"`
+	Author     string `json:"author"`
+	Title      string `json:"title,omitempty"`
+	Text       string `json:"text"`
+	Depth      int    `json:"depth"`
+	Parent     string `json:"parent,omitempty"`
+	Note       string `json:"note,omitempty"`
+	Unapproved bool   `json:"unapproved,omitempty"`
+	Tombstone  bool   `json:"tombstone,omitempty"`
+	Missing    bool   `json:"missing,omitempty"`
+}
+
+// apiThread returns the thread a post belongs to as a flat, depth-first list starting at the root.
+// ?view=curated (default) or raw, as in the HTML thread page.
+func (s *Server) apiThread(w http.ResponseWriter, r *http.Request, q *req) {
+	if !s.apiAuth(w, r, q) {
+		return
+	}
+	target := httpURL(r.URL.Query().Get("url"))
+	if target == "" {
+		http.Error(w, "url parameter required", http.StatusBadRequest)
+		return
+	}
+	view := "curated"
+	if r.URL.Query().Get("view") == "raw" {
+		view = "raw"
+	}
+	tree, _ := s.buildThread(r, q, target, view)
+	out := []threadNodeJSON{}
+	var walk func(n *tnode, depth int, parent string)
+	walk = func(n *tnode, depth int, parent string) {
+		out = append(out, threadNodeJSON{URL: n.URL, Author: n.Author, Title: n.Title, Text: feed.StripHTML(string(n.HTML)),
+			Depth: depth, Parent: parent, Note: n.Note, Unapproved: n.Unapproved, Tombstone: n.Tombstone, Missing: n.Missing})
+		for _, c := range n.Children {
+			walk(c, depth+1, n.URL)
+		}
+	}
+	walk(tree, 0, "")
+	writeJSON(w, http.StatusOK, out)
 }
