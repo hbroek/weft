@@ -11,11 +11,16 @@ import (
 func TestSlug(t *testing.T) {
 	cases := []struct{ title, md, want string }{
 		{"My First Essay!", "ignored body", `^my-first-essay-[a-z0-9]{4}$`},
-		{"", "Just a *quick* note, see https://example.com/a/b for more", `^just-a-quick-note-see-for-[a-z0-9]{4}$`},
-		{"", "one two three four five six seven eight", `^one-two-three-four-five-six-[a-z0-9]{4}$`},
+		{"", "Just a *quick* note, see https://example.com/a/b for more", `^just-a-quick-note-see-for-more-[a-z0-9]{4}$`},
+		{"", "Coffee beats tea. Fight me, really.\n\nSecond paragraph.", `^coffee-beats-tea-[a-z0-9]{4}$`},
+		{"", "Read [this great post](https://x.org/p) today! More later", `^read-this-great-post-today-[a-z0-9]{4}$`},
+		{"", "Hi. Quick thought about feeds", `^hi-quick-thought-about-feeds-[a-z0-9]{4}$`},
+		{"", "# Heading line\n\nbody text", `^heading-line-[a-z0-9]{4}$`},
+		{"", "A short *note*. <script>x</script>", `^a-short-note-[a-z0-9]{4}$`},
+		{"", "one two three four five six seven eight nine ten", `^one-two-three-four-five-six-seven-eight-[a-z0-9]{4}$`},
 		{"", "日本語だけ 🎉", `^post-[a-z0-9]{4}$`},
 		{"", "2026", `^2026-[a-z0-9]{4}$`},
-		{"", strings.Repeat("abcdefghij ", 8), `^abcdefghij-abcdefghij-abcdefghij-[a-z0-9]{4}$`},
+		{"", strings.Repeat("abcdefghij ", 8), `^abcdefghij-abcdefghij-abcdefghij-abcdefghij-abcdefghij-[a-z0-9]{4}$`},
 	}
 	for _, c := range cases {
 		if got := Slug(c.title, c.md); !regexp.MustCompile(c.want).MatchString(got) {

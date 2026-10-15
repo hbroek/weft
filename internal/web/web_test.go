@@ -101,7 +101,7 @@ func TestPublishAndFeed(t *testing.T) {
 
 	// identity and address are separate: the guid is a UUID, the link a readable slug
 	if !regexp.MustCompile(`^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(note.GUID) ||
-		!regexp.MustCompile(`^http://alice\.localhost:8080/posts/a-short-note-script-x-script-[a-z0-9]{4}$`).MatchString(note.Link) {
+		!regexp.MustCompile(`^http://alice\.localhost:8080/posts/a-short-note-[a-z0-9]{4}$`).MatchString(note.Link) {
 		t.Errorf("guid %q link %q", note.GUID, note.Link)
 	}
 	pw := do(s, "GET", host, pathOf(note.Link), "", "")
