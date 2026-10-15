@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
@@ -35,6 +36,28 @@ func newInstance(t *testing.T, name string) *instance {
 	}
 	host := name + ".localhost:" + port
 	return &instance{s: s, host: host, base: "http://" + host, tok: tok}
+}
+
+// settle runs every instance's Webmention queues until nothing is left to do, so tests do not
+// depend on how many rounds a chain of notifications (including bubble-up) takes. It fails
+// if the queues never drain, which would mean a notification loop.
+func settle(ctx context.Context, insts ...*instance) {
+	for round := 0; round < 20; round++ {
+		for _, i := range insts {
+			i.s.ProcessQueues(ctx)
+		}
+		pending := 0
+		for _, i := range insts {
+			for _, dir := range []string{"out", "in"} {
+				q, _ := i.s.st.DueQueue(dir, 100)
+				pending += len(q)
+			}
+		}
+		if pending == 0 {
+			return
+		}
+	}
+	panic("webmention queues did not settle: notification loop?")
 }
 
 func (i *instance) call(t *testing.T, method, path, body string, want int) string {
@@ -77,8 +100,7 @@ func TestReplyRoundTripAcrossInstances(t *testing.T) {
 	if !strings.Contains(bob.get("/posts/1"), `class="u-in-reply-to" href="`+ua+`"`) {
 		t.Errorf("bob's permalink page must link to the parent")
 	}
-	bob.s.ProcessQueues(ctx)   // discovers Alice's endpoint, POSTs the Webmention
-	alice.s.ProcessQueues(ctx) // verifies Bob's page and feed
+	settle(ctx, alice, bob) // Bob's queue sends the Webmention; Alice's verifies his page and feed
 
 	// Alice does not follow Bob, so the reply waits for approval.
 	if r := alice.call(t, "GET", "/api/replies?status=pending", "", 200); !strings.Contains(r, ub1) {
@@ -93,7 +115,7 @@ func TestReplyRoundTripAcrossInstances(t *testing.T) {
 
 	alice.call(t, "POST", "/api/replies/1/status", `{"status":"approved"}`, 204)
 	rf := alice.get("/posts/1/replies.xml")
-	for _, want := range []string{`<tc:repliesTo href="` + ua + `">`, "<tc:depth>1</tc:depth>", "<title>The reader half</title>", `<tc:feed href="` + bob.base + `/feed.xml">`, `<tc:inReplyTo href="` + ua + `">`} {
+	for _, want := range []string{`<tc:repliesTo href="` + ua + `">`, "<tc:depth>2</tc:depth>", "<title>The reader half</title>", `<tc:feed href="` + bob.base + `/feed.xml">`, `<tc:inReplyTo href="` + ua + `">`} {
 		if !strings.Contains(rf, want) {
 			t.Errorf("replies feed lacks %s:\n%s", want, rf)
 		}
@@ -112,32 +134,30 @@ func TestReplyRoundTripAcrossInstances(t *testing.T) {
 
 	// A reply from a followed author is approved automatically.
 	ub2 := bob.post(t, `{"markdown":"Second thought.","in_reply_to":"`+ua+`"}`)
-	bob.s.ProcessQueues(ctx)
-	alice.s.ProcessQueues(ctx)
+	settle(ctx, alice, bob)
 	if !strings.Contains(alice.get("/posts/1/replies.xml"), "Second thought.") {
 		t.Fatalf("followed author's reply should be auto-approved")
 	}
 
 	// Editing re-notifies; the reply text updates in place.
 	bob.call(t, "PUT", "/api/posts/2", `{"markdown":"Second thought, edited.","in_reply_to":"`+ua+`"}`, 200)
-	bob.s.ProcessQueues(ctx)
-	alice.s.ProcessQueues(ctx)
-	if rf := alice.get("/posts/1/replies.xml"); !strings.Contains(rf, "edited.") || strings.Count(rf, "<item>") != 2 {
+	settle(ctx, alice, bob)
+	if rf := alice.get("/posts/1/replies.xml"); !strings.Contains(rf, "edited.") || strings.Count(rf, "<item>") != 3 {
 		t.Errorf("edit not reflected:\n%s", rf)
 	}
 
 	// Deleting sends a Webmention; the source now answers 410 and the reply is removed.
 	bob.call(t, "DELETE", "/api/posts/2", "", 204)
-	bob.s.ProcessQueues(ctx)
-	alice.s.ProcessQueues(ctx)
-	if rf := alice.get("/posts/1/replies.xml"); strings.Contains(rf, ub2) || strings.Count(rf, "<item>") != 1 {
+	settle(ctx, alice, bob)
+	// two items remain: Bob's first reply, and Alice's own reply to it, cached one level down
+	if rf := alice.get("/posts/1/replies.xml"); strings.Contains(rf, ub2) || strings.Count(rf, "<item>") != 2 {
 		t.Errorf("deleted reply still listed:\n%s", rf)
 	}
 
 	// Un-approving hides a reply again without deleting it.
 	alice.call(t, "POST", "/api/replies/1/status", `{"status":"rejected"}`, 204)
-	if strings.Contains(alice.get("/posts/1/replies.xml"), "<item>") {
-		t.Errorf("rejected reply still listed")
+	if rf := alice.get("/posts/1/replies.xml"); strings.Contains(rf, "<item>") {
+		t.Errorf("rejected reply (and the subtree under it) still listed:\n%s", rf)
 	}
 }
 

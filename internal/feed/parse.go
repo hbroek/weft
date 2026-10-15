@@ -28,7 +28,9 @@ type ParsedItem struct {
 	Root, RootFeed    string // tc:root
 	// tc:reactionOf: set when the item is a reaction rather than a post.
 	ReactionOf, Polarity, Emoji string
-	Plus, Minus                 int // tc:reactions tally
+	Plus, Minus                 int    // tc:reactions tally
+	RepliesHref                 string // tc:replies href: where this item's approved replies are published
+	FeedHref, FeedName          string // tc:feed: the author's feed and display name (replies feeds)
 }
 
 // plainLinks collects <link> elements. encoding/xml matches an unqualified name in any
@@ -77,6 +79,13 @@ type xmlParsed struct {
 				Polarity string `xml:"polarity,attr"`
 				Emoji    string `xml:"emoji,attr"`
 			} `xml:"https://example.org/ns/textcast/0.1 reactionOf"`
+			Replies struct {
+				Href string `xml:"href,attr"`
+			} `xml:"https://example.org/ns/textcast/0.1 replies"`
+			Feed struct {
+				Href string `xml:"href,attr"`
+				Name string `xml:",chardata"`
+			} `xml:"https://example.org/ns/textcast/0.1 feed"`
 			Reactions struct {
 				Plus  int `xml:"plus,attr"`
 				Minus int `xml:"minus,attr"`
@@ -137,7 +146,8 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 			InReplyTo: strings.TrimSpace(it.InReplyTo.Href), InReplyToFeed: strings.TrimSpace(it.InReplyTo.Feed),
 			Root: strings.TrimSpace(it.Root.Href), RootFeed: strings.TrimSpace(it.Root.Feed),
 			ReactionOf: strings.TrimSpace(it.ReactionOf.Href), Polarity: strings.TrimSpace(it.ReactionOf.Polarity),
-			Emoji: strings.TrimSpace(it.ReactionOf.Emoji), Plus: max(it.Reactions.Plus, 0), Minus: max(it.Reactions.Minus, 0),
+			Emoji: strings.TrimSpace(it.ReactionOf.Emoji), RepliesHref: strings.TrimSpace(it.Replies.Href),
+			FeedHref: strings.TrimSpace(it.Feed.Href), FeedName: strings.TrimSpace(it.Feed.Name), Plus: max(it.Reactions.Plus, 0), Minus: max(it.Reactions.Minus, 0),
 		}
 		if pi.GUID == "" {
 			pi.GUID = pi.Link

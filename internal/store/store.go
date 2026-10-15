@@ -91,6 +91,21 @@ CREATE TABLE IF NOT EXISTS replies (
   updated INTEGER,
   status TEXT NOT NULL,
   received INTEGER NOT NULL,
+  root TEXT NOT NULL DEFAULT '',
+  replies_href TEXT NOT NULL DEFAULT '',
+  UNIQUE(post_id, source)
+);
+CREATE TABLE IF NOT EXISTS subreplies (
+  id INTEGER PRIMARY KEY,
+  post_id INTEGER NOT NULL REFERENCES posts(id),
+  via TEXT NOT NULL,
+  parent TEXT NOT NULL,
+  source TEXT NOT NULL,
+  feed_url TEXT NOT NULL DEFAULT '',
+  author TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  text TEXT NOT NULL DEFAULT '',
+  published INTEGER NOT NULL,
   UNIQUE(post_id, source)
 );
 CREATE TABLE IF NOT EXISTS reactions (
@@ -180,6 +195,9 @@ func Open(path string) (*Store, error) {
 	}
 	for _, c := range []string{"in_reply_to_feed", "root", "root_feed"} {
 		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
+	}
+	for _, c := range []string{"root", "replies_href"} {
+		db.Exec(`ALTER TABLE replies ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 	}
 	for _, c := range []string{"plus", "minus"} {
 		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` INTEGER NOT NULL DEFAULT 0`)

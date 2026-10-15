@@ -57,11 +57,14 @@ Reply composer (`tc:inReplyTo`, `tc:root`, `tc:context` as URL). On publish, sen
 ### 5. Reactions (done)
 `tc:reactionOf` items in a separate reactions feed (`tc:likesFeed`), sent by Webmention, tallied at the parent. + and - buttons (shown as 👍 and 👎) plus an optional emoji picker in the UI. Test: a cross-instance reaction is counted, and removing it (410) lowers the count.
 
-### 6. Threads, moderation, bubble-up
+### 6. Threads, bubble-up, orphans
 Thread view built from `tc:root` and `tc:inReplyTo`. Curated and raw views, with unapprove and re-approve. Bubble-up Webmention to ancestors. Orphan handling (rejected, offline, deleted). Edit and delete re-notify.
 
 ### 7. Agent and end-to-end scenario
 `ttc-agent`: poll followed feeds through the public API, pick posts to react to or reply to, use the Claude API for the text, and post as its user. A stub mode gives deterministic output. The `e2e/` test starts three instances with four users, one of them an agent, and runs the scenario in the Goal. Assertions cover feeds, replies feeds, reaction counts and the thread view.
+
+### Optional: vouching (web of trust)
+Not scheduled. A stranger who replies or reacts counts as vouched for when feeds you follow list them in their public `following.opml` (matched by feed URL or homepage link). Fetch and cache each followee's OPML on refresh; the vouch count is how many of your followees follow the stranger, two hops at most. Candidate uses: show "followed by alice, carol" in the replies queue, and count strangers vouched by at least 2 followees in the reaction tally. Replies stay auto-approved only for direct follows. Unlike the Webmention Vouch extension, this is computed entirely by the receiver.
 
 ### 8. Later
 Generated context snippets for non-textcast parents. Atom input. WebSub. Packaging and a hosted-environment signup. License.

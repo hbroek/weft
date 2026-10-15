@@ -35,33 +35,85 @@ type Reply struct {
 	ID, PostID                           int64
 	Source, FeedURL, Author, Title, Text string
 	Markdown, Status                     string
+	Root, RepliesHref                    string
 	Published, Received                  time.Time
 	Updated                              *time.Time
 }
 
 // UpsertReply stores or refreshes a reply. A new reply gets r.Status; an existing one keeps
-// its status, except that pending is promoted to approved when r.Status says so.
-func (s *Store) UpsertReply(r Reply) error {
+// its status, except that pending is promoted to approved when r.Status says so. changed
+// reports whether anything a reader would see differs from what was stored before.
+func (s *Store) UpsertReply(r Reply) (changed bool, err error) {
+	prior, err := s.ReplyBySource(r.PostID, r.Source)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return false, err
+	}
 	var upd any
 	if r.Updated != nil {
 		upd = r.Updated.Unix()
 	}
-	_, err := s.db.Exec(`INSERT INTO replies(post_id,source,feed_url,author,title,text,markdown,published,updated,status,received)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?)
+	_, err = s.db.Exec(`INSERT INTO replies(post_id,source,feed_url,author,title,text,markdown,published,updated,status,received,root,replies_href)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(post_id,source) DO UPDATE SET feed_url=excluded.feed_url, author=excluded.author, title=excluded.title,
 		  text=excluded.text, markdown=excluded.markdown, published=excluded.published, updated=excluded.updated,
+		  root=excluded.root, replies_href=excluded.replies_href,
 		  status=CASE WHEN replies.status='pending' THEN excluded.status ELSE replies.status END`,
-		r.PostID, r.Source, r.FeedURL, r.Author, r.Title, r.Text, r.Markdown, r.Published.Unix(), upd, r.Status, time.Now().Unix())
-	return err
+		r.PostID, r.Source, r.FeedURL, r.Author, r.Title, r.Text, r.Markdown, r.Published.Unix(), upd, r.Status, time.Now().Unix(),
+		r.Root, r.RepliesHref)
+	if err != nil {
+		return false, err
+	}
+	if prior == nil {
+		return true, nil
+	}
+	same := prior.FeedURL == r.FeedURL && prior.Author == r.Author && prior.Title == r.Title && prior.Text == r.Text &&
+		prior.Markdown == r.Markdown && prior.Published.Unix() == r.Published.Unix() && prior.Root == r.Root &&
+		prior.RepliesHref == r.RepliesHref && sameTime(prior.Updated, r.Updated) &&
+		!(prior.Status == StatusPending && r.Status == StatusApproved)
+	return !same, nil
 }
 
-// DeleteReply removes a reply whose source has gone away or no longer replies.
-func (s *Store) DeleteReply(postID int64, source string) error {
-	_, err := s.db.Exec(`DELETE FROM replies WHERE post_id=? AND source=?`, postID, source)
-	return err
+func sameTime(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Unix() == b.Unix()
 }
 
-const replyCols = `id,post_id,source,feed_url,author,title,text,markdown,published,updated,status,received`
+// ReplyBySource finds the reply to a post that came from source.
+func (s *Store) ReplyBySource(postID int64, source string) (*Reply, error) {
+	rows, err := s.db.Query(`SELECT `+replyCols+` FROM replies WHERE post_id=? AND source=?`, postID, source)
+	if err != nil {
+		return nil, err
+	}
+	rs, err := scanReplies(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(rs) == 0 {
+		return nil, ErrNotFound
+	}
+	return &rs[0], nil
+}
+
+// DeleteReply removes a reply whose source has gone away or no longer replies, together with
+// the subtree cached under it. It returns the removed reply, or nil if there was none.
+func (s *Store) DeleteReply(postID int64, source string) (*Reply, error) {
+	prior, err := s.ReplyBySource(postID, source)
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.db.Exec(`DELETE FROM replies WHERE post_id=? AND source=?`, postID, source); err != nil {
+		return nil, err
+	}
+	_, err = s.db.Exec(`DELETE FROM subreplies WHERE post_id=? AND via=?`, postID, source)
+	return prior, err
+}
+
+const replyCols = `id,post_id,source,feed_url,author,title,text,markdown,published,updated,status,received,root,replies_href`
 
 func scanReplies(rows *sql.Rows) ([]Reply, error) {
 	defer rows.Close()
@@ -70,7 +122,7 @@ func scanReplies(rows *sql.Rows) ([]Reply, error) {
 		var r Reply
 		var pub, rec int64
 		var upd *int64
-		if err := rows.Scan(&r.ID, &r.PostID, &r.Source, &r.FeedURL, &r.Author, &r.Title, &r.Text, &r.Markdown, &pub, &upd, &r.Status, &rec); err != nil {
+		if err := rows.Scan(&r.ID, &r.PostID, &r.Source, &r.FeedURL, &r.Author, &r.Title, &r.Text, &r.Markdown, &pub, &upd, &r.Status, &rec, &r.Root, &r.RepliesHref); err != nil {
 			return nil, err
 		}
 		r.Published, r.Received = time.Unix(pub, 0), time.Unix(rec, 0)
@@ -94,7 +146,7 @@ func (s *Store) RepliesFor(postID int64, status string) ([]Reply, error) {
 
 // RepliesForUser lists all replies to a user's posts, newest first (for moderation).
 func (s *Store) RepliesForUser(userID int64, status string) ([]Reply, error) {
-	q := `SELECT r.id,r.post_id,r.source,r.feed_url,r.author,r.title,r.text,r.markdown,r.published,r.updated,r.status,r.received
+	q := `SELECT r.id,r.post_id,r.source,r.feed_url,r.author,r.title,r.text,r.markdown,r.published,r.updated,r.status,r.received,r.root,r.replies_href
 		FROM replies r JOIN posts p ON p.id=r.post_id WHERE p.user_id=?`
 	args := []any{userID}
 	if status != "" {
@@ -108,19 +160,21 @@ func (s *Store) RepliesForUser(userID int64, status string) ([]Reply, error) {
 	return scanReplies(rows)
 }
 
-// SetReplyStatus changes a reply's moderation status; it must belong to one of the user's posts.
-func (s *Store) SetReplyStatus(userID, replyID int64, status string) error {
+// SetReplyStatus changes a reply's moderation status and returns the id of the post it belongs
+// to. The reply must belong to one of the user's posts.
+func (s *Store) SetReplyStatus(userID, replyID int64, status string) (postID int64, err error) {
 	if status != StatusApproved && status != StatusRejected && status != StatusPending {
-		return ErrInvalid
+		return 0, ErrInvalid
 	}
-	res, err := s.db.Exec(`UPDATE replies SET status=? WHERE id=? AND post_id IN (SELECT id FROM posts WHERE user_id=?)`, status, replyID, userID)
+	err = s.db.QueryRow(`SELECT r.post_id FROM replies r JOIN posts p ON p.id=r.post_id WHERE r.id=? AND p.user_id=?`, replyID, userID).Scan(&postID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	_, err = s.db.Exec(`UPDATE replies SET status=? WHERE id=?`, status, replyID)
+	return postID, err
 }
 
 // ApprovedCounts maps post id to its number of approved replies.
@@ -196,4 +250,80 @@ func (s *Store) RetryQueue(id int64, delay time.Duration, maxAttempts int64, not
 	_, err := s.db.Exec(`UPDATE wm_queue SET attempts=attempts+1, note=?, next_try=?,
 		done=CASE WHEN attempts+1>=? THEN 1 ELSE 0 END WHERE id=?`, note, time.Now().Add(delay).Unix(), maxAttempts, id)
 	return err
+}
+
+// ---- Cached second-level replies (the replies feed's depth) ----
+
+// Subreply is an approved reply to one of a post's replies, as reported by that reply's own
+// replies feed. via is the direct reply it was learned through.
+type Subreply struct {
+	PostID                               int64
+	Via, Parent, Source, FeedURL, Author string
+	Title, Text                          string
+	Published                            time.Time
+}
+
+// ReplaceSubreplies swaps the cached subtree under a direct reply. changed reports whether
+// the set differs from before.
+func (s *Store) ReplaceSubreplies(postID int64, via string, rows []Subreply) (changed bool, err error) {
+	old, err := s.subreplies(`WHERE post_id=? AND via=?`, postID, via)
+	if err != nil {
+		return false, err
+	}
+	changed = len(old) != len(rows)
+	if !changed {
+		byKey := map[string]Subreply{}
+		for _, o := range old {
+			byKey[o.Source] = o
+		}
+		for _, n := range rows {
+			o, ok := byKey[n.Source]
+			if !ok || o.Text != n.Text || o.Title != n.Title || o.Author != n.Author || o.Parent != n.Parent {
+				changed = true
+				break
+			}
+		}
+	}
+	if !changed {
+		return false, nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM subreplies WHERE post_id=? AND via=?`, postID, via); err != nil {
+		return false, err
+	}
+	for _, r := range rows {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO subreplies(post_id,via,parent,source,feed_url,author,title,text,published) VALUES(?,?,?,?,?,?,?,?,?)`,
+			postID, via, r.Parent, r.Source, r.FeedURL, r.Author, r.Title, r.Text, r.Published.Unix()); err != nil {
+			return false, err
+		}
+	}
+	return true, tx.Commit()
+}
+
+// SubrepliesFor returns all cached second-level replies for a post, oldest first.
+func (s *Store) SubrepliesFor(postID int64) ([]Subreply, error) {
+	return s.subreplies(`WHERE post_id=?`, postID)
+}
+
+func (s *Store) subreplies(where string, args ...any) ([]Subreply, error) {
+	rows, err := s.db.Query(`SELECT post_id,via,parent,source,feed_url,author,title,text,published FROM subreplies `+where+` ORDER BY published, id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Subreply
+	for rows.Next() {
+		var r Subreply
+		var pub int64
+		if err := rows.Scan(&r.PostID, &r.Via, &r.Parent, &r.Source, &r.FeedURL, &r.Author, &r.Title, &r.Text, &pub); err != nil {
+			return nil, err
+		}
+		r.Published = time.Unix(pub, 0)
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }

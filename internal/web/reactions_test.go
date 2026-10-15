@@ -28,8 +28,7 @@ func TestReactionRoundTripAcrossInstances(t *testing.T) {
 	if !strings.Contains(page, `class="u-like-of" href="`+ua+`"`) || !strings.Contains(page, bob.base+"/reactions.xml") {
 		t.Errorf("reaction page lacks the like-of link or reactions feed link:\n%s", page)
 	}
-	bob.s.ProcessQueues(ctx)
-	alice.s.ProcessQueues(ctx)
+	settle(ctx, alice, bob)
 
 	// Alice does not follow Bob: the reaction is verified but not in the public tally.
 	got := alice.call(t, "GET", "/api/reactions/received?post_id=1", "", 200)
@@ -49,8 +48,7 @@ func TestReactionRoundTripAcrossInstances(t *testing.T) {
 	if rf := bob.get("/reactions.xml"); !strings.Contains(rf, `polarity="-" emoji="😕"`) || !strings.Contains(rf, "<tc:updated>") || strings.Count(rf, "<item>") != 1 {
 		t.Errorf("edited reaction:\n%s", rf)
 	}
-	bob.s.ProcessQueues(ctx)
-	alice.s.ProcessQueues(ctx)
+	settle(ctx, alice, bob)
 	f := alice.get("/feed.xml")
 	if !strings.Contains(f, `<tc:reactions plus="0" minus="1">`) || !strings.Contains(f, `<tc:emoji value="😕" count="1">`) {
 		t.Errorf("tally after change:\n%s", f)
@@ -87,8 +85,7 @@ func TestReactionRoundTripAcrossInstances(t *testing.T) {
 	if strings.Contains(bob.get("/reactions.xml"), "<item>") {
 		t.Errorf("removed reaction still in feed")
 	}
-	bob.s.ProcessQueues(ctx)
-	alice.s.ProcessQueues(ctx)
+	settle(ctx, alice, bob)
 	if got := alice.call(t, "GET", "/api/reactions/received?post_id=1", "", 200); strings.TrimSpace(got) != "[]" {
 		t.Errorf("removed reaction still received: %s", got)
 	}

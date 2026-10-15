@@ -39,6 +39,12 @@ type Context struct {
 	Retrieved string `xml:"retrieved,attr,omitempty"`
 }
 
+// FeedRef is tc:feed: who wrote an item, by feed URL, with an optional display name as text.
+type FeedRef struct {
+	Href string `xml:"href,attr"`
+	Name string `xml:",chardata"`
+}
+
 // ReactionRef is tc:reactionOf: the item is a reaction to the post at Href. Polarity is "+" or "-";
 // Emoji is optional nuance.
 type ReactionRef struct {
@@ -99,7 +105,7 @@ type Item struct {
 	Replies     *Replies     `xml:"tc:replies"`
 	ReactionOf  *ReactionRef `xml:"tc:reactionOf"`
 	Reactions   *Reactions   `xml:"tc:reactions"`
-	Feed        *Ref         `xml:"tc:feed"`
+	Feed        *FeedRef     `xml:"tc:feed"`
 }
 
 func New(c Channel) *RSS {

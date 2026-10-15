@@ -82,17 +82,31 @@ func (s *Server) repliesFeed(w http.ResponseWriter, r *http.Request, q *req) {
 	ch := feed.Channel{
 		Title: "Replies to: " + name, Link: purl, Description: "Approved replies",
 		Self:      feed.AtomLink{Href: purl + "/replies.xml", Rel: "self", Type: "application/rss+xml"},
-		RepliesTo: &feed.Ref{Href: purl}, Depth: 1,
+		RepliesTo: &feed.Ref{Href: purl}, Depth: 2,
 	}
 	last := p.Created
 	for _, rp := range replies {
 		it := feed.Item{Title: rp.Title, GUID: feed.GUID{IsPermaLink: true, Value: rp.Source}, Link: rp.Source,
 			Description: excerpt(rp.Text), PubDate: feed.RFC822(rp.Published),
-			Feed: &feed.Ref{Href: rp.FeedURL}, InReplyTo: &feed.Ref{Href: purl}}
+			Feed: &feed.FeedRef{Href: rp.FeedURL, Name: rp.Author}, InReplyTo: &feed.Ref{Href: purl}}
 		ch.Items = append(ch.Items, it)
 		if rp.Received.After(last) {
 			last = rp.Received
 		}
+	}
+	// second level: approved replies to the approved replies, as those replies' feeds report them
+	subs, _ := s.st.SubrepliesFor(id)
+	approved := map[string]bool{}
+	for _, rp := range replies {
+		approved[rp.Source] = true
+	}
+	for _, sr := range subs {
+		if !approved[sr.Via] {
+			continue
+		}
+		ch.Items = append(ch.Items, feed.Item{Title: sr.Title, GUID: feed.GUID{IsPermaLink: true, Value: sr.Source}, Link: sr.Source,
+			Description: excerpt(sr.Text), PubDate: feed.RFC822(sr.Published),
+			Feed: &feed.FeedRef{Href: sr.FeedURL, Name: sr.Author}, InReplyTo: &feed.Ref{Href: sr.Parent}})
 	}
 	ch.LastBuildDate = feed.RFC822(last)
 	b, err := feed.New(ch).Marshal()
@@ -135,10 +149,12 @@ func (s *Server) moderateForm(w http.ResponseWriter, r *http.Request, q *req) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := s.st.SetReplyStatus(q.host.ID, id, r.FormValue("status")); err != nil {
+	postID, err := s.st.SetReplyStatus(q.host.ID, id, r.FormValue("status"))
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	s.bubble(q.host.ID, postID, s.postURL(r, postID))
 	http.Redirect(w, r, "/replies", http.StatusSeeOther)
 }
 
@@ -188,9 +204,11 @@ func (s *Server) apiModerate(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if err := s.st.SetReplyStatus(q.host.ID, id, in.Status); err != nil {
+	postID, err := s.st.SetReplyStatus(q.host.ID, id, in.Status)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	s.bubble(q.host.ID, postID, s.postURL(r, postID))
 	w.WriteHeader(http.StatusNoContent)
 }

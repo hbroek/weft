@@ -186,13 +186,13 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 	page, err := s.web.Get(ctx, it.Source)
 	if err != nil {
 		if fetch.IsGone(err) { // the sender deleted their reply or reaction
-			s.dropMention(postID, it.Source)
+			s.dropMention(host.ID, postID, it.Target, it.Source)
 			return "source gone; removed", false
 		}
 		return err.Error(), true
 	}
 	if body := string(page.Body); !strings.Contains(body, it.Target) && !strings.Contains(body, html.EscapeString(it.Target)) {
-		s.dropMention(postID, it.Source)
+		s.dropMention(host.ID, postID, it.Target, it.Source)
 		return "source does not link to target", false
 	}
 	feedURL, ok := fetch.FindFeedLink(page.Body, page.URL)
@@ -221,13 +221,19 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 			status = store.StatusApproved
 		}
 		r := store.Reply{PostID: postID, Source: it.Source, FeedURL: fr.URL, Author: parsed.Title, Title: item.Title,
-			Text: item.Text, Markdown: item.Markdown, Published: item.Published, Status: status}
+			Text: item.Text, Markdown: item.Markdown, Published: item.Published, Status: status,
+			Root: item.Root, RepliesHref: item.RepliesHref}
 		if !item.Updated.IsZero() {
 			r.Updated = &item.Updated
 		}
 		s.st.DeleteReactionIn(postID, it.Source)
-		if err := s.st.UpsertReply(r); err != nil {
+		changed, err := s.st.UpsertReply(r)
+		if err != nil {
 			return err.Error(), true
+		}
+		subChanged := s.refreshSubtree(ctx, postID, it.Source, item.RepliesHref)
+		if cur, err := s.st.ReplyBySource(postID, it.Source); err == nil && cur.Status == store.StatusApproved && (changed || subChanged) {
+			s.bubble(host.ID, postID, it.Target)
 		}
 		return "reply " + status, false
 	case item != nil && item.ReactionOf == it.Target && (item.Polarity == store.Plus || item.Polarity == store.Minus):
@@ -235,20 +241,72 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 		if emoji == "" || !validEmoji(emoji) {
 			emoji = store.DefaultEmoji(item.Polarity)
 		}
-		s.st.DeleteReply(postID, it.Source)
+		s.dropReply(host.ID, postID, it.Target, it.Source)
 		if err := s.st.UpsertReactionIn(store.ReactionIn{PostID: postID, Source: it.Source, FeedURL: fr.URL,
 			Author: parsed.Title, Polarity: item.Polarity, Emoji: emoji, Trusted: trusted}); err != nil {
 			return err.Error(), true
 		}
 		return "reaction recorded", false
 	default:
-		s.dropMention(postID, it.Source)
+		s.dropMention(host.ID, postID, it.Target, it.Source)
 		return "plain mention: source is neither a reply nor a reaction to target", false
 	}
 }
 
 // dropMention forgets any reply or reaction previously recorded from source.
-func (s *Server) dropMention(postID int64, source string) {
-	s.st.DeleteReply(postID, source)
+func (s *Server) dropMention(userID, postID int64, target, source string) {
+	s.dropReply(userID, postID, target, source)
 	s.st.DeleteReactionIn(postID, source)
+}
+
+// dropReply removes a stored reply and, if it had been visible, tells the post's own parent.
+func (s *Server) dropReply(userID, postID int64, target, source string) {
+	if prior, _ := s.st.DeleteReply(postID, source); prior != nil && prior.Status == store.StatusApproved {
+		s.bubble(userID, postID, target)
+	}
+}
+
+// bubble is the spec's "bubble up": when the replies under a post that is itself a reply
+// change, re-send that post's Webmention to its parent so the parent refreshes its cached
+// subtree. It stops by itself at the root (a post that replies to nothing) and, because it
+// only fires on real changes, any cycle of replies settles.
+func (s *Server) bubble(userID, postID int64, postURL string) {
+	if p, err := s.st.Post(userID, postID); err == nil && p.InReplyTo != "" && !p.Deleted {
+		s.notify(postURL, p.InReplyTo)
+	}
+}
+
+// maxSubreplies bounds how much of a child's replies feed is cached.
+const maxSubreplies = 50
+
+// refreshSubtree re-reads a direct reply's own replies feed and caches the approved replies
+// to it (the second level of this post's replies feed). It reports whether the cache changed.
+// A feed that cannot be fetched leaves the cache as it was.
+func (s *Server) refreshSubtree(ctx context.Context, postID int64, via, repliesHref string) bool {
+	if repliesHref == "" {
+		changed, _ := s.st.ReplaceSubreplies(postID, via, nil)
+		return changed
+	}
+	res, err := s.web.Get(ctx, repliesHref)
+	if err != nil {
+		return false
+	}
+	parsed, err := feed.Parse(res.Body, time.Now())
+	if err != nil {
+		return false
+	}
+	var rows []store.Subreply
+	for _, it := range parsed.Items {
+		if it.InReplyTo != via || len(rows) >= maxSubreplies {
+			continue // only the direct children of via: two levels in total
+		}
+		author := it.FeedName
+		if author == "" {
+			author = it.FeedHref
+		}
+		rows = append(rows, store.Subreply{PostID: postID, Via: via, Parent: via, Source: it.GUID, FeedURL: it.FeedHref,
+			Author: author, Title: it.Title, Text: it.Text, Published: it.Published})
+	}
+	changed, _ := s.st.ReplaceSubreplies(postID, via, rows)
+	return changed
 }
