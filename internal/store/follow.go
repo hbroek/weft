@@ -101,9 +101,9 @@ func (s *Store) SaveFeed(feedURL string, p *feed.Parsed) error {
 		if !it.Updated.IsZero() {
 			upd = it.Updated.Unix()
 		}
-		if _, err := tx.Exec(`INSERT OR REPLACE INTO items(feed_url,guid,link,title,text,markdown,published,updated,in_reply_to,in_reply_to_feed,root,root_feed,plus,minus)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, feedURL, it.GUID, it.Link, it.Title, it.Text, it.Markdown,
-			it.Published.Unix(), upd, it.InReplyTo, it.InReplyToFeed, it.Root, it.RootFeed, it.Plus, it.Minus); err != nil {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO items(feed_url,guid,link,title,text,markdown,published,updated,in_reply_to,in_reply_to_feed,root,root_feed,plus,minus,replies_href)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, feedURL, it.GUID, it.Link, it.Title, it.Text, it.Markdown,
+			it.Published.Unix(), upd, it.InReplyTo, it.InReplyToFeed, it.Root, it.RootFeed, it.Plus, it.Minus, it.RepliesHref); err != nil {
 			return err
 		}
 	}
@@ -125,14 +125,16 @@ type TimelineItem struct {
 	Updated            *time.Time
 	InReplyTo          string
 	Plus, Minus        int // the author's published reaction tally, if any
+	RepliesHref        string
+	Root               string
 }
 
-// Timeline returns items from the feeds the user follows, newest first.
-func (s *Store) Timeline(userID int64, limit int) ([]TimelineItem, error) {
-	rows, err := s.db.Query(`SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.plus, i.minus
+const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.plus, i.minus, i.replies_href, i.root
 		FROM items i JOIN follows f ON f.feed_url=i.feed_url AND f.user_id=?
-		LEFT JOIN feeds d ON d.url=i.feed_url
-		ORDER BY i.published DESC, i.guid LIMIT ?`, userID, limit)
+		LEFT JOIN feeds d ON d.url=i.feed_url `
+
+func (s *Store) queryTimeline(q string, args ...any) ([]TimelineItem, error) {
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +144,7 @@ func (s *Store) Timeline(userID int64, limit int) ([]TimelineItem, error) {
 		var t TimelineItem
 		var pub int64
 		var upd *int64
-		if err := rows.Scan(&t.FeedURL, &t.FeedTitle, &t.GUID, &t.Link, &t.Title, &t.Text, &t.Markdown, &pub, &upd, &t.InReplyTo, &t.Plus, &t.Minus); err != nil {
+		if err := rows.Scan(&t.FeedURL, &t.FeedTitle, &t.GUID, &t.Link, &t.Title, &t.Text, &t.Markdown, &pub, &upd, &t.InReplyTo, &t.Plus, &t.Minus, &t.RepliesHref, &t.Root); err != nil {
 			return nil, err
 		}
 		t.Published = time.Unix(pub, 0)
@@ -153,4 +155,15 @@ func (s *Store) Timeline(userID int64, limit int) ([]TimelineItem, error) {
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// Timeline returns items from the feeds the user follows, newest first.
+func (s *Store) Timeline(userID int64, limit int) ([]TimelineItem, error) {
+	return s.queryTimeline(timelineSelect+`ORDER BY i.published DESC, i.guid LIMIT ?`, userID, limit)
+}
+
+// ItemsInThread returns cached items from followed feeds that belong to the thread rooted at root
+// (including the root itself).
+func (s *Store) ItemsInThread(userID int64, root string) ([]TimelineItem, error) {
+	return s.queryTimeline(timelineSelect+`WHERE i.root=? OR i.guid=? ORDER BY i.published, i.guid LIMIT 300`, userID, root, root)
 }

@@ -134,11 +134,13 @@ Each `<item>` is a reference to a reply, not a full copy:
 
 - `<guid>` and `<link>`: the reply's permalink.
 - `<description>`: a short excerpt for display.
-- `<author>` or `<tc:feed href="…"/>`: who wrote it, by feed URL.
+- `<author>` or `<tc:feed href="…">Display name</tc:feed>`: who wrote it, by feed URL. The element text is an optional display name.
 - `<tc:inReplyTo>`: the reply's parent. Required when `tc:depth` is greater than 1, so deeper items can be placed in the tree.
 - `<tc:reactions plus="…" minus="…"/>`: the reply's reaction tally, if known.
 
 ### Cached subtrees
+
+A replies feed fills its second level from the replies feeds of its own replies. Reference implementation: it caches one level below each approved reply (`tc:depth` of 2) and keeps it fresh with the bubble-up rule below, so the cache only changes when a real change was reported. Deeper levels are found by reading the replies feed of a reply, one level at a time.
 
 With `tc:depth` of 2 or 3, one fetch returns most of a conversation. Readers rebuild the tree from each item's `tc:inReplyTo`. A post's cache goes stale when a deeper reply arrives; the update rule under Processing rules keeps it fresh.
 

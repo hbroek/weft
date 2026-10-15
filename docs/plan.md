@@ -57,7 +57,7 @@ Reply composer (`tc:inReplyTo`, `tc:root`, `tc:context` as URL). On publish, sen
 ### 5. Reactions (done)
 `tc:reactionOf` items in a separate reactions feed (`tc:likesFeed`), sent by Webmention, tallied at the parent. + and - buttons (shown as 👍 and 👎) plus an optional emoji picker in the UI. Test: a cross-instance reaction is counted, and removing it (410) lowers the count.
 
-### 6. Threads, bubble-up, orphans
+### 6. Threads, bubble-up, orphans (done)
 Thread view built from `tc:root` and `tc:inReplyTo`. Curated and raw views, with unapprove and re-approve. Bubble-up Webmention to ancestors. Orphan handling (rejected, offline, deleted). Edit and delete re-notify.
 
 ### 7. Agent and end-to-end scenario

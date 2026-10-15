@@ -38,6 +38,14 @@ box adds nuance. API: `POST /api/reactions {"target","polarity","emoji"}`, `DELE
 Reactions are published in your reactions feed and counted at the post only when the sender is
 someone the post's author follows; `GET /api/reactions/received?post_id=N` shows all of them.
 
+Threads: "Thread" under any post opens the conversation it belongs to, rooted at the original post.
+The **curated** view shows only what each author approved, read down from the root through the
+replies feeds. The **raw** view shows everything your reader knows, including replies that were not
+approved. Replies whose parent your reader does not have are placed by the spec's rules: a deleted
+parent (410) leaves a tombstone, an offline parent leaves the reply under the root, and a live but
+unknown parent gets a placeholder. When the replies under one of your replies change, a Webmention
+is re-sent up the chain so each ancestor's cached second level stays fresh.
+
 To try two separate instances on one machine:
 
 ```bash

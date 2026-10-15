@@ -1,6 +1,8 @@
 package web
 
 import (
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -73,4 +75,141 @@ func TestBubbleUpTerminatesOnCycles(t *testing.T) {
 	alice.post(t, `{"markdown":"a","in_reply_to":"`+ub+`"}`)
 	bob.post(t, `{"markdown":"b","in_reply_to":"`+ua+`"}`)
 	settle(t.Context(), alice, bob) // panics if the queues never drain
+}
+
+// loginCookie logs the instance's user in through the real form and returns the session cookie.
+func loginCookie(t *testing.T, i *instance) string {
+	t.Helper()
+	name := strings.SplitN(i.host, ".", 2)[0]
+	if err := i.s.st.SetPassword(name, "correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("POST", i.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	i.s.ServeHTTP(w, r)
+	if ck := cookieOf(w); ck != "" {
+		return ck
+	}
+	t.Fatalf("login failed: %d", w.Code)
+	return ""
+}
+
+func threadPageOf(i *instance, cookie, target, view string) string {
+	return do3(i.s, "GET", i.host, "/thread?url="+url.QueryEscape(target)+"&view="+view, cookie).Body.String()
+}
+
+func inOrder(t *testing.T, page string, parts ...string) {
+	t.Helper()
+	at := 0
+	for _, p := range parts {
+		i := strings.Index(page[at:], p)
+		if i < 0 {
+			t.Errorf("%q missing or out of order in page:\n%s", p, page)
+			return
+		}
+		at += i + len(p)
+	}
+}
+
+func TestThreadCuratedAndRawViews(t *testing.T) {
+	alice, bob, carol, dana := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol"), newInstance(t, "dana")
+	ctx := t.Context()
+	all := []*instance{alice, bob, carol, dana}
+	ck := loginCookie(t, alice)
+
+	ua := alice.post(t, `{"markdown":"ROOT-A: who builds the reader half?"}`)
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	bob.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
+	ub := bob.post(t, `{"markdown":"REPLY-B: I am.","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
+	settle(ctx, all...)
+	carol.post(t, `{"markdown":"REPLY-C: count me in.","in_reply_to":"`+ub+`","in_reply_to_feed":"`+bob.base+`/feed.xml"}`)
+	dana.post(t, `{"markdown":"REPLY-D: spam spam.","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`) // alice does not follow dana
+	settle(ctx, all...)
+
+	// asking about any post in the thread gives the same thread, rooted at A
+	for _, from := range []string{ua, ub} {
+		page := threadPageOf(alice, ck, from, "curated")
+		inOrder(t, page, "ROOT-A", "REPLY-B", "REPLY-C")
+		if strings.Contains(page, "REPLY-D") {
+			t.Errorf("curated view shows an unapproved reply:\n%s", page)
+		}
+		if n := strings.Count(page, "<ul"); n != 3 { // thread list, replies to A, replies to B
+			t.Errorf("curated nesting: %d lists\n%s", n, page)
+		}
+	}
+
+	raw := threadPageOf(alice, ck, ua, "raw")
+	inOrder(t, raw, "ROOT-A", "REPLY-B", "REPLY-C")
+	if !strings.Contains(raw, "REPLY-D") || !strings.Contains(raw, "not approved") {
+		t.Errorf("raw view should show the unapproved reply, flagged:\n%s", raw)
+	}
+
+	// approving Dana moves her into the curated view
+	alice.call(t, "GET", "/api/replies?status=pending", "", 200)
+	alice.call(t, "POST", "/api/replies/2/status", `{"status":"approved"}`, 204)
+	if page := threadPageOf(alice, ck, ua, "curated"); !strings.Contains(page, "REPLY-D") {
+		t.Errorf("approved reply missing from curated view")
+	}
+
+	// the thread view is for the logged-in owner only
+	if w := do(alice.s, "GET", alice.host, "/thread?url="+url.QueryEscape(ua), "", ""); w.Code != 303 {
+		t.Errorf("anonymous thread view: %d", w.Code)
+	}
+}
+
+// orphanSetup builds: A (alice) <- B (bob, never announced to alice) <- C (carol, followed by alice).
+// Alice therefore sees C but not its parent B.
+func orphanSetup(t *testing.T) (alice, bob, carol *instance, ua, ub string) {
+	alice, bob, carol = newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol")
+	ctx := t.Context()
+	ua = alice.post(t, `{"markdown":"ROOT-A"}`)
+	ub = bob.post(t, `{"markdown":"REPLY-B","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
+	// bob's queue is deliberately not run, so alice never hears about B
+	carol.post(t, `{"markdown":"REPLY-C","in_reply_to":"`+ub+`","in_reply_to_feed":"`+bob.base+`/feed.xml"}`)
+	settle(ctx, carol)
+	alice.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
+	return
+}
+
+func TestThreadOrphanParentExistsButUnknown(t *testing.T) {
+	alice, _, _, ua, ub := orphanSetup(t)
+	page := threadPageOf(alice, loginCookie(t, alice), ua, "raw")
+	inOrder(t, page, "ROOT-A", "exists but is not known", ub, "REPLY-C")
+	if !strings.Contains(page, `href="/compose?reply_to=`) {
+		t.Errorf("no reply links in thread view")
+	}
+}
+
+func TestThreadOrphanParentDeletedLeavesTombstone(t *testing.T) {
+	alice, bob, _, ua, ub := orphanSetup(t)
+	bob.call(t, "DELETE", "/api/posts/1", "", 204)
+	page := threadPageOf(alice, loginCookie(t, alice), ua, "raw")
+	inOrder(t, page, "ROOT-A", "original post removed", "REPLY-C")
+	if strings.Contains(page, "REPLY-B") {
+		t.Errorf("deleted post's content still shown")
+	}
+	_ = ub
+}
+
+func TestThreadOrphanParentOfflineFallsBackToRoot(t *testing.T) {
+	alice, bob, _, ua, ub := orphanSetup(t)
+	bob.ts.Close()
+	page := threadPageOf(alice, loginCookie(t, alice), ua, "raw")
+	inOrder(t, page, "ROOT-A", "REPLY-C", "parent unavailable: "+ub)
+	if strings.Contains(page, "original post removed") {
+		t.Errorf("an offline parent must not be shown as deleted")
+	}
+}
+
+func TestThreadReplyLoopDoesNotVanish(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	ua, ub := alice.base+"/posts/1", bob.base+"/posts/1"
+	alice.post(t, `{"markdown":"LOOP-A","in_reply_to":"`+ub+`","in_reply_to_feed":"`+bob.base+`/feed.xml"}`)
+	bob.post(t, `{"markdown":"LOOP-B","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	page := threadPageOf(alice, loginCookie(t, alice), ua, "raw")
+	if !strings.Contains(page, "LOOP-A") || !strings.Contains(page, "LOOP-B") {
+		t.Errorf("posts in a reply loop disappeared:\n%s", page)
+	}
 }

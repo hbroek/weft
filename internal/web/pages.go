@@ -21,6 +21,7 @@ article{margin:2rem 0;border-bottom:1px solid #8884;padding-bottom:1rem}time{col
 nav a,nav button{margin-right:1rem}nav form{display:inline}
 nav button,.linkbtn{background:none;border:0;padding:0;font:inherit;color:LinkText;cursor:pointer;text-decoration:underline}
 input[type=text],input[type=password],textarea{width:100%;box-sizing:border-box;font:inherit;padding:.4rem}
+ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #8883}.node{margin:.75rem 0}.note{display:block;color:#a60}
 textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}label{display:block;margin-top:1rem}</style>
 </head><body>
 <header><h1><a href="/">{{.Author}}</a></h1><p>{{.Bio}}</p>
@@ -35,7 +36,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <div class="e-content">{{.HTML}}</div>
 <a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}">{{.Date}}</time></a>
 {{if .Edited}} <time>(edited)</time>{{end}}
-{{if $.Owner}} <a href="{{.URL}}/edit">Edit</a>{{end}}
+{{if $.Owner}} <a href="{{.URL}}/edit">Edit</a> <a href="{{.ThreadHref}}">Thread</a>{{end}}
 {{if .Tally}}<p class="tally" title="Reactions from people you follow">{{.Tally}}</p>{{end}}
 </article>{{else}}<p>No posts yet.</p>{{end}}
 {{if .Replies}}<section><h3>Replies</h3>{{range .Replies}}<div class="reply">
@@ -56,7 +57,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <p><strong>{{.Author}}</strong>{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div>{{.HTML}}</div>
-<p><a href="{{.ReplyHref}}">Reply</a></p>
+<p><a href="{{.ReplyHref}}">Reply</a> <a href="{{.ThreadHref}}">Thread</a></p>
 {{if .Target}}<form method="post" action="/react" class="react">
 <input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
 <button name="polarity" value="+" title="Positive">&#x1F44D;</button> <button name="polarity" value="-" title="Negative">&#x1F44E;</button>
@@ -75,6 +76,19 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <form method="post" action="/following/refresh"><button>Refresh now</button></form>
 <p><small>Your follow list is public: <a href="/following.opml">following.opml</a></small></p>
 {{template "foot"}}{{end}}
+{{define "thread"}}{{template "head" .}}<h2>Thread</h2>
+<p>{{if eq .Thread.View "curated"}}<strong>Curated</strong> | <a href="{{.Thread.RawHref}}">Raw</a>{{else}}<a href="{{.Thread.CuratedHref}}">Curated</a> | <strong>Raw</strong>{{end}}
+<small>({{.Thread.Count}} posts)</small></p>
+<p><small>{{if eq .Thread.View "curated"}}Only the replies each author approved, read down from the root.{{else}}Everything your reader knows about this conversation, including replies that were not approved.{{end}}</small></p>
+<ul class="thread">{{template "node" .Thread.Root}}</ul>
+{{template "foot"}}{{end}}
+{{define "node"}}<li><div class="node">
+{{if .Tombstone}}<em>original post removed</em> <small>{{.URL}}</small>
+{{else if .Missing}}<em>{{.Note}}</em> <a href="{{.URL}}">{{.URL}}</a>
+{{else}}<strong>{{.Author}}</strong> <a href="{{.URL}}"><time>{{.Date}}</time></a>{{if .Title}} <em>{{.Title}}</em>{{end}}
+{{.HTML}}{{if .Note}}<small class="note">{{.Note}}</small>{{end}}{{end}}
+{{if .ReplyHref}}<a href="{{.ReplyHref}}">Reply</a>{{end}}</div>
+{{if .Children}}<ul>{{range .Children}}{{template "node" .}}{{end}}</ul>{{end}}</li>{{end}}
 {{define "moderation"}}{{template "head" .}}<h2>Replies to your posts</h2>
 {{range .Moderation}}<article>
 <p><strong>{{.Author}}</strong> on <a href="{{.PostURL}}">your post {{.PostID}}</a> <small>({{.Status}})</small></p>
@@ -101,6 +115,7 @@ type pagePost struct {
 	Edited                bool
 	InReplyTo             string
 	Tally                 string
+	ThreadHref            string
 }
 
 type pageData struct {
@@ -112,6 +127,7 @@ type pageData struct {
 	Moderation                                 []modRow
 	Pending                                    int
 	React                                      *reactData
+	Thread                                     *threadPage
 	ReplyTo, ReplyFeed                         string
 	Follows                                    []followRow
 	// forms
@@ -140,7 +156,7 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 		d.Posts = append(d.Posts, pagePost{
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
 			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 15:04"),
-			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Tally: tallyText(tallies[p.ID]),
+			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Tally: tallyText(tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
 		})
 	}
 	if len(posts) == 1 && !posts[0].Deleted {

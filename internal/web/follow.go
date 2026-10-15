@@ -19,7 +19,7 @@ import (
 
 type tlRow struct {
 	Author, Title, Link, Date, InReplyTo, ReplyHref string
-	Target, FeedURL, Mine, Tally                    string
+	Target, FeedURL, Mine, Tally, ThreadHref        string
 	HTML                                            template.HTML
 	Edited                                          bool
 }
@@ -96,7 +96,7 @@ func (s *Server) rows(userID int64) ([]tlRow, []store.TimelineItem, error) {
 		}
 		out = append(out, tlRow{Author: author, Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
 			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil,
-			ReplyHref: replyHref(it), Target: itemTarget(it), FeedURL: it.FeedURL, Tally: remoteTallyText(it.Plus, it.Minus),
+			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), Target: itemTarget(it), FeedURL: it.FeedURL, Tally: remoteTallyText(it.Plus, it.Minus),
 			Mine: s.myReaction(userID, itemTarget(it))})
 	}
 	return out, items, nil

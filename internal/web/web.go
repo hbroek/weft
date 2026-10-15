@@ -52,6 +52,7 @@ func New(cfg Config, st *store.Store) *Server {
 	s.mux.HandleFunc("POST /posts/{id}/edit", s.user(s.edit))
 	s.mux.HandleFunc("POST /posts/{id}/delete", s.user(s.deleteForm))
 	s.mux.HandleFunc("POST /webmention", s.user(s.webmention))
+	s.mux.HandleFunc("GET /thread", s.user(s.thread))
 	s.mux.HandleFunc("GET /reactions.xml", s.user(s.reactionsFeed))
 	s.mux.HandleFunc("GET /reactions/{id}", s.user(s.reactionPage))
 	s.mux.HandleFunc("POST /react", s.user(s.reactForm))

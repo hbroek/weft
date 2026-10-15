@@ -30,6 +30,7 @@ type ParsedItem struct {
 	ReactionOf, Polarity, Emoji string
 	Plus, Minus                 int    // tc:reactions tally
 	RepliesHref                 string // tc:replies href: where this item's approved replies are published
+	RepliesCount                int    // tc:replies count; -1 when the item does not say
 	FeedHref, FeedName          string // tc:feed: the author's feed and display name (replies feeds)
 }
 
@@ -80,7 +81,8 @@ type xmlParsed struct {
 				Emoji    string `xml:"emoji,attr"`
 			} `xml:"https://example.org/ns/textcast/0.1 reactionOf"`
 			Replies struct {
-				Href string `xml:"href,attr"`
+				Href  string `xml:"href,attr"`
+				Count *int   `xml:"count,attr"`
 			} `xml:"https://example.org/ns/textcast/0.1 replies"`
 			Feed struct {
 				Href string `xml:"href,attr"`
@@ -148,6 +150,10 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 			ReactionOf: strings.TrimSpace(it.ReactionOf.Href), Polarity: strings.TrimSpace(it.ReactionOf.Polarity),
 			Emoji: strings.TrimSpace(it.ReactionOf.Emoji), RepliesHref: strings.TrimSpace(it.Replies.Href),
 			FeedHref: strings.TrimSpace(it.Feed.Href), FeedName: strings.TrimSpace(it.Feed.Name), Plus: max(it.Reactions.Plus, 0), Minus: max(it.Reactions.Minus, 0),
+		}
+		pi.RepliesCount = -1
+		if it.Replies.Count != nil {
+			pi.RepliesCount = *it.Replies.Count
 		}
 		if pi.GUID == "" {
 			pi.GUID = pi.Link

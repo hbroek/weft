@@ -171,6 +171,7 @@ CREATE TABLE IF NOT EXISTS items (
   root_feed TEXT NOT NULL DEFAULT '',
   plus INTEGER NOT NULL DEFAULT 0,
   minus INTEGER NOT NULL DEFAULT 0,
+  replies_href TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (feed_url, guid)
 );
 CREATE INDEX IF NOT EXISTS items_pub ON items(published DESC);
@@ -196,6 +197,7 @@ func Open(path string) (*Store, error) {
 	for _, c := range []string{"in_reply_to_feed", "root", "root_feed"} {
 		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 	}
+	db.Exec(`ALTER TABLE items ADD COLUMN replies_href TEXT NOT NULL DEFAULT ''`)
 	for _, c := range []string{"root", "replies_href"} {
 		db.Exec(`ALTER TABLE replies ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 	}
@@ -375,4 +377,22 @@ func (s *Store) DeletePost(userID, id int64) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// PostsInThread returns the user's own live posts that belong to the thread rooted at root.
+func (s *Store) PostsInThread(userID int64, root string) ([]*Post, error) {
+	rows, err := s.db.Query(`SELECT `+postCols+` FROM posts WHERE user_id=? AND deleted=0 AND root=? ORDER BY created, id`, userID, root)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Post
+	for rows.Next() {
+		p, err := scanPost(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }

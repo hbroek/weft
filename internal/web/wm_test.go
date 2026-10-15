@@ -12,6 +12,7 @@ import (
 )
 
 type instance struct {
+	ts   *httptest.Server
 	s    *Server
 	host string // name.localhost:port
 	base string
@@ -35,7 +36,7 @@ func newInstance(t *testing.T, name string) *instance {
 		t.Fatal(err)
 	}
 	host := name + ".localhost:" + port
-	return &instance{s: s, host: host, base: "http://" + host, tok: tok}
+	return &instance{ts: ts, s: s, host: host, base: "http://" + host, tok: tok}
 }
 
 // settle runs every instance's Webmention queues until nothing is left to do, so tests do not
