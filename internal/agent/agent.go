@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// maxAttempts is how many cycles the agent tries a post before giving up on it.
+const maxAttempts = 3
+
 // Config bounds what the agent may do, so two agents can never talk forever.
 type Config struct {
 	Persona    string // name the agent writes as
@@ -24,6 +27,7 @@ type Config struct {
 
 type state struct {
 	Seen   map[string]bool `json:"seen"` // post links and reply sources already handled
+	Fails  map[string]int  `json:"fails,omitempty"`
 	Posted int             `json:"posted"`
 	Cycles int             `json:"cycles"`
 }
@@ -158,6 +162,14 @@ func (a *Agent) handle(ctx context.Context, it Item, target, targetFeed, key str
 	}
 	d, err := a.B.Decide(ctx, a.persona(), it, thread)
 	if err != nil {
+		// A brain failure (rate limit, an unusable answer) should not lose the post for good:
+		// try again next cycle, but give up after a few attempts.
+		if a.state.Fails == nil {
+			a.state.Fails = map[string]int{}
+		}
+		if a.state.Fails[key]++; a.state.Fails[key] < maxAttempts {
+			delete(a.state.Seen, key)
+		}
 		return 0, err
 	}
 	// One reply per conversation per cycle: the first reply may already change the discussion.

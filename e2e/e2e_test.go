@@ -3,7 +3,9 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -214,5 +216,37 @@ func TestRoundTripWithAgent(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("curated thread lacks %q:\n%s", want, page)
 		}
+	}
+}
+
+type failingBrain struct{ calls int }
+
+func (b *failingBrain) Decide(context.Context, agent.Persona, agent.Item, []agent.ThreadNode) (agent.Decision, error) {
+	b.calls++
+	return agent.Decision{}, errors.New("model said no")
+}
+func (b *failingBrain) Post(context.Context, agent.Persona) (string, string, error) {
+	return "", "", errors.New("model said no")
+}
+
+// A post the model failed on is tried again in later cycles, but not forever.
+func TestAgentRetriesAFailedPostThreeTimes(t *testing.T) {
+	ctx := t.Context()
+	one := start(t, "one", "alice", "dana")
+	alice, dana := one.client("alice"), one.client("dana")
+	if err := dana.Follow(ctx, alice.Base+"/"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := alice.Post(ctx, "", "Anyone there?", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	one.s.RefreshAll(ctx)
+	b := &failingBrain{}
+	ag := agent.New(dana, b, agent.Config{Persona: "Dana-bot", Log: log.New(io.Discard, "", 0)})
+	for i := 0; i < 6; i++ {
+		ag.RunCycle(ctx)
+	}
+	if b.calls != 3 {
+		t.Fatalf("the brain was asked %d times, want 3", b.calls)
 	}
 }

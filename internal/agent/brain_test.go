@@ -43,3 +43,32 @@ func TestClaudeErrorsAreReported(t *testing.T) {
 		t.Fatalf("want a 401 error, got %v", err)
 	}
 }
+
+func TestClaudeRetriesWhenAnswerHasNoJSON(t *testing.T) {
+	calls := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			io.WriteString(w, `{"content":[{"type":"text","text":"I would rather stay out of this one."}]}`)
+			return
+		}
+		io.WriteString(w, `{"content":[{"type":"text","text":"{\"reply\":\"Fine, then.\",\"reaction\":\"\",\"emoji\":\"\"}"}]}`)
+	}))
+	defer ts.Close()
+	c := NewClaude("k", "m")
+	c.Endpoint = ts.URL
+	d, err := c.Decide(context.Background(), Persona{Name: "p"}, Item{}, nil)
+	if err != nil || d.Reply != "Fine, then." || calls != 2 {
+		t.Fatalf("d=%+v err=%v calls=%d", d, err, calls)
+	}
+
+	// still no JSON after the retry: the error shows what the model said
+	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"content":[{"type":"text","text":"Nope, prose only."}]}`)
+	}))
+	defer ts2.Close()
+	c.Endpoint = ts2.URL
+	if _, err := c.Decide(context.Background(), Persona{Name: "p"}, Item{}, nil); err == nil || !strings.Contains(err.Error(), "Nope, prose only.") {
+		t.Fatalf("want an error quoting the answer, got %v", err)
+	}
+}

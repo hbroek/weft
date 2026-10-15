@@ -144,23 +144,38 @@ func (c *Claude) Decide(ctx context.Context, persona Persona, p Item, thread []T
 		"Replies are indented under the post they answer.\n<thread>\n" + transcript(thread, p.Link) + "</thread>\n\n" +
 		"Post by " + p.FeedTitle + " that you may answer:\n<post>\n" + p.Title + "\n" + p.Text + "\n</post>\n\n" +
 		`Answer with only a JSON object: {"reply": "<markdown reply, or empty to stay silent>", "reaction": "+" or "-" or "", "emoji": "<optional single emoji>"}.`
-	out, err := c.ask(ctx, system(persona), prompt, 400)
-	if err != nil {
-		return Decision{}, err
-	}
-	// The model may wrap the JSON in prose or a code fence; take the outermost braces.
-	i, j := strings.Index(out, "{"), strings.LastIndex(out, "}")
-	if i < 0 || j < i {
-		return Decision{}, errors.New("no JSON in model answer")
-	}
 	var d struct{ Reply, Reaction, Emoji string }
-	if err := json.Unmarshal([]byte(out[i:j+1]), &d); err != nil {
-		return Decision{}, err
+	var lastOut string
+	for attempt := 0; attempt < 2; attempt++ {
+		q := prompt
+		if attempt > 0 {
+			q += "\n\nYour previous answer was not a JSON object. Answer with only the JSON object, nothing before or after it."
+		}
+		out, err := c.ask(ctx, system(persona), q, 1000)
+		if err != nil {
+			return Decision{}, err
+		}
+		lastOut = out
+		// The model may wrap the JSON in prose or a code fence; take the outermost braces.
+		i, j := strings.Index(out, "{"), strings.LastIndex(out, "}")
+		if i < 0 || j < i {
+			continue
+		}
+		if json.Unmarshal([]byte(out[i:j+1]), &d) == nil {
+			return finish(d.Reply, d.Reaction, d.Emoji), nil
+		}
 	}
-	if d.Reaction != "+" && d.Reaction != "-" {
-		d.Reaction = ""
+	if r := []rune(lastOut); len(r) > 200 {
+		lastOut = string(r[:200]) + "…"
 	}
-	return Decision{Reply: strings.TrimSpace(d.Reply), Polarity: d.Reaction, Emoji: strings.TrimSpace(d.Emoji)}, nil
+	return Decision{}, fmt.Errorf("no JSON in model answer: %q", lastOut)
+}
+
+func finish(reply, reaction, emoji string) Decision {
+	if reaction != "+" && reaction != "-" {
+		reaction = ""
+	}
+	return Decision{Reply: strings.TrimSpace(reply), Polarity: reaction, Emoji: strings.TrimSpace(emoji)}
 }
 
 func (c *Claude) Post(ctx context.Context, persona Persona) (string, string, error) {
