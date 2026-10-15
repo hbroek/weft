@@ -3,7 +3,7 @@ DB     ?= ttc.db
 ADDR   ?= :8080
 DOMAIN ?= localhost
 
-.PHONY: help build test run users user passwd token follow clean
+.PHONY: help all build test run users user passwd token follow clean
 
 help:
 	@echo "make build                         build bin/ttc (static, CGO off)"
@@ -14,7 +14,10 @@ help:
 	@echo "make passwd NAME=bob PASSWORD=...  set a login password"
 	@echo "make token NAME=bob                issue a new API token (the old one stops working)"
 	@echo "make follow NAME=dana TO='alice henry'  make a user follow others (bare names or feed URLs)"
+	@echo "make all                            vet, run the tests, then build both binaries (bin/ttc, bin/ttc-agent)"
 	@echo "make clean                         remove bin/ (not the database)"
+
+all: test build
 
 build:
 	CGO_ENABLED=0 go build -o bin/ttc ./cmd/ttc
