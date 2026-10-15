@@ -60,6 +60,8 @@ If you run the binary yourself: `./bin/ttc serve -dev`.
 
 `make run VERBOSE=1` (or `ttc serve -v`) logs every API call and inbound Webmention: host, method, path, status, time, and the start of the request body. Tokens are never logged.
 
+`make follow NAME=dana TO='alice henry'` makes a user follow others (bare names on this instance, or feed URLs); the target servers must be running, since the feed is fetched.
+
 `make help` lists the other targets, including `token` to issue a fresh API token.
 Settings: `DB` (default `ttc.db`), `ADDR` (`:8080`), `DOMAIN` (`localhost`).
 

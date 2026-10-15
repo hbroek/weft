@@ -198,6 +198,11 @@ func (s *Server) follow(ctx context.Context, userID int64, raw string) (string, 
 	return res.URL, s.st.Follow(userID, res.URL)
 }
 
+// Follow makes the user follow a feed or site URL: the same as the Following page, for admin tools.
+func (s *Server) Follow(ctx context.Context, userID int64, raw string) (string, error) {
+	return s.follow(ctx, userID, raw)
+}
+
 // Refresh re-fetches one feed and replaces its cached items. Failures are recorded, not returned.
 func (s *Server) Refresh(ctx context.Context, feedURL string) {
 	res, err := s.web.Get(ctx, feedURL)

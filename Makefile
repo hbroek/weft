@@ -3,7 +3,7 @@ DB     ?= ttc.db
 ADDR   ?= :8080
 DOMAIN ?= localhost
 
-.PHONY: help build test run users user passwd token clean
+.PHONY: help build test run users user passwd token follow clean
 
 help:
 	@echo "make build                         build bin/ttc (static, CGO off)"
@@ -13,6 +13,7 @@ help:
 	@echo "make user NAME=bob PASSWORD=...    create a user; prints the API token once"
 	@echo "make passwd NAME=bob PASSWORD=...  set a login password"
 	@echo "make token NAME=bob                issue a new API token (the old one stops working)"
+	@echo "make follow NAME=dana TO='alice henry'  make a user follow others (bare names or feed URLs)"
 	@echo "make clean                         remove bin/ (not the database)"
 
 build:
@@ -40,6 +41,10 @@ passwd: build
 token: build
 	@test -n "$(NAME)" || (echo "usage: make token NAME=bob"; exit 2)
 	./bin/ttc user token -db $(DB) $(NAME)
+
+follow: build
+	@test -n "$(NAME)" -a -n "$(TO)" || (echo "usage: make follow NAME=dana TO='alice henry'  (servers must be running)"; exit 2)
+	./bin/ttc user follow -db $(DB) -domain $(DOMAIN) $(NAME) $(TO)
 
 clean:
 	rm -rf bin
