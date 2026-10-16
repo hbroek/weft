@@ -83,8 +83,14 @@ func replyHref(it store.TimelineItem) string {
 	return "/compose?reply_to=" + url.QueryEscape(target) + "&reply_feed=" + url.QueryEscape(it.FeedURL)
 }
 
-func (s *Server) rows(userID int64) ([]tlRow, []store.TimelineItem, error) {
-	items, err := s.st.Timeline(userID, 200)
+func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineItem, error) {
+	var items []store.TimelineItem
+	var err error
+	if feedURL != "" {
+		items, err = s.st.FeedItems(userID, feedURL, 200)
+	} else {
+		items, err = s.st.Timeline(userID, 200)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -106,12 +112,24 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.requireOwner(w, r, q) {
 		return
 	}
-	rows, _, err := s.rows(q.host.ID)
+	only := r.FormValue("feed")
+	rows, _, err := s.rows(q.host.ID, only)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 	d := s.data(r, q, "Timeline")
+	if only != "" {
+		d.Only = only
+		d.Heading = only
+		if fs, err := s.st.Follows(q.host.ID); err == nil {
+			for _, f := range fs {
+				if f.URL == only && f.Title != "" {
+					d.Heading = f.Title
+				}
+			}
+		}
+	}
 	d.Timeline = rows
 	s.show(w, "timeline", http.StatusOK, d)
 }

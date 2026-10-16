@@ -52,7 +52,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <h2>Log in to {{.Author}}</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Password <input type="password" name="password" autofocus required></label>
 <p><button>Log in</button></p></form>{{template "foot"}}{{end}}
-{{define "timeline"}}{{template "head" .}}<h2>Timeline</h2>
+{{define "timeline"}}{{template "head" .}}<h2>{{if .Only}}{{.Heading}}</h2><p><small>{{.Only}} · <a href="/timeline">All feeds</a> · <a href="/following">Following</a></small></p>{{else}}Timeline</h2>{{end}}
 {{range .Timeline}}<article>
 <p><strong>{{.Author}}</strong>{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
@@ -71,7 +71,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 {{define "following"}}{{template "head" .}}<h2>Following</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <form method="post" action="/following"><label>Feed or site URL <input type="text" name="url" placeholder="http://bob.localhost:8080/" required></label>
 <p><button>Follow</button></p></form>
-<ul>{{range .Follows}}<li>{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}} <small>{{.URL}}{{if .Err}} <span class="err">{{.Err}}</span>{{end}}</small>
+<ul>{{range .Follows}}<li><a href="/timeline?feed={{.URL | urlquery}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a> <small>{{.URL}}{{if .Err}} <span class="err">{{.Err}}</span>{{end}}</small>
 <form method="post" action="/following/remove" style="display:inline"><input type="hidden" name="url" value="{{.URL}}"><button class="linkbtn">Unfollow</button></form></li>{{else}}<li>Not following anyone yet.</li>{{end}}</ul>
 <form method="post" action="/following/refresh"><button>Refresh now</button></form>
 <p><small>Your follow list is public: <a href="/following.opml">following.opml</a></small></p>
@@ -131,8 +131,8 @@ type pageData struct {
 	ReplyTo, ReplyFeed                         string
 	Follows                                    []followRow
 	// forms
-	Error, Action, Heading, Button, Delete string
-	Form                                   struct{ Title, Markdown string }
+	Error, Action, Heading, Button, Delete, Only string
+	Form                                         struct{ Title, Markdown string }
 }
 
 func (s *Server) data(r *http.Request, q *req, title string) pageData {

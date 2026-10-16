@@ -167,3 +167,9 @@ func (s *Store) Timeline(userID int64, limit int) ([]TimelineItem, error) {
 func (s *Store) ItemsInThread(userID int64, root string) ([]TimelineItem, error) {
 	return s.queryTimeline(timelineSelect+`WHERE i.root=? OR i.guid=? ORDER BY i.published, i.guid LIMIT 300`, userID, root, root)
 }
+
+// FeedItems returns the cached items of one followed feed, newest first. It is empty if the user
+// does not follow that feed.
+func (s *Store) FeedItems(userID int64, feedURL string, limit int) ([]TimelineItem, error) {
+	return s.queryTimeline(timelineSelect+`WHERE i.feed_url=? ORDER BY i.published DESC, i.guid LIMIT ?`, userID, feedURL, limit)
+}

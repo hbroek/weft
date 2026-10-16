@@ -7,6 +7,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/hbroek/text-thread-casting/internal/feed"
 )
 
 const host = "alice.localhost:8080"
@@ -130,4 +133,39 @@ func do2(s *Server, path, cookie string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)
 	return w
+}
+
+func TestTimelineCanShowOneFeed(t *testing.T) {
+	s, _ := setup(t)
+	u, _ := s.st.UserByName("alice")
+	for _, n := range []string{"a", "b"} {
+		url := "http://" + n + ".example/feed.xml"
+		if err := s.st.Follow(u.ID, url); err != nil {
+			t.Fatal(err)
+		}
+		xml := `<rss version="2.0"><channel><title>Feed ` + n + `</title><item><title>Post from ` + n + `</title><link>http://` + n + `.example/p</link><guid>http://` + n + `.example/p</guid><description>hello</description></item></channel></rss>`
+		p, err := feed.Parse([]byte(xml), time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.st.SaveFeed(url, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.st.SetPassword("alice", "correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+	one := form(s, "GET", "/timeline?feed="+url.QueryEscape("http://a.example/feed.xml"), ck, nil, "").Body.String()
+	if !strings.Contains(one, "Post from a") || strings.Contains(one, "Post from b") || !strings.Contains(one, "<h2>Feed a</h2>") {
+		t.Errorf("single-feed view wrong:\n%s", one)
+	}
+	all := form(s, "GET", "/timeline", ck, nil, "").Body.String()
+	if !strings.Contains(all, "Post from a") || !strings.Contains(all, "Post from b") {
+		t.Errorf("full timeline lost items")
+	}
+	fol := form(s, "GET", "/following", ck, nil, "").Body.String()
+	if !strings.Contains(fol, `href="/timeline?feed=http%3A%2F%2Fa.example%2Ffeed.xml"`) {
+		t.Errorf("following page does not link to the feed view:\n%s", fol)
+	}
 }
