@@ -2,8 +2,10 @@ package web
 
 import (
 	"html/template"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hbroek/text-thread-casting/internal/feed"
@@ -189,11 +191,32 @@ func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
 		s.show(w, "tombstone", http.StatusGone, s.data(r, q, "Post removed"))
 		return
 	}
+	w.Header().Add("Vary", "Accept")
+	if wantsMarkdown(r.Header.Get("Accept")) {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		io.WriteString(w, p.Markdown)
+		return
+	}
 	title := p.Title
 	if title == "" {
 		title = q.host.Display
 	}
 	s.renderPosts(w, r, q, title, []*store.Post{p})
+}
+
+// wantsMarkdown reports whether the client asks for text/markdown in preference to HTML.
+// A browser's Accept header lists text/html first, so it keeps getting the page.
+func wantsMarkdown(accept string) bool {
+	for _, part := range strings.Split(accept, ",") {
+		mt, _, _ := strings.Cut(strings.TrimSpace(part), ";")
+		switch strings.ToLower(mt) {
+		case "text/markdown":
+			return true
+		case "text/html", "application/xhtml+xml", "*/*", "text/*":
+			return false
+		}
+	}
+	return false
 }
 
 func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {

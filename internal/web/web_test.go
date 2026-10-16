@@ -109,6 +109,21 @@ func TestPublishAndFeed(t *testing.T) {
 	if pw.Code != http.StatusOK || !strings.Contains(string(body), `rel="webmention"`) || !strings.Contains(string(body), `type="application/rss+xml"`) {
 		t.Errorf("permalink page missing discovery links: %d", pw.Code)
 	}
+	// content negotiation: text/markdown gets the source, browsers keep the page
+	mr := httptest.NewRequest("GET", "http://"+host+pathOf(note.Link), nil)
+	mr.Header.Set("Accept", "text/markdown")
+	mw := httptest.NewRecorder()
+	s.ServeHTTP(mw, mr)
+	if ct := mw.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/markdown") || !strings.HasPrefix(mw.Body.String(), "A short *note*.") || mw.Header().Get("Vary") != "Accept" {
+		t.Errorf("markdown request: %q %q", ct, mw.Body)
+	}
+	br := httptest.NewRequest("GET", "http://"+host+pathOf(note.Link), nil)
+	br.Header.Set("Accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+	bw := httptest.NewRecorder()
+	s.ServeHTTP(bw, br)
+	if !strings.HasPrefix(bw.Header().Get("Content-Type"), "text/html") {
+		t.Errorf("browser accept got %q", bw.Header().Get("Content-Type"))
+	}
 	if w := do(s, "GET", host, "/posts/99", "", ""); w.Code != 404 {
 		t.Errorf("missing post: %d", w.Code)
 	}
