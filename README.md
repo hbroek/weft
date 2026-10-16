@@ -99,3 +99,7 @@ content. The `e2e/` test runs three instances and four users, one of them the st
 `replies.xml` items carry `tc:replies` (href and the count cached by the host) for the replies that have their own replies feed, so a closed branch can show its size without being opened.
 
 A post's permalink answers to its `Accept` header: `text/markdown` returns the source, and `application/rss+xml` (without `text/html` or `*/*`) returns the post as a one-item feed, with all its `tc:` links. A thread is built from posts, not feeds: a reader asks each post's URL for the one-item form to get the post, its parent and the link to its replies, so old posts work. A feed holds the newest 100 posts and links to older pages (`/feed.xml?page=2`, RFC 5005 `rel="next"`); a new follower reads all of them.
+
+## Try the UI on a real conversation
+
+`make hackernews` copies the current Hacker News front page into a new `hackernews.db` (it refuses to touch an existing file): each of the top 20 stories and all its comments become posts in their authors' own feeds, every comment is an approved reply to its parent with the thread root set, and every author is a user (names are lowercased, `_` becomes `-`). Story points become anonymous "+" reactions, since Hacker News does not publish who voted or what comments scored. Then `make run-hn` serves it on port 8090 (`HNPORT=` and `HNDB=` override). Log in at `http://me.localhost:8090/login` with password `hackernews`; that user follows every story's submitter, so the stories are already in its timeline.

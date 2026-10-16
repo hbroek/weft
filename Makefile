@@ -2,8 +2,10 @@
 DB     ?= ttc.db
 ADDR   ?= :8080
 DOMAIN ?= localhost
+HNDB   ?= hackernews.db
+HNPORT ?= 8090
 
-.PHONY: help all build test run users user passwd token follow clean
+.PHONY: help all build test run users user passwd token follow hackernews run-hn clean
 
 help:
 	@echo "make build                         build bin/ttc (static, CGO off)"
@@ -14,7 +16,9 @@ help:
 	@echo "make passwd NAME=bob PASSWORD=...  set a login password"
 	@echo "make token NAME=bob                issue a new API token (the old one stops working)"
 	@echo "make follow NAME=dana TO='alice henry'  make a user follow others (bare names or feed URLs)"
-	@echo "make all                            vet, run the tests, then build both binaries (bin/ttc, bin/ttc-agent)"
+	@echo "make all                            vet, run the tests, then build all binaries"
+	@echo "make hackernews                     copy the Hacker News front page (stories, comments, authors, points) into a new $(HNDB)"
+	@echo "make run-hn                        serve $(HNDB) on :$(HNPORT); log in as me / hackernews"
 	@echo "make clean                         remove bin/ (not the database)"
 
 all: test build
@@ -22,6 +26,7 @@ all: test build
 build:
 	CGO_ENABLED=0 go build -o bin/ttc ./cmd/ttc
 	CGO_ENABLED=0 go build -o bin/ttc-agent ./cmd/ttc-agent
+	CGO_ENABLED=0 go build -o bin/hn-import ./cmd/hn-import
 
 test:
 	go vet ./...
@@ -48,6 +53,12 @@ token: build
 follow: build
 	@test -n "$(NAME)" -a -n "$(TO)" || (echo "usage: make follow NAME=dana TO='alice henry'  (servers must be running)"; exit 2)
 	./bin/ttc user follow -db $(DB) -domain $(DOMAIN) $(NAME) $(TO)
+
+hackernews: build
+	./bin/hn-import -db $(HNDB) -port $(HNPORT) -domain $(DOMAIN)
+
+run-hn: build
+	./bin/ttc serve -addr :$(HNPORT) -domain $(DOMAIN) -db $(HNDB) -dev -poll 30s $(if $(VERBOSE),-v)
 
 clean:
 	rm -rf bin

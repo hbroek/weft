@@ -48,6 +48,8 @@ type NewPost struct {
 	UserID                                   int64
 	Title, Markdown, HTML                    string
 	InReplyTo, InReplyToFeed, Root, RootFeed string
+	// Created is when the post was written; the zero value means now. Importers set it.
+	Created time.Time
 }
 
 const schema = `
@@ -309,7 +311,10 @@ func (s *Store) UserByToken(token string) (*User, error) {
 }
 
 func (s *Store) AddPost(n NewPost) (*Post, error) {
-	now := time.Now()
+	now := n.Created
+	if now.IsZero() {
+		now = time.Now()
+	}
 	uid := newUID()
 	var res sql.Result
 	var slug string
