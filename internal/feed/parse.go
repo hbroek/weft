@@ -14,7 +14,9 @@ type Parsed struct {
 	Title, Link, Description string
 	Webmention, Following    string
 	ReactionsFeed            string
-	Items                    []ParsedItem
+	// Next is the rel="next" link of a paged feed (RFC 5005): the page of older items.
+	Next  string
+	Items []ParsedItem
 }
 
 type ParsedItem struct {
@@ -56,7 +58,11 @@ func (l plainLinks) first() string {
 type xmlParsed struct {
 	XMLName xml.Name `xml:"rss"`
 	Channel struct {
-		Title         string     `xml:"title"`
+		Title     string `xml:"title"`
+		AtomLinks []struct {
+			Rel  string `xml:"rel,attr"`
+			Href string `xml:"href,attr"`
+		} `xml:"http://www.w3.org/2005/Atom link"`
 		Link          plainLinks `xml:"link"`
 		Description   string     `xml:"description"`
 		Webmention    string     `xml:"https://example.org/ns/textcast/0.1 webmention"`
@@ -142,6 +148,11 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 		Description: strings.TrimSpace(x.Channel.Description),
 		Webmention:  strings.TrimSpace(x.Channel.Webmention), Following: strings.TrimSpace(x.Channel.Following),
 		ReactionsFeed: strings.TrimSpace(x.Channel.ReactionsFeed),
+	}
+	for _, l := range x.Channel.AtomLinks {
+		if l.Rel == "next" && strings.TrimSpace(l.Href) != "" {
+			p.Next = strings.TrimSpace(l.Href)
+		}
 	}
 	for _, it := range x.Channel.Items {
 		pi := ParsedItem{

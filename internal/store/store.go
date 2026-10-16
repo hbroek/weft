@@ -413,7 +413,12 @@ func (s *Store) Post(userID, id int64) (*Post, error) {
 
 // RecentPosts returns a user's non-deleted posts, newest first.
 func (s *Store) RecentPosts(userID int64, limit int) ([]*Post, error) {
-	rows, err := s.db.Query(`SELECT `+postCols+` FROM posts WHERE user_id=? AND deleted=0 ORDER BY created DESC, id DESC LIMIT ?`, userID, limit)
+	return s.PostsPage(userID, limit, 0)
+}
+
+// PostsPage returns limit of the user's posts, newest first, after skipping offset of them.
+func (s *Store) PostsPage(userID int64, limit, offset int) ([]*Post, error) {
+	rows, err := s.db.Query(`SELECT `+postCols+` FROM posts WHERE user_id=? AND deleted=0 ORDER BY created DESC, id DESC LIMIT ? OFFSET ?`, userID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

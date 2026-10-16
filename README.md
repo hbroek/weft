@@ -98,4 +98,4 @@ content. The `e2e/` test runs three instances and four users, one of them the st
 
 `replies.xml` items carry `tc:replies` (href and the count cached by the host) for the replies that have their own replies feed, so a closed branch can show its size without being opened.
 
-A post's permalink answers to its `Accept` header: `text/markdown` returns the source, and `application/rss+xml` (without `text/html` or `*/*`) returns the post as a one-item feed, with all its `tc:` links. A feed holds only an author's newest 100 posts, so readers use the one-item form to find older posts, such as the ancestors of a reply deep in a long conversation.
+A post's permalink answers to its `Accept` header: `text/markdown` returns the source, and `application/rss+xml` (without `text/html` or `*/*`) returns the post as a one-item feed, with all its `tc:` links. A thread is built from posts, not feeds: a reader asks each post's URL for the one-item form to get the post, its parent and the link to its replies, so old posts work. A feed holds the newest 100 posts and links to older pages (`/feed.xml?page=2`, RFC 5005 `rel="next"`); a new follower reads all of them.

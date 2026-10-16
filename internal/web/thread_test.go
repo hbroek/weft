@@ -1,6 +1,7 @@
 package web
 
 import (
+	"html"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -352,4 +353,65 @@ func TestThreadFocusFindsPostsOlderThanTheFeedWindow(t *testing.T) {
 		t.Fatalf("old post not found:\n%s", page)
 	}
 	inOrder(t, page, "OLD-ROOT", "OLD-REPLY")
+}
+
+// A feed shows the newest 100 posts and links to older pages (RFC 5005), and a new follower reads
+// them all. Later polls see only the first page and must not lose the older posts.
+func TestPagedFeedGivesNewFollowersTheHistory(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	for i := 0; i < 105; i++ {
+		alice.post(t, `{"markdown":"note number `+strings.Repeat("x", i%5)+` `+url.QueryEscape(strings.Repeat("n", i%11))+`"}`)
+	}
+	// spread the posts over time: the reader tells them apart by their publication second
+	if _, err := alice.s.st.RawDBForTests().Exec(`UPDATE posts SET created = 1700000000 + id*60`); err != nil {
+		t.Fatal(err)
+	}
+	first := alice.get("/feed.xml")
+	if strings.Count(first, "<item>") != 100 || !strings.Contains(first, `rel="next"`) || strings.Contains(first, `rel="previous"`) {
+		t.Fatalf("first page: %d items\n%.600s", strings.Count(first, "<item>"), first)
+	}
+	second := alice.get("/feed.xml?page=2")
+	if strings.Count(second, "<item>") != 5 || !strings.Contains(second, `rel="previous"`) || !strings.Contains(second, `rel="first"`) || strings.Contains(second, `rel="next"`) {
+		t.Fatalf("second page:\n%.800s", second)
+	}
+	if w := do(alice.s, "GET", alice.host, "/feed.xml?page=3", "", ""); w.Code != 404 {
+		t.Errorf("page past the end: %d", w.Code)
+	}
+
+	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
+	count := func() int {
+		var n int
+		bob.s.st.RawDBForTests().QueryRow(`SELECT COUNT(*) FROM items`).Scan(&n)
+		return n
+	}
+	if n := count(); n != 105 {
+		t.Fatalf("new follower cached %d posts, want the whole history of 105", n)
+	}
+	bob.s.RefreshAll(t.Context()) // a later poll sees page 1 only
+	if n := count(); n != 105 {
+		t.Errorf("a later poll lost history: %d", n)
+	}
+	// deleting a post that is still on page 1 removes it from the follower's cache
+	alice.call(t, "DELETE", "/api/posts/105", "", 204)
+	bob.s.RefreshAll(t.Context())
+	if n := count(); n != 104 {
+		t.Errorf("deleted post not removed: %d", n)
+	}
+}
+
+func TestPermalinkAdvertisesItsThreadLinks(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	ua := alice.post(t, `{"markdown":"parent"}`)
+	ub := bob.post(t, `{"markdown":"child","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
+	page := html.UnescapeString(bob.get(pathOf(ub)))
+	for _, want := range []string{`rel="in-reply-to" href="` + ua + `"`, `rel="replies" type="application/rss+xml" href="` + ub + `/replies.xml"`,
+		`rel="alternate" type="application/rss+xml" href="` + ub + `"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %s\n%s", want, page)
+		}
+	}
+	// the user's feed is still the first alternate, which is the one feed discovery finds
+	if i, j := strings.Index(page, `href="`+bob.base+`/feed.xml"`), strings.Index(page, `href="`+ub+`"`); i < 0 || j < 0 || i > j {
+		t.Errorf("feed discovery link must come first")
+	}
 }

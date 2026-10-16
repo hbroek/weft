@@ -81,7 +81,16 @@ func (s *Store) FollowedFeedURLs() ([]string, error) {
 	return out, rows.Err()
 }
 
-// SaveFeed replaces the cached items of a feed with those just fetched.
+// HasItems reports whether any item of the feed is cached, i.e. whether it has been read before.
+func (s *Store) HasItems(feedURL string) bool {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM items WHERE feed_url=?`, feedURL).Scan(&n)
+	return n > 0
+}
+
+// SaveFeed stores the items just fetched. A feed that shows everything (no rel="next" page) replaces
+// the cache. A paged feed shows only its newest page: cached items newer than the oldest one
+// fetched that are no longer in it were deleted and are removed, and older ones are kept.
 func (s *Store) SaveFeed(feedURL string, p *feed.Parsed) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -93,8 +102,40 @@ func (s *Store) SaveFeed(feedURL string, p *feed.Parsed) error {
 		feedURL, p.Title, p.Link, time.Now().Unix()); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM items WHERE feed_url=?`, feedURL); err != nil {
-		return err
+	if len(p.Items) == 0 || p.Next == "" {
+		// the feed shows everything the author has, so what it lacks is gone
+		if _, err := tx.Exec(`DELETE FROM items WHERE feed_url=?`, feedURL); err != nil {
+			return err
+		}
+	} else {
+		oldest, keep := p.Items[0].Published.Unix(), map[string]bool{}
+		for _, it := range p.Items {
+			keep[it.GUID] = true
+			if u := it.Published.Unix(); u < oldest {
+				oldest = u
+			}
+		}
+		rows, err := tx.Query(`SELECT guid FROM items WHERE feed_url=? AND published>?`, feedURL, oldest)
+		if err != nil {
+			return err
+		}
+		var gone []string
+		for rows.Next() {
+			var g string
+			if err := rows.Scan(&g); err != nil {
+				rows.Close()
+				return err
+			}
+			if !keep[g] {
+				gone = append(gone, g)
+			}
+		}
+		rows.Close()
+		for _, g := range gone {
+			if _, err := tx.Exec(`DELETE FROM items WHERE feed_url=? AND guid=?`, feedURL, g); err != nil {
+				return err
+			}
+		}
 	}
 	for _, it := range p.Items {
 		var upd any

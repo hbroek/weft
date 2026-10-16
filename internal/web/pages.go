@@ -18,7 +18,8 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <title>{{.Title}}</title>
 <link rel="alternate" type="application/rss+xml" href="{{.FeedURL}}">
 <link rel="webmention" href="{{.WebmentionURL}}">
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem}
+{{range .Links}}<link rel="{{.Rel}}"{{if .Type}} type="{{.Type}}"{{end}} href="{{.Href}}">
+{{end}}<style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem}
 article{margin:2rem 0;border-bottom:1px solid #8884;padding-bottom:1rem}time{color:#888;font-size:.85em}
 nav a,nav button{margin-right:1rem}nav form{display:inline}
 nav button,.linkbtn{background:none;border:0;padding:0;font:inherit;color:LinkText;cursor:pointer;text-decoration:underline}
@@ -135,6 +136,7 @@ type pageData struct {
 	Thread                                     *threadPage
 	ReplyTo, ReplyFeed                         string
 	Follows                                    []followRow
+	Links                                      []feed.AtomLink // extra <link>s in the page head
 	// forms
 	Error, Action, Heading, Button, Delete, Only string
 	Form                                         struct{ Title, Markdown string }
@@ -166,6 +168,14 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 	}
 	if len(posts) == 1 && !posts[0].Deleted {
 		d.Replies, d.Pending = s.repliesFor(q, posts[0].ID)
+		// the same links the one-item feed carries, for readers that start from the page: the post
+		// as a feed item (same URL, Accept: application/rss+xml), its parent and its replies feed
+		u := s.postURL(r, posts[0].ID)
+		d.Links = append(d.Links, feed.AtomLink{Rel: "alternate", Type: "application/rss+xml", Href: u})
+		if posts[0].InReplyTo != "" {
+			d.Links = append(d.Links, feed.AtomLink{Rel: "in-reply-to", Href: posts[0].InReplyTo})
+		}
+		d.Links = append(d.Links, feed.AtomLink{Rel: "replies", Type: "application/rss+xml", Href: u + "/replies.xml"})
 	}
 	s.show(w, "posts", http.StatusOK, d)
 }
@@ -240,20 +250,60 @@ func negotiate(accept string) string {
 	return want
 }
 
+// feedPageSize is how many posts one page of feed.xml holds.
+const feedPageSize = 100
+
+// feed serves the newest posts, and older ones as pages (/feed.xml?page=2, …) that are linked
+// with rel="next" and rel="previous", as in RFC 5005 paged feeds.
 func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
-	posts, err := s.st.RecentPosts(q.host.ID, 100)
+	page := 1
+	if v := r.URL.Query().Get("page"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			http.NotFound(w, r)
+			return
+		}
+		page = n
+	}
+	posts, err := s.st.PostsPage(q.host.ID, feedPageSize+1, (page-1)*feedPageSize)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.writeFeed(w, r, q, posts)
+	if page > 1 && len(posts) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	more := len(posts) > feedPageSize
+	if more {
+		posts = posts[:feedPageSize]
+	}
+	at := func(n int) string {
+		if n == 1 {
+			return s.base(r) + "/feed.xml"
+		}
+		return s.base(r) + "/feed.xml?page=" + strconv.Itoa(n)
+	}
+	links := []feed.AtomLink{{Href: at(page), Rel: "self", Type: "application/rss+xml"}}
+	if page > 1 {
+		links = append(links, feed.AtomLink{Href: at(1), Rel: "first", Type: "application/rss+xml"},
+			feed.AtomLink{Href: at(page - 1), Rel: "previous", Type: "application/rss+xml"})
+	}
+	if more {
+		links = append(links, feed.AtomLink{Href: at(page + 1), Rel: "next", Type: "application/rss+xml"})
+	}
+	s.writeFeed(w, r, q, posts, links)
 }
 
-// writeFeed writes the host user's feed channel holding the given posts.
-func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts []*store.Post) {
+// writeFeed writes the host user's feed channel holding the given posts. links default to rel="self".
+func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts []*store.Post, links ...[]feed.AtomLink) {
+	selfLinks := []feed.AtomLink{{Href: s.base(r) + "/feed.xml", Rel: "self", Type: "application/rss+xml"}}
+	if len(links) > 0 {
+		selfLinks = links[0]
+	}
 	ch := feed.Channel{
 		Title: q.host.Display, Link: s.base(r) + "/", Description: q.host.Bio,
-		Self:       feed.AtomLink{Href: s.base(r) + "/feed.xml", Rel: "self", Type: "application/rss+xml"},
+		Links:      selfLinks,
 		Webmention: s.base(r) + "/webmention",
 		Following:  s.base(r) + "/following.opml", ReactionsFeed: s.base(r) + "/reactions.xml",
 	}

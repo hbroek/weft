@@ -66,7 +66,7 @@ func (s *Server) reactionsFeed(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	ch := feed.Channel{
 		Title: q.host.Display + " reactions", Link: s.base(r) + "/", Description: "Reactions published by " + q.host.Display,
-		Self: feed.AtomLink{Href: s.base(r) + "/reactions.xml", Rel: "self", Type: "application/rss+xml"},
+		Links: []feed.AtomLink{{Href: s.base(r) + "/reactions.xml", Rel: "self", Type: "application/rss+xml"}},
 	}
 	var last time.Time
 	for _, x := range xs {

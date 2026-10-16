@@ -210,6 +210,9 @@ func (s *Server) follow(ctx context.Context, userID int64, raw string) (string, 
 	if err != nil {
 		return "", err
 	}
+	if !s.st.HasItems(res.URL) {
+		s.readArchive(ctx, res.URL, p)
+	}
 	if err := s.st.SaveFeed(res.URL, p); err != nil {
 		return "", err
 	}
@@ -227,11 +230,46 @@ func (s *Server) Refresh(ctx context.Context, feedURL string) {
 	if err == nil {
 		var p *feed.Parsed
 		if p, err = feed.Parse(res.Body, time.Now()); err == nil {
+			if !s.st.HasItems(feedURL) {
+				s.readArchive(ctx, feedURL, p)
+			}
 			err = s.st.SaveFeed(feedURL, p)
 		}
 	}
 	if err != nil {
 		s.st.SaveFeedError(feedURL, err.Error())
+	}
+}
+
+// maxArchivePages bounds how many older pages of a paged feed (RFC 5005) are read when a feed is
+// followed for the first time.
+const maxArchivePages = 20
+
+// readArchive follows rel="next" links from the first page of a feed and adds the older items to p,
+// so a new follower gets the history and not only the newest page. It stays on the feed's host.
+func (s *Server) readArchive(ctx context.Context, feedURL string, p *feed.Parsed) {
+	base, err := url.Parse(feedURL)
+	if err != nil {
+		return
+	}
+	seen := map[string]bool{feedURL: true}
+	next := p.Next
+	for i := 0; i < maxArchivePages && next != "" && ctx.Err() == nil; i++ {
+		u, err := base.Parse(next)
+		if err != nil || u.Host != base.Host || seen[u.String()] {
+			return
+		}
+		seen[u.String()] = true
+		res, err := s.web.Get(ctx, u.String())
+		if err != nil {
+			return
+		}
+		older, err := feed.Parse(res.Body, time.Now())
+		if err != nil {
+			return
+		}
+		p.Items = append(p.Items, older.Items...)
+		next = older.Next
 	}
 }
 

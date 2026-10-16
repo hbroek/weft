@@ -79,7 +79,7 @@ Every post, reply and reaction is an RSS 2.0 `<item>`.
 ```
 
 - `href` (required): the parent's permalink, equal to the parent's `<link>`.
-- `feed` (recommended): the parent's feed URL, so readers can fetch it directly.
+- `feed` (optional): the parent's feed URL. A textcast reader does not need it: it reads the parent from its permalink (see *Post representations*). It matters when the parent is not a textcast post, since a plain RSS item can only be found through its feed. Required in that case (see *Replying to any RSS 2.0 item*).
 
 `<tc:root>` names the post that started the thread, like email's `References` header. Any reply can be placed in its conversation even if middle posts disappear.
 
@@ -158,6 +158,22 @@ A person's feeds share one identity: the channel `<link>` (homepage) of the main
 
 Reactions are public. Private flags to a post owner are out of scope.
 
+## Post representations
+
+A thread is built from posts, not from feeds. A feed lists an author's newest posts for subscribers, and an old post may no longer be in it. Every post therefore stands on its own at its permalink, which serves these representations by content negotiation (the URL is the same; `Vary: Accept`):
+
+- **HTML** (the default, and for any `Accept` that includes `text/html` or `*/*`): the page described below.
+- **`Accept: application/rss+xml`**: the post as a one-item RSS 2.0 feed, with every `tc:` element a feed item has: `tc:inReplyTo`, `tc:root`, `tc:replies` (where its approved replies are published), reactions. This gives a reader the post, its parent and the way to its replies in one request, whatever the age of the post.
+- **`Accept: text/markdown`**: the post's markdown source.
+
+A deleted post answers 410 Gone in every representation.
+
+A reader that has a reply and wants its context needs only the permalinks: the reply's `tc:inReplyTo` for the parent, and `tc:replies` for the approved replies below it.
+
+## Paged feeds
+
+A feed shows its newest posts (100 in this implementation) and links to older ones as in RFC 5005: `<atom:link rel="next">` to the next page of older items, with `rel="previous"` and `rel="first"` on later pages. Readers that follow a feed for the first time should read the `next` links (on the same host) to get the history, and afterwards poll only the first page. A cached item newer than the oldest item on the first page that has disappeared from it was deleted; older cached items are kept.
+
 ## Permalink page requirements
 
 Every item's `<link>` must resolve to an HTML page. Webmention verification, search engines and people without feed readers all depend on it. The page must include:
@@ -165,6 +181,7 @@ Every item's `<link>` must resolve to an HTML page. Webmention verification, sea
 - `<link rel="alternate" type="application/rss+xml" href="…">` pointing to the author's feed.
 - `<link rel="webmention" href="…">` pointing to the author's endpoint.
 - For a reply or reaction, a visible `<a href>` to the parent or reacted-to post. Webmention receivers check for this link.
+- `<link rel="alternate" type="application/rss+xml" href="…">` to the post's own URL (the one-item representation), `<link rel="in-reply-to" href="…">` to the parent for a reply, and `<link rel="replies" type="application/rss+xml" href="…">` to the post's replies feed, so a reader that starts from the page can find the thread. The author's feed link comes first.
 
 Recommended for IndieWeb compatibility: microformats2 markup (`h-entry`, with `u-in-reply-to` on replies and `u-like-of` on reactions).
 

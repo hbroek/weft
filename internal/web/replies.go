@@ -77,7 +77,7 @@ func (s *Server) repliesFeed(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	ch := feed.Channel{
 		Title: "Replies to: " + name, Link: purl, Description: "Approved replies",
-		Self:      feed.AtomLink{Href: purl + "/replies.xml", Rel: "self", Type: "application/rss+xml"},
+		Links:     []feed.AtomLink{{Href: purl + "/replies.xml", Rel: "self", Type: "application/rss+xml"}},
 		RepliesTo: &feed.Ref{Href: purl}, Depth: 2,
 	}
 	last := p.Created

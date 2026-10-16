@@ -73,17 +73,17 @@ type Replies struct {
 }
 
 type Channel struct {
-	Title         string   `xml:"title"`
-	Link          string   `xml:"link"`
-	Description   string   `xml:"description"`
-	LastBuildDate string   `xml:"lastBuildDate"`
-	Self          AtomLink `xml:"atom:link"`
-	Webmention    string   `xml:"tc:webmention,omitempty"`
-	Following     string   `xml:"tc:following,omitempty"`
-	ReactionsFeed string   `xml:"tc:reactionsFeed,omitempty"`
-	RepliesTo     *Ref     `xml:"tc:repliesTo"`
-	Depth         int      `xml:"tc:depth,omitempty"`
-	Items         []Item   `xml:"item"`
+	Title         string     `xml:"title"`
+	Link          string     `xml:"link"`
+	Description   string     `xml:"description"`
+	LastBuildDate string     `xml:"lastBuildDate"`
+	Links         []AtomLink `xml:"atom:link"` // rel="self", and rel="next"/"previous"/"first" for paged feeds
+	Webmention    string     `xml:"tc:webmention,omitempty"`
+	Following     string     `xml:"tc:following,omitempty"`
+	ReactionsFeed string     `xml:"tc:reactionsFeed,omitempty"`
+	RepliesTo     *Ref       `xml:"tc:repliesTo"`
+	Depth         int        `xml:"tc:depth,omitempty"`
+	Items         []Item     `xml:"item"`
 }
 
 type GUID struct {

@@ -42,15 +42,16 @@ func (b *threadBuilder) nodeFor(u, hint string) *tnode {
 			}
 		}
 	}
-	// 1. the author's feed, if we know where it is; 2. the post itself asked for as a one-item feed,
-	// which also finds posts that have scrolled out of the feed; 3. the post's page, to learn the feed.
+	// The post's own URL is the source of truth: asked for as a one-item feed it gives the post, its
+	// parent and root, and where its replies are. A feed is only the fallback, for posts from
+	// software that does not answer that way.
+	if n := b.fromFeed(u, "", b.fetchItem(u)); n != nil {
+		return n
+	}
 	if hint != "" {
 		if n := b.fromFeed(u, hint, b.fetchFeed(hint)); n != nil {
 			return n
 		}
-	}
-	if n := b.fromFeed(u, "", b.fetchItem(u)); n != nil {
-		return n
 	}
 	if hint == "" {
 		if hint = b.s.discoverFeed(b.ctx, host, u); hint != "" {
