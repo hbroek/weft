@@ -195,9 +195,13 @@ func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	w.Header().Add("Vary", "Accept")
-	if wantsMarkdown(r.Header.Get("Accept")) {
+	switch negotiate(r.Header.Get("Accept")) {
+	case "markdown":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 		io.WriteString(w, p.Markdown)
+		return
+	case "rss":
+		s.writeFeed(w, r, q, []*store.Post{p}) // this one post, as a feed item with all its tc: links
 		return
 	}
 	title := p.Title
@@ -207,19 +211,33 @@ func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
 	s.renderPosts(w, r, q, title, []*store.Post{p})
 }
 
-// wantsMarkdown reports whether the client asks for text/markdown in preference to HTML.
-// A browser's Accept header lists text/html first, so it keeps getting the page.
-func wantsMarkdown(accept string) bool {
+// negotiate picks the representation of a post that the Accept header asks for: "markdown",
+// "rss" (the post as a one-item feed) or "html". A client that also accepts HTML or anything at
+// all gets HTML, so browsers and plain page fetches are unaffected.
+func negotiate(accept string) string {
+	want, anyHTML := "", false
 	for _, part := range strings.Split(accept, ",") {
 		mt, _, _ := strings.Cut(strings.TrimSpace(part), ";")
 		switch strings.ToLower(mt) {
-		case "text/markdown":
-			return true
 		case "text/html", "application/xhtml+xml", "*/*", "text/*":
-			return false
+			anyHTML = true
+		case "text/markdown":
+			if want == "" && !anyHTML {
+				want = "markdown"
+			}
+		case "application/rss+xml":
+			if want == "" {
+				want = "rss"
+			}
 		}
 	}
-	return false
+	if want == "rss" && anyHTML {
+		return "html"
+	}
+	if want == "" {
+		return "html"
+	}
+	return want
 }
 
 func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
@@ -228,6 +246,11 @@ func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	s.writeFeed(w, r, q, posts)
+}
+
+// writeFeed writes the host user's feed channel holding the given posts.
+func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts []*store.Post) {
 	ch := feed.Channel{
 		Title: q.host.Display, Link: s.base(r) + "/", Description: q.host.Bio,
 		Self:       feed.AtomLink{Href: s.base(r) + "/feed.xml", Rel: "self", Type: "application/rss+xml"},

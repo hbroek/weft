@@ -95,7 +95,14 @@ type Result struct {
 	URL         string // final URL after redirects
 }
 
+const defaultAccept = "application/rss+xml, application/xml;q=0.9, text/html;q=0.8, */*;q=0.5"
+
 func (c *Client) Get(ctx context.Context, rawurl string) (*Result, error) {
+	return c.GetAs(ctx, rawurl, defaultAccept)
+}
+
+// GetAs is Get with an explicit Accept header, for asking a URL for one particular representation.
+func (c *Client) GetAs(ctx context.Context, rawurl, accept string) (*Result, error) {
 	u, err := url.Parse(rawurl)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("not a http(s) URL: %q", rawurl)
@@ -105,7 +112,7 @@ func (c *Client) Get(ctx context.Context, rawurl string) (*Result, error) {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "text-thread-casting/0.1")
-	req.Header.Set("Accept", "application/rss+xml, application/xml;q=0.9, text/html;q=0.8, */*;q=0.5")
+	req.Header.Set("Accept", accept)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err

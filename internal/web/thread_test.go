@@ -312,3 +312,44 @@ func TestThreadFocusReadsOnlyTheBranch(t *testing.T) {
 		t.Errorf("focus on the sibling should show its reply and the path to the root:\n%s", p2)
 	}
 }
+
+// A post that has scrolled out of its author's feed (which holds the newest 100) must still be
+// readable in a thread: the post's own URL answers as a one-item feed.
+func TestThreadFocusFindsPostsOlderThanTheFeedWindow(t *testing.T) {
+	alice, bob, viewer := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "viewer")
+	ua := alice.post(t, `{"markdown":"OLD-ROOT question"}`)
+	ub := bob.post(t, `{"markdown":"OLD-REPLY answer","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
+	for i := 0; i < 101; i++ {
+		bob.post(t, `{"markdown":"filler `+strings.Repeat("x", i%7)+`"}`)
+		alice.post(t, `{"markdown":"filler"}`)
+	}
+	if feed := bob.get("/feed.xml"); strings.Contains(feed, ub) {
+		t.Fatal("test setup: the reply should have left the feed window")
+	}
+
+	// the post as a one-item feed, with its links; browsers and plain fetches still get HTML
+	r := httptest.NewRequest("GET", ub, nil)
+	r.Header.Set("Accept", "application/rss+xml")
+	w := httptest.NewRecorder()
+	bob.s.ServeHTTP(w, r)
+	if !strings.HasPrefix(w.Header().Get("Content-Type"), "application/rss+xml") || strings.Count(w.Body.String(), "<item>") != 1 ||
+		!strings.Contains(w.Body.String(), `<tc:inReplyTo href="`+ua+`"`) {
+		t.Fatalf("one-item feed: %s\n%s", w.Header().Get("Content-Type"), w.Body)
+	}
+	for _, accept := range []string{"", "text/html,application/xhtml+xml,*/*;q=0.8", "application/rss+xml, application/xml;q=0.9, text/html;q=0.8, */*;q=0.5"} {
+		r := httptest.NewRequest("GET", ub, nil)
+		r.Header.Set("Accept", accept)
+		w := httptest.NewRecorder()
+		bob.s.ServeHTTP(w, r)
+		if !strings.HasPrefix(w.Header().Get("Content-Type"), "text/html") {
+			t.Errorf("Accept %q got %s", accept, w.Header().Get("Content-Type"))
+		}
+	}
+
+	ck := loginCookie(t, viewer)
+	page := threadPageOf(viewer, ck, ub, "")
+	if strings.Contains(page, "not known to your reader") {
+		t.Fatalf("old post not found:\n%s", page)
+	}
+	inOrder(t, page, "OLD-ROOT", "OLD-REPLY")
+}

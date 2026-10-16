@@ -3,6 +3,8 @@ package web
 import (
 	"net/url"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/hbroek/text-thread-casting/internal/feed"
 )
@@ -40,22 +42,66 @@ func (b *threadBuilder) nodeFor(u, hint string) *tnode {
 			}
 		}
 	}
-	if hint == "" {
-		hint = b.s.discoverFeed(b.ctx, host, u)
-	}
+	// 1. the author's feed, if we know where it is; 2. the post itself asked for as a one-item feed,
+	// which also finds posts that have scrolled out of the feed; 3. the post's page, to learn the feed.
 	if hint != "" {
-		if p := b.fetchFeed(hint); p != nil {
-			for _, it := range p.Items {
-				if it.GUID == u {
-					return &tnode{URL: u, Author: orStr(p.Title, hint), Title: it.Title, Date: it.Published.Format("2 Jan 2006 15:04"),
-						HTML: renderRemote(it.Markdown, it.Text), parent: it.InReplyTo, parentFeed: it.InReplyToFeed, published: it.Published,
-						feedHint: hint, repliesHref: it.RepliesHref, repliesCount: it.RepliesCount,
-						ReplyHref: b.reply(u) + "&reply_feed=" + url.QueryEscape(hint)}
-				}
+		if n := b.fromFeed(u, hint, b.fetchFeed(hint)); n != nil {
+			return n
+		}
+	}
+	if n := b.fromFeed(u, "", b.fetchItem(u)); n != nil {
+		return n
+	}
+	if hint == "" {
+		if hint = b.s.discoverFeed(b.ctx, host, u); hint != "" {
+			if n := b.fromFeed(u, hint, b.fetchFeed(hint)); n != nil {
+				return n
 			}
 		}
 	}
 	return b.missing(u, hint)
+}
+
+// fromFeed builds the node for the item at u in a parsed feed, or returns nil if it is not there.
+// hint is the feed's URL; it defaults to the channel's own link when the feed is a one-item answer.
+func (b *threadBuilder) fromFeed(u, hint string, p *feed.Parsed) *tnode {
+	if p == nil {
+		return nil
+	}
+	for _, it := range p.Items {
+		if it.GUID != u {
+			continue
+		}
+		if hint == "" {
+			hint = strings.TrimRight(p.Link, "/") + "/feed.xml"
+		}
+		return &tnode{URL: u, Author: orStr(p.Title, hint), Title: it.Title, Date: it.Published.Format("2 Jan 2006 15:04"),
+			HTML: renderRemote(it.Markdown, it.Text), parent: it.InReplyTo, parentFeed: it.InReplyToFeed, published: it.Published,
+			feedHint: hint, repliesHref: it.RepliesHref, repliesCount: it.RepliesCount,
+			ReplyHref: b.reply(u) + "&reply_feed=" + url.QueryEscape(hint)}
+	}
+	return nil
+}
+
+// fetchItem asks the post's own URL for itself as a one-item feed. Servers that do not offer that
+// answer with a page, which does not parse, and the caller falls back to the author's feed.
+func (b *threadBuilder) fetchItem(u string) *feed.Parsed {
+	key := "item:" + u
+	if p, ok := b.feeds[key]; ok {
+		return p
+	}
+	if b.fetches >= maxThreadFetches || b.ctx.Err() != nil {
+		return nil
+	}
+	b.fetches++
+	var parsed *feed.Parsed
+	if res, err := b.s.web.GetAs(b.ctx, u, "application/rss+xml"); err == nil {
+		if p, err := feed.Parse(res.Body, time.Now()); err == nil {
+			parsed = p
+		}
+	}
+	b.feeds[key] = parsed
+	return parsed
 }
 
 // feedChild turns an item of a replies feed into a closed node.
