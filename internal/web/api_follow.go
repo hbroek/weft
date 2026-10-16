@@ -120,6 +120,11 @@ type threadNodeJSON struct {
 	Unapproved bool   `json:"unapproved,omitempty"`
 	Tombstone  bool   `json:"tombstone,omitempty"`
 	Missing    bool   `json:"missing,omitempty"`
+	// In the focused view: Focus is the requested post, OnPath marks the chain from the root to it,
+	// and Replies is the number of replies a closed branch has (-1 when unknown, 0 on the path).
+	Focus   bool `json:"focus,omitempty"`
+	OnPath  bool `json:"on_path,omitempty"`
+	Replies int  `json:"replies"`
 }
 
 // apiThread returns the thread a post belongs to as a flat, depth-first list starting at the root.
@@ -133,16 +138,13 @@ func (s *Server) apiThread(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "url parameter required", http.StatusBadRequest)
 		return
 	}
-	view := "curated"
-	if r.URL.Query().Get("view") == "raw" {
-		view = "raw"
-	}
+	view := threadView(r.URL.Query().Get("view"))
 	tree, _ := s.buildThread(r, q, target, view)
 	out := []threadNodeJSON{}
 	var walk func(n *tnode, depth int, parent string)
 	walk = func(n *tnode, depth int, parent string) {
 		out = append(out, threadNodeJSON{URL: n.URL, Author: n.Author, Title: n.Title, Text: feed.StripHTML(string(n.HTML)),
-			Depth: depth, Parent: parent, Note: n.Note, Unapproved: n.Unapproved, Tombstone: n.Tombstone, Missing: n.Missing})
+			Depth: depth, Parent: parent, Note: n.Note, Unapproved: n.Unapproved, Tombstone: n.Tombstone, Missing: n.Missing, Focus: n.Focus, OnPath: n.OnPath, Replies: n.Replies})
 		for _, c := range n.Children {
 			walk(c, depth+1, n.URL)
 		}

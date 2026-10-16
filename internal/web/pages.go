@@ -23,7 +23,7 @@ article{margin:2rem 0;border-bottom:1px solid #8884;padding-bottom:1rem}time{col
 nav a,nav button{margin-right:1rem}nav form{display:inline}
 nav button,.linkbtn{background:none;border:0;padding:0;font:inherit;color:LinkText;cursor:pointer;text-decoration:underline}
 input[type=text],input[type=password],textarea{width:100%;box-sizing:border-box;font:inherit;padding:.4rem}
-ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #8883}.node{margin:.75rem 0}.note{display:block;color:#a60}
+ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #8883}.node{margin:.75rem 0}.note{display:block;color:#a60}.focus{background:#8881;padding:.25rem .5rem;border-radius:4px}
 textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}label{display:block;margin-top:1rem}</style>
 </head><body>
 <header><h1><a href="/">{{.Author}}</a></h1><p>{{.Bio}}</p>
@@ -79,17 +79,20 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <p><small>Your follow list is public: <a href="/following.opml">following.opml</a></small></p>
 {{template "foot"}}{{end}}
 {{define "thread"}}{{template "head" .}}<h2>Thread</h2>
-<p>{{if eq .Thread.View "curated"}}<strong>Curated</strong> | <a href="{{.Thread.RawHref}}">Raw</a>{{else}}<a href="{{.Thread.CuratedHref}}">Curated</a> | <strong>Raw</strong>{{end}}
+<p>{{if eq .Thread.View "focus"}}<strong>This branch</strong>{{else}}<a href="{{.Thread.FocusHref}}">This branch</a>{{end}} |
+{{if eq .Thread.View "curated"}}<strong>Whole thread</strong>{{else}}<a href="{{.Thread.CuratedHref}}">Whole thread</a>{{end}} |
+{{if eq .Thread.View "raw"}}<strong>Raw</strong>{{else}}<a href="{{.Thread.RawHref}}">Raw</a>{{end}}
 <small>({{.Thread.Count}} posts)</small></p>
-<p><small>{{if eq .Thread.View "curated"}}Only the replies each author approved, read down from the root.{{else}}Everything your reader knows about this conversation, including replies that were not approved.{{end}}</small></p>
+<p><small>{{if eq .Thread.View "focus"}}The post, the posts above it back to the root, and the replies at every level. Open a branch to follow it.{{else if eq .Thread.View "curated"}}Only the replies each author approved, read down from the root.{{else}}Everything your reader knows about this conversation, including replies that were not approved.{{end}}</small></p>
 <ul class="thread">{{template "node" .Thread.Root}}</ul>
 {{template "foot"}}{{end}}
-{{define "node"}}<li><div class="node">
+{{define "node"}}<li><div class="node{{if .Focus}} focus{{end}}">
 {{if .Tombstone}}<em>original post removed</em> <small>{{.URL}}</small>
 {{else if .Missing}}<em>{{.Note}}</em> <a href="{{.URL}}">{{.URL}}</a>
 {{else}}<strong>{{.Author}}</strong> <a href="{{.URL}}"><time>{{.Date}}</time></a>{{if .Title}} <em>{{.Title}}</em>{{end}}
 {{.HTML}}{{if .Note}}<small class="note">{{.Note}}</small>{{end}}{{end}}
-{{if .ReplyHref}}<a href="{{.ReplyHref}}">Reply</a>{{end}}</div>
+{{if .ReplyHref}}<a href="{{.ReplyHref}}">Reply</a>{{end}}
+{{if .DrillHref}} <a href="{{.DrillHref}}">{{if gt .Replies 0}}{{.Replies}} {{if eq .Replies 1}}reply{{else}}replies{{end}} &rarr;{{else}}replies &rarr;{{end}}</a>{{end}}</div>
 {{if .Children}}<ul>{{range .Children}}{{template "node" .}}{{end}}</ul>{{end}}</li>{{end}}
 {{define "moderation"}}{{template "head" .}}<h2>Replies to your posts</h2>
 {{range .Moderation}}<article>

@@ -251,3 +251,64 @@ func TestReplyToReplyWithoutFeedHintKeepsRoot(t *testing.T) {
 		t.Fatalf("both of Bob's replies should have Alice's first post as root:\n%s", f)
 	}
 }
+
+// The focused view reads the path to one post (about one fetch per level) and leaves other
+// branches closed, however big the rest of the thread is.
+func TestThreadFocusReadsOnlyTheBranch(t *testing.T) {
+	a, b, c, d, e := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol"), newInstance(t, "dana"), newInstance(t, "eric")
+	s1, s2, k, viewer := newInstance(t, "sib1"), newInstance(t, "sib2"), newInstance(t, "kid"), newInstance(t, "viewer")
+	all := []*instance{a, b, c, d, e, s1, s2, k, viewer}
+	ctx := t.Context()
+	// every parent follows its repliers, so the replies are approved
+	for _, f := range [][2]*instance{{a, b}, {a, s2}, {b, c}, {b, s1}, {c, d}, {d, e}, {s1, k}} {
+		f[0].call(t, "POST", "/api/following", `{"url":"`+f[1].base+`/"}`, 200)
+	}
+	reply := func(from *instance, text, to string, toInst *instance) string {
+		return from.post(t, `{"markdown":"`+text+`","in_reply_to":"`+to+`","in_reply_to_feed":"`+toInst.base+`/feed.xml"}`)
+	}
+	ua := a.post(t, `{"markdown":"ROOT-A is the start"}`)
+	settle(ctx, all...)
+	ub := reply(b, "CHAIN-B first", ua, a)
+	us2 := reply(s2, "SIDE-S2 beside b", ua, a)
+	settle(ctx, all...)
+	uc := reply(c, "CHAIN-C second", ub, b)
+	us1 := reply(s1, "SIDE-S1 beside c", ub, b)
+	settle(ctx, all...)
+	ud := reply(d, "TARGET-D third", uc, c)
+	settle(ctx, all...)
+	ue := reply(e, "KIDOFD-E answers d", ud, d)
+	reply(k, "DEEP-K under s1", us1, s1)
+	settle(ctx, all...)
+	_, _ = us2, ue
+
+	ck := loginCookie(t, viewer)
+	for _, x := range all {
+		x.hits.Store(0)
+	}
+	page := threadPageOf(viewer, ck, ud, "")
+	cost := int64(0)
+	for _, x := range all {
+		cost += x.hits.Load()
+	}
+	inOrder(t, page, "ROOT-A", "CHAIN-B", "CHAIN-C", "TARGET-D", "KIDOFD-E")
+	for _, want := range []string{"SIDE-S2", "SIDE-S1"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("sibling %s missing:\n%s", want, page)
+		}
+	}
+	if strings.Contains(page, "DEEP-K") {
+		t.Errorf("a closed branch must stay closed:\n%s", page)
+	}
+	if !strings.Contains(page, "/thread?url="+url.QueryEscape(us1)) {
+		t.Errorf("sibling lacks a link that focuses on it:\n%s", page)
+	}
+	if cost > 9 {
+		t.Errorf("focused view cost %d fetches for a path of 4 posts", cost)
+	}
+	t.Logf("focused view: %d fetches across %d servers", cost, len(all))
+
+	// opening the closed branch makes it the focus
+	if p2 := threadPageOf(viewer, ck, us1, ""); !strings.Contains(p2, "DEEP-K") || !strings.Contains(p2, "ROOT-A") {
+		t.Errorf("focus on the sibling should show its reply and the path to the root:\n%s", p2)
+	}
+}

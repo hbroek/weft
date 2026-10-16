@@ -85,6 +85,10 @@ func (s *Server) repliesFeed(w http.ResponseWriter, r *http.Request, q *req) {
 		it := feed.Item{Title: rp.Title, GUID: feed.GUID{IsPermaLink: true, Value: rp.Source}, Link: rp.Source,
 			Description: excerpt(rp.Text), PubDate: feed.RFC822(rp.Published),
 			Feed: &feed.FeedRef{Href: rp.FeedURL, Name: rp.Author}, InReplyTo: &feed.Ref{Href: purl}}
+		if rp.RepliesHref != "" {
+			// where this reply's own replies are published, and how many of them are cached here
+			it.Replies = &feed.Replies{Href: rp.RepliesHref, Count: s.st.ApprovedSubreplyCount(id, rp.Source)}
+		}
 		ch.Items = append(ch.Items, it)
 		if rp.Received.After(last) {
 			last = rp.Received

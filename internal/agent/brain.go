@@ -141,7 +141,7 @@ func transcript(thread []ThreadNode, target string) string {
 
 func (c *Claude) Decide(ctx context.Context, persona Persona, p Item, thread []ThreadNode) (Decision, error) {
 	prompt := "Read the whole conversation first, so that your answer fits it and does not repeat what others said. " +
-		"Replies are indented under the post they answer.\n<thread>\n" + transcript(thread, p.Link) + "</thread>\n\n" +
+		"Replies are indented under the post they answer. Only the branch around that post is shown.\n<thread>\n" + transcript(thread, p.Link) + "</thread>\n\n" +
 		"Post by " + p.FeedTitle + " that you may answer:\n<post>\n" + p.Title + "\n" + p.Text + "\n</post>\n\n" +
 		`Answer with only a JSON object: {"reply": "<markdown reply, or empty to stay silent>", "reaction": "+" or "-" or "", "emoji": "<optional single emoji>"}.`
 	var d struct{ Reply, Reaction, Emoji string }

@@ -3,9 +3,11 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hbroek/text-thread-casting/internal/store"
@@ -17,6 +19,7 @@ type instance struct {
 	host string // name.localhost:port
 	base string
 	tok  string
+	hits *atomic.Int64 // requests received from other servers, for cost assertions
 }
 
 // newInstance starts an independent server (own database, own port) with one user.
@@ -28,7 +31,11 @@ func newInstance(t *testing.T, name string) *instance {
 	}
 	t.Cleanup(func() { st.Close() })
 	s := New(Config{BaseDomain: "localhost", AllowPrivate: true}, st)
-	ts := httptest.NewServer(s)
+	hits := &atomic.Int64{}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		s.ServeHTTP(w, r)
+	}))
 	t.Cleanup(ts.Close)
 	port := ts.URL[strings.LastIndex(ts.URL, ":")+1:]
 	tok, err := st.AddUser(name, strings.ToUpper(name[:1])+name[1:], "")
@@ -36,7 +43,7 @@ func newInstance(t *testing.T, name string) *instance {
 		t.Fatal(err)
 	}
 	host := name + ".localhost:" + port
-	return &instance{ts: ts, s: s, host: host, base: "http://" + host, tok: tok}
+	return &instance{ts: ts, s: s, host: host, base: "http://" + host, tok: tok, hits: hits}
 }
 
 // settle runs every instance's Webmention queues until nothing is left to do, so tests do not

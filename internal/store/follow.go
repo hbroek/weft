@@ -127,9 +127,10 @@ type TimelineItem struct {
 	Plus, Minus        int // the author's published reaction tally, if any
 	RepliesHref        string
 	Root               string
+	InReplyToFeed      string
 }
 
-const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.plus, i.minus, i.replies_href, i.root
+const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.plus, i.minus, i.replies_href, i.root, i.in_reply_to_feed
 		FROM items i JOIN follows f ON f.feed_url=i.feed_url AND f.user_id=?
 		LEFT JOIN feeds d ON d.url=i.feed_url `
 
@@ -144,7 +145,7 @@ func (s *Store) queryTimeline(q string, args ...any) ([]TimelineItem, error) {
 		var t TimelineItem
 		var pub int64
 		var upd *int64
-		if err := rows.Scan(&t.FeedURL, &t.FeedTitle, &t.GUID, &t.Link, &t.Title, &t.Text, &t.Markdown, &pub, &upd, &t.InReplyTo, &t.Plus, &t.Minus, &t.RepliesHref, &t.Root); err != nil {
+		if err := rows.Scan(&t.FeedURL, &t.FeedTitle, &t.GUID, &t.Link, &t.Title, &t.Text, &t.Markdown, &pub, &upd, &t.InReplyTo, &t.Plus, &t.Minus, &t.RepliesHref, &t.Root, &t.InReplyToFeed); err != nil {
 			return nil, err
 		}
 		t.Published = time.Unix(pub, 0)
@@ -172,4 +173,23 @@ func (s *Store) ItemsInThread(userID int64, root string) ([]TimelineItem, error)
 // does not follow that feed.
 func (s *Store) FeedItems(userID int64, feedURL string, limit int) ([]TimelineItem, error) {
 	return s.queryTimeline(timelineSelect+`WHERE i.feed_url=? ORDER BY i.published DESC, i.guid LIMIT ?`, userID, feedURL, limit)
+}
+
+// ItemByTarget returns a cached item of a followed feed by its permalink, or ErrNotFound.
+func (s *Store) ItemByTarget(userID int64, target string) (*TimelineItem, error) {
+	rows, err := s.queryTimeline(timelineSelect+`WHERE i.guid=? LIMIT 1`, userID, target)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, ErrNotFound
+	}
+	return &rows[0], nil
+}
+
+// ApprovedSubreplyCount is how many approved replies to the direct reply via are cached under postID.
+func (s *Store) ApprovedSubreplyCount(postID int64, via string) int {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM subreplies WHERE post_id=? AND via=?`, postID, via).Scan(&n)
+	return n
 }

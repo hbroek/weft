@@ -137,6 +137,7 @@ Each `<item>` is a reference to a reply, not a full copy:
 - `<description>`: a short excerpt for display.
 - `<author>` or `<tc:feed href="…">Display name</tc:feed>`: who wrote it, by feed URL. The element text is an optional display name.
 - `<tc:inReplyTo>`: the reply's parent. Required when `tc:depth` is greater than 1, so deeper items can be placed in the tree.
+- `<tc:replies href="…" count="…"/>` (optional): where the reply's own replies are published and how many the feed's host has cached, so a reader can show a closed branch's size without opening it. Items one level down need not carry it.
 - `<tc:reactions plus="…" minus="…"/>`: the reply's reaction tally, if known.
 
 ### Cached subtrees

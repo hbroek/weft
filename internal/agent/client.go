@@ -116,7 +116,8 @@ type ThreadNode struct {
 	Missing    bool   `json:"missing"`
 }
 
-// Thread returns the whole thread that the post at target belongs to (the curated view).
+// Thread returns the branch around the post at target: the path from the root, the siblings at
+// every level and the post's own replies. Closed branches carry only a reply count.
 func (c *Client) Thread(ctx context.Context, target string) (out []ThreadNode, err error) {
 	err = c.do(ctx, "GET", "/api/thread?url="+url.QueryEscape(target), nil, &out)
 	return

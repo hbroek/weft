@@ -17,7 +17,7 @@ import (
 // Limits that keep a thread view from turning into a crawl of the web.
 const (
 	maxThreadNodes   = 300
-	maxThreadFetches = 14
+	maxThreadFetches = 24
 	maxProbes        = 8
 	maxCrawlDepth    = 6
 	threadTimeout    = 10 * time.Second
@@ -27,18 +27,34 @@ type tnode struct {
 	URL, Author, Title, Date, Note, ReplyHref string
 	HTML                                      template.HTML
 	Local, Tombstone, Missing, Unapproved     bool
-	Children                                  []*tnode
+	// OnPath marks the chain from the root to the focused post; Focus marks the post itself.
+	OnPath, Focus bool
+	// Replies is how many approved replies a closed node has (-1 when not known), and DrillHref
+	// opens the thread focused on it.
+	Replies   int
+	DrillHref string
+	Children  []*tnode
 
-	parent, feedHint, repliesHref string
-	repliesCount                  int // -1 unknown
-	published                     time.Time
-	expanded                      bool
+	parent, parentFeed, feedHint, repliesHref string
+	repliesCount                              int // -1 unknown
+	published                                 time.Time
+	expanded                                  bool
+}
+
+// threadView names the view a request asks for: "focus" (the default), "curated" or "raw".
+func threadView(v string) string {
+	switch v {
+	case "curated", "raw":
+		return v
+	}
+	return "focus"
 }
 
 type threadPage struct {
 	Root        *tnode
-	View        string // "curated" or "raw"
+	View        string // "focus", "curated" (the whole approved tree) or "raw"
 	RootURL     string
+	FocusHref   string
 	CuratedHref string
 	RawHref     string
 	Count       int
@@ -73,13 +89,11 @@ func (s *Server) thread(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "url parameter required", http.StatusBadRequest)
 		return
 	}
-	view := "curated"
-	if r.URL.Query().Get("view") == "raw" {
-		view = "raw"
-	}
+	view := threadView(r.URL.Query().Get("view"))
 	tree, root := s.buildThread(r, q, target, view)
 	d := s.data(r, q, "Thread")
-	d.Thread = &threadPage{Root: tree, View: view, RootURL: root, CuratedHref: threadHref(root, "curated"), RawHref: threadHref(root, "raw"), Count: countNodes(tree)}
+	d.Thread = &threadPage{Root: tree, View: view, RootURL: root, FocusHref: threadHref(target, ""), CuratedHref: threadHref(root, "curated"),
+		RawHref: threadHref(root, "raw"), Count: countNodes(tree)}
 	s.show(w, "thread", http.StatusOK, d)
 }
 
@@ -88,6 +102,10 @@ func (s *Server) buildThread(r *http.Request, q *req, target, view string) (*tno
 	ctx, cancel := context.WithTimeout(r.Context(), threadTimeout)
 	defer cancel()
 	b := &threadBuilder{s: s, r: r, q: q, ctx: ctx, base: s.base(r), own: s.base(r) + "/feed.xml", feeds: map[string]*feed.Parsed{}}
+	if view == "focus" {
+		root, _ := b.focus(target)
+		return root, root.URL
+	}
 	root, rootFeed := b.resolveRoot(target)
 	if view == "raw" {
 		return b.raw(root, rootFeed), root
@@ -422,13 +440,7 @@ func (b *threadBuilder) childrenOf(n *tnode) []*tnode {
 		if it.InReplyTo == "" || it.GUID == "" {
 			continue
 		}
-		name := it.FeedName
-		if name == "" {
-			name = it.FeedHref
-		}
-		out = append(out, &tnode{URL: it.GUID, Author: name, Title: it.Title, Date: it.Published.Format("2 Jan 2006 15:04"),
-			HTML: renderRemote("", it.Text), parent: it.InReplyTo, published: it.Published, feedHint: it.FeedHref, repliesCount: -1,
-			ReplyHref: b.reply(it.GUID) + "&reply_feed=" + url.QueryEscape(it.FeedHref)})
+		out = append(out, b.feedChild(it))
 	}
 	return out
 }
