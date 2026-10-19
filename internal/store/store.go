@@ -203,6 +203,7 @@ func Open(path string) (*Store, error) {
 		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 	}
 	db.Exec(`ALTER TABLE items ADD COLUMN replies_href TEXT NOT NULL DEFAULT ''`)
+	db.Exec(`ALTER TABLE items ADD COLUMN replies_count INTEGER NOT NULL DEFAULT -1`) // -1: the feed did not say
 	for _, c := range []string{"uid", "slug"} {
 		db.Exec(`ALTER TABLE posts ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 	}

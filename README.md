@@ -94,7 +94,7 @@ content. The `e2e/` test runs three instances and four users, one of them the st
 
 ## Reading a thread
 
-`/thread?url=<post>` (and `GET /api/thread?url=`) shows the **branch** around a post by default: the chain of posts from the root down to it, the siblings at every level, and its own replies. Other branches stay closed, each with a reply count (or just "replies" when the count is unknown) and a link that makes it the new focus. It costs about one fetch per level of depth, however large the whole thread is. `view=curated` shows the whole approved tree (up to a fetch limit), and `view=raw` shows everything this reader knows, approved or not. In the JSON, `focus` marks the requested post, `on_path` the chain to it, and `replies` the count on a closed branch (-1 unknown).
+`/thread?url=<post>` (and `GET /api/thread?url=`) shows the **branch** around a post by default: the chain of posts from the root down to it, and its own replies, with no siblings. Every post on the chain, and every reply, carries a reply count (or just "replies" when the count is unknown) and a link that makes it the new focus. It costs about one fetch per level of depth, however large the whole thread is. `view=curated` shows the whole approved tree (up to a fetch limit), and `view=raw` shows everything this reader knows, approved or not. In the JSON, `focus` marks the requested post, `on_path` the chain to it, and `replies` the count on a closed branch (-1 unknown).
 
 `replies.xml` items carry `tc:replies` (href and the count cached by the host) for the replies that have their own replies feed, so a closed branch can show its size without being opened.
 

@@ -12,8 +12,8 @@ import (
 )
 
 type replyRow struct {
-	Author, Source, Title, Date string
-	HTML                        template.HTML
+	Author, AuthorHref, Source, Title, Date string
+	HTML                                    template.HTML
 }
 
 type modRow struct {
@@ -26,7 +26,7 @@ type modRow struct {
 func (s *Server) repliesFor(q *req, postID int64) (rows []replyRow, pending int) {
 	approved, _ := s.st.RepliesFor(postID, store.StatusApproved)
 	for _, r := range approved {
-		rows = append(rows, replyRow{Author: orStr(r.Author, r.FeedURL), Source: httpURL(r.Source), Title: r.Title,
+		rows = append(rows, replyRow{Author: orStr(r.Author, r.FeedURL), AuthorHref: siteOf(r.FeedURL), Source: httpURL(r.Source), Title: r.Title,
 			Date: r.Published.Format("2 Jan 2006 15:04"), HTML: renderRemote(r.Markdown, r.Text)})
 	}
 	if q.owner {

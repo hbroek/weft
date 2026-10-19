@@ -18,10 +18,11 @@ import (
 )
 
 type tlRow struct {
-	Author, Title, Link, Date, InReplyTo, ReplyHref string
-	Target, FeedURL, Mine, Tally, ThreadHref        string
-	HTML                                            template.HTML
-	Edited                                          bool
+	Author, AuthorHref, Title, Link, Date, InReplyTo, ReplyHref string
+	Target, FeedURL, Mine, Tally, ThreadHref                    string
+	HasThread                                                   bool // it replies to something or has replies
+	HTML                                                        template.HTML
+	Edited                                                      bool
 }
 
 type followRow struct{ URL, Title, Err string }
@@ -100,9 +101,9 @@ func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineIt
 		if author == "" {
 			author = it.FeedURL
 		}
-		out = append(out, tlRow{Author: author, Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
+		out = append(out, tlRow{Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
 			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil,
-			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), Target: itemTarget(it), FeedURL: it.FeedURL, Tally: remoteTallyText(it.Plus, it.Minus),
+			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: remoteTallyText(it.Plus, it.Minus),
 			Mine: s.myReaction(userID, itemTarget(it))})
 	}
 	return out, items, nil
@@ -344,4 +345,18 @@ func (s *Server) opml(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	w.Header().Set("Content-Type", "text/x-opml; charset=utf-8")
 	w.Write(append([]byte(xml.Header), b...))
+}
+
+// siteOf is the home page of the site that publishes feedURL: the feed's address without its
+// feed.xml, or "" when it is not an http(s) URL.
+func siteOf(feedURL string) string {
+	u, err := url.Parse(httpURL(feedURL))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	u.RawQuery, u.Fragment = "", ""
+	if i := strings.LastIndex(u.Path, "/"); strings.HasSuffix(u.Path, ".xml") || strings.HasSuffix(u.Path, ".rss") || strings.HasSuffix(u.Path, ".atom") {
+		u.Path = u.Path[:i+1]
+	}
+	return u.String()
 }

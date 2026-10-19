@@ -253,8 +253,8 @@ func TestReplyToReplyWithoutFeedHintKeepsRoot(t *testing.T) {
 	}
 }
 
-// The focused view reads the path to one post (about one fetch per level) and leaves other
-// branches closed, however big the rest of the thread is.
+// The focused view reads the path to one post (about one fetch per level) and shows nothing beside
+// it; the rest of the thread is a click away, however big the rest of the thread is.
 func TestThreadFocusReadsOnlyTheBranch(t *testing.T) {
 	a, b, c, d, e := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol"), newInstance(t, "dana"), newInstance(t, "eric")
 	s1, s2, k, viewer := newInstance(t, "sib1"), newInstance(t, "sib2"), newInstance(t, "kid"), newInstance(t, "viewer")
@@ -292,18 +292,15 @@ func TestThreadFocusReadsOnlyTheBranch(t *testing.T) {
 		cost += x.hits.Load()
 	}
 	inOrder(t, page, "ROOT-A", "CHAIN-B", "CHAIN-C", "TARGET-D", "KIDOFD-E")
-	for _, want := range []string{"SIDE-S2", "SIDE-S1"} {
-		if !strings.Contains(page, want) {
-			t.Errorf("sibling %s missing:\n%s", want, page)
+	for _, no := range []string{"SIDE-S2", "SIDE-S1", "DEEP-K"} {
+		if strings.Contains(page, no) {
+			t.Errorf("%s is beside the path and must not be shown:\n%s", no, page)
 		}
 	}
-	if strings.Contains(page, "DEEP-K") {
-		t.Errorf("a closed branch must stay closed:\n%s", page)
+	if !strings.Contains(page, "/thread?url="+url.QueryEscape(ub)) {
+		t.Errorf("an ancestor lacks a link that opens its branch:\n%s", page)
 	}
-	if !strings.Contains(page, "/thread?url="+url.QueryEscape(us1)) {
-		t.Errorf("sibling lacks a link that focuses on it:\n%s", page)
-	}
-	if cost > 9 {
+	if cost > 6 {
 		t.Errorf("focused view cost %d fetches for a path of 4 posts", cost)
 	}
 	t.Logf("focused view: %d fetches across %d servers", cost, len(all))

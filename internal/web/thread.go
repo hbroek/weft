@@ -23,6 +23,9 @@ const (
 	threadTimeout    = 10 * time.Second
 )
 
+// AuthorHref links the author's name to their site.
+func (n *tnode) AuthorHref() string { return siteOf(n.feedHint) }
+
 type tnode struct {
 	URL, Author, Title, Date, Note, ReplyHref string
 	HTML                                      template.HTML
@@ -32,6 +35,7 @@ type tnode struct {
 	// Replies is how many approved replies a closed node has (-1 when not known), and DrillHref
 	// opens the thread focused on it.
 	Replies   int
+	Other     bool // Replies counts only the replies not already shown (a post on the path)
 	DrillHref string
 	Children  []*tnode
 
@@ -63,9 +67,9 @@ type threadPage struct {
 func threadHref(target, view string) string {
 	h := "/thread?url=" + url.QueryEscape(target)
 	if view != "" {
-		h += "&view=" + view
+		return h + "&view=" + view
 	}
-	return h
+	return h + "#focus" // the focused view opens scrolled to the post
 }
 
 type threadBuilder struct {

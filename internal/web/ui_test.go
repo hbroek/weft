@@ -169,3 +169,39 @@ func TestTimelineCanShowOneFeed(t *testing.T) {
 		t.Errorf("following page does not link to the feed view:\n%s", fol)
 	}
 }
+
+// A post that is not a reply and has no replies has no thread to open, so it gets no Thread link.
+func TestThreadLinkOnlyWhereThereIsAThread(t *testing.T) {
+	s, _ := setup(t)
+	u, _ := s.st.UserByName("alice")
+	const fu = "http://a.example/feed.xml"
+	if err := s.st.Follow(u.ID, fu); err != nil {
+		t.Fatal(err)
+	}
+	item := func(n, extra string) string {
+		return `<item><title>` + n + `</title><link>http://a.example/` + n + `</link><guid>http://a.example/` + n + `</guid><description>x</description>` + extra + `</item>`
+	}
+	xml := `<rss version="2.0" xmlns:tc="https://example.org/ns/textcast/0.1"><channel><title>A</title>` +
+		item("lonely", `<tc:replies href="http://a.example/lonely/replies.xml" count="0"/>`) +
+		item("popular", `<tc:replies href="http://a.example/popular/replies.xml" count="2"/>`) +
+		item("answer", `<tc:inReplyTo href="http://a.example/popular"/><tc:replies href="http://a.example/answer/replies.xml" count="0"/>`) +
+		item("unknown", ``) + `</channel></rss>`
+	p, err := feed.Parse([]byte(xml), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.st.SaveFeed(fu, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.st.SetPassword("alice", "correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+	page := form(s, "GET", "/timeline", ck, nil, "").Body.String()
+	for name, want := range map[string]bool{"lonely": false, "popular": true, "answer": true, "unknown": true} {
+		got := strings.Contains(page, "/thread?url="+url.QueryEscape("http://a.example/"+name)+"#focus")
+		if got != want {
+			t.Errorf("%s: Thread link present=%v, want %v", name, got, want)
+		}
+	}
+}

@@ -10,8 +10,8 @@ import (
 )
 
 // The focused thread view shows one post in its conversation: the chain of ancestors from the
-// root down to the post, the siblings at every level, and the post's own replies. Branches off
-// that path are left closed, each with its reply count and a link that makes it the new focus.
+// root down to the post, and the post's own replies. Nothing beside the path is shown; every post on
+// it links to its own branch.
 // It costs about one fetch per level of depth, not one per post in the whole thread.
 
 // nodeFor loads the post at u from whatever this reader already has, and fetches its author's feed
@@ -168,52 +168,42 @@ func (b *threadBuilder) focus(target string) (root, focus *tnode) {
 		cur = p
 	}
 
-	// A replies feed covers the children of its post and of those children, so reading every
-	// second ancestor (1, 3, 5, …) gives the siblings at every level of the path.
+	// Context is the path to the root and nothing beside it, so only the post's own replies are
+	// read (a replies feed holds two levels: its replies and theirs). Each ancestor offers a link
+	// to open its branch.
 	index := map[string][]*tnode{}
 	known := map[string]bool{}
-	read := func(i int) {
-		for k, v := range b.childIndex(chain[i]) {
-			index[k], known[k] = v, true
-		}
+	for k, v := range b.childIndex(focus) {
+		index[k], known[k] = v, true
 	}
-	for i := 1; i < len(chain); i += 2 {
-		read(i)
-	}
-	if last := len(chain) - 1; last%2 == 0 {
-		read(last)
-	}
-	for i, n := range chain { // a reply that was not approved hides what is under it: ask directly
-		if !known[n.URL] {
-			read(i)
-		}
-	}
-
-	for k := len(chain) - 1; k >= 0; k-- {
+	for k := len(chain) - 1; k >= 1; k-- {
 		x := chain[k]
 		x.OnPath, x.expanded = true, true
-		var kids []*tnode
-		for _, c := range index[x.URL] {
-			if k > 0 && c.URL == chain[k-1].URL {
-				continue
-			}
-			c.Replies = -1
-			if known[c.URL] {
-				c.Replies = len(index[c.URL])
-			} else if c.repliesCount >= 0 {
-				c.Replies = c.repliesCount
-			}
-			if c.Replies != 0 {
-				c.DrillHref = threadHref(c.URL, "")
-			}
-			kids = append(kids, c)
+		x.Children = []*tnode{chain[k-1]}
+		// the next post down the path is one of its replies and is already on the page, unless it
+		// is not approved, in which case the count never included it
+		x.Other, x.Replies = true, x.repliesCount
+		if x.Replies > 0 && !chain[k-1].Unapproved {
+			x.Replies--
 		}
-		if k > 0 {
-			kids = append(kids, chain[k-1])
+		if x.Replies != 0 {
+			x.DrillHref = threadHref(x.URL, "")
 		}
-		sort.SliceStable(kids, func(i, j int) bool { return kids[i].published.Before(kids[j].published) })
-		x.Children = kids
 	}
+	focus.OnPath, focus.expanded = true, true
+	for _, c := range index[focus.URL] {
+		c.Replies = -1
+		if known[c.URL] {
+			c.Replies = len(index[c.URL])
+		} else if c.repliesCount >= 0 {
+			c.Replies = c.repliesCount
+		}
+		if c.Replies != 0 {
+			c.DrillHref = threadHref(c.URL, "")
+		}
+		focus.Children = append(focus.Children, c)
+	}
+	sort.SliceStable(focus.Children, func(i, j int) bool { return focus.Children[i].published.Before(focus.Children[j].published) })
 	focus.Focus = true
 	return chain[len(chain)-1], focus
 }

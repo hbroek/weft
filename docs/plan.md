@@ -70,6 +70,8 @@ Not scheduled. A stranger who replies or reacts counts as vouched for when feeds
 ### 8. Later
 Generated context snippets for non-textcast parents. Atom input. WebSub. Packaging and a hosted-environment signup. License.
 
+**Action item (before production):** work through [production-optimizations.md](production-optimizations.md): measure, then decide which of its items to build. First on the list is a fetch cache for thread pages.
+
 ## Spec updates to make along the way
 
 - `tc:reactionOf` with `polarity` and optional `emoji` replaces `tc:likeOf`, and the likes feed becomes the reactions feed. `tc:likes` becomes a tally with positive and negative counts.
