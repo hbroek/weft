@@ -1,4 +1,4 @@
-// Command ttc runs the text-thread-casting server and admin commands.
+// Command weft runs the Weft server and admin commands.
 package main
 
 import (
@@ -8,24 +8,46 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/store"
-	"github.com/hbroek/text-thread-casting/internal/web"
+	"github.com/hbroek/weft/internal/store"
+	"github.com/hbroek/weft/internal/web"
 )
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  ttc serve    [-addr :8080] [-domain localhost] [-scheme http] [-db ttc.db] [-dev] [-v] [-poll 5m]
-  ttc user add [-db ttc.db] [-display NAME] [-bio TEXT] [-password PW] USERNAME
-  ttc user passwd [-db ttc.db] -password PW USERNAME
-  ttc user token  [-db ttc.db] USERNAME      (issues a new API token, invalidating the old one)
-  ttc user follow [-db ttc.db] [-domain localhost] [-scheme http] [-port 8080] USERNAME TARGET...
+  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-db weft.db] [-dev] [-v] [-poll 5m]
+  weft user add [-db weft.db] [-display NAME] [-bio TEXT] [-password PW] USERNAME
+  weft user passwd [-db weft.db] -password PW USERNAME
+  weft user token  [-db weft.db] USERNAME      (issues a new API token, invalidating the old one)
+  weft user follow [-db weft.db] [-domain localhost] [-scheme http] [-port 8080] USERNAME TARGET...
                   TARGET is a feed or site URL, or a bare user name on this instance (alice -> http://alice.localhost:8080/).
                   The target's server must be running.
-  ttc user list   [-db ttc.db]`)
+  weft user list   [-db weft.db]`)
 	os.Exit(2)
+}
+
+// legacyDB renames a database file left from before the project was renamed, with its WAL files,
+// when the new file does not exist yet. Only the default name is touched.
+func legacyDB(path string) {
+	if filepath.Base(path) != "weft.db" {
+		return
+	}
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+	old := filepath.Join(filepath.Dir(path), "ttc.db")
+	if _, err := os.Stat(old); err != nil {
+		return
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Rename(old+suffix, path+suffix); err != nil && suffix == "" {
+			log.Fatal(err)
+		}
+	}
+	log.Printf("renamed %s to %s", old, path)
 }
 
 func main() {
@@ -38,11 +60,12 @@ func main() {
 		addr := fs.String("addr", ":8080", "listen address")
 		domain := fs.String("domain", "localhost", "hosted base domain; name.<domain> serves user name")
 		scheme := fs.String("scheme", "http", "http or https, used in absolute URLs")
-		db := fs.String("db", "ttc.db", "SQLite file")
+		db := fs.String("db", "weft.db", "SQLite file")
 		dev := fs.Bool("dev", false, "allow fetching feeds from loopback/private addresses (local development only)")
 		verbose := fs.Bool("v", false, "log every API call")
 		poll := fs.Duration("poll", 5*time.Minute, "how often to refresh followed feeds")
 		fs.Parse(os.Args[2:])
+		legacyDB(*db)
 		st, err := store.Open(*db)
 		if err != nil {
 			log.Fatal(err)
@@ -57,7 +80,7 @@ func main() {
 			usage()
 		}
 		fs := flag.NewFlagSet("user "+os.Args[2], flag.ExitOnError)
-		db := fs.String("db", "ttc.db", "SQLite file")
+		db := fs.String("db", "weft.db", "SQLite file")
 		display := fs.String("display", "", "display name")
 		bio := fs.String("bio", "", "bio")
 		pw := fs.String("password", "", "login password for the web UI (min 8 characters)")
@@ -76,6 +99,7 @@ func main() {
 		} else if fs.NArg() != want {
 			usage()
 		}
+		legacyDB(*db)
 		st, err := store.Open(*db)
 		if err != nil {
 			log.Fatal(err)

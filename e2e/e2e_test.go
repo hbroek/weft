@@ -15,9 +15,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hbroek/text-thread-casting/internal/agent"
-	"github.com/hbroek/text-thread-casting/internal/store"
-	"github.com/hbroek/text-thread-casting/internal/web"
+	"github.com/hbroek/weft/internal/agent"
+	"github.com/hbroek/weft/internal/store"
+	"github.com/hbroek/weft/internal/web"
 )
 
 type inst struct {
@@ -180,7 +180,7 @@ func TestRoundTripWithAgent(t *testing.T) {
 
 	// Alice's feed tallies the two reactions (Carol's 🎉 and Dana's default 👍).
 	feed := get(t, alice, "/feed.xml")
-	if !strings.Contains(feed, `<tc:reactions plus="2" minus="0">`) || !strings.Contains(feed, `<tc:replies href="`) {
+	if !strings.Contains(feed, `<weft:reactions plus="2" minus="0">`) || !strings.Contains(feed, `<weft:replies href="`) {
 		t.Fatalf("alice's feed lacks the tallies:\n%s", feed)
 	}
 

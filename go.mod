@@ -1,4 +1,4 @@
-module github.com/hbroek/text-thread-casting
+module github.com/hbroek/weft
 
 go 1.27.2
 

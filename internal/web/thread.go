@@ -9,9 +9,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/feed"
-	"github.com/hbroek/text-thread-casting/internal/fetch"
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/fetch"
+	"github.com/hbroek/weft/internal/store"
 )
 
 // Limits that keep a thread view from turning into a crawl of the web.
@@ -125,7 +125,7 @@ func countNodes(n *tnode) int {
 	return c
 }
 
-// resolveRoot finds the thread a post belongs to: a post that carries no tc:root is its own root.
+// resolveRoot finds the thread a post belongs to: a post that carries no weft:root is its own root.
 func (b *threadBuilder) resolveRoot(target string) (root, rootFeed string) {
 	if id, ok := b.s.localPostID(b.q.host.ID, b.base, target); ok {
 		if p, err := b.s.st.Post(b.q.host.ID, id); err == nil && p.Root != "" {

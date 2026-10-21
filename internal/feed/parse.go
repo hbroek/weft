@@ -1,6 +1,7 @@
 package feed
 
 import (
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"html"
@@ -9,7 +10,7 @@ import (
 	"time"
 )
 
-// Parsed is the reader's view of an RSS 2.0 feed, textcast or not.
+// Parsed is the reader's view of an RSS 2.0 feed, Weft or not.
 type Parsed struct {
 	Title, Link, Description string
 	Webmention, Following    string
@@ -21,22 +22,22 @@ type Parsed struct {
 
 type ParsedItem struct {
 	// GUID is the key the reader files the item under: the item's permalink when it has one,
-	// otherwise its guid. UID is the item's own guid, its identity if its URL changes (a textcast
+	// otherwise its guid. UID is the item's own guid, its identity if its URL changes (a Weft
 	// post's is urn:uuid:…).
 	GUID, UID, Link, Title string
 	Text                   string // description with markup removed; safe to show once escaped
 	Markdown               string // source:markdown, if the feed has it
 	Published              time.Time
 	Updated                time.Time // zero if never edited
-	InReplyTo              string    // tc:inReplyTo href, if any
+	InReplyTo              string    // weft:inReplyTo href, if any
 	InReplyToFeed          string
-	Root, RootFeed         string // tc:root
-	// tc:reactionOf: set when the item is a reaction rather than a post.
+	Root, RootFeed         string // weft:root
+	// weft:reactionOf: set when the item is a reaction rather than a post.
 	ReactionOf, Polarity, Emoji string
-	Plus, Minus                 int    // tc:reactions tally
-	RepliesHref                 string // tc:replies href: where this item's approved replies are published
-	RepliesCount                int    // tc:replies count; -1 when the item does not say
-	FeedHref, FeedName          string // tc:feed: the author's feed and display name (replies feeds)
+	Plus, Minus                 int    // weft:reactions tally
+	RepliesHref                 string // weft:replies href: where this item's approved replies are published
+	RepliesCount                int    // weft:replies count; -1 when the item does not say
+	FeedHref, FeedName          string // weft:feed: the author's feed and display name (replies feeds)
 }
 
 // plainLinks collects <link> elements. encoding/xml matches an unqualified name in any
@@ -65,9 +66,9 @@ type xmlParsed struct {
 		} `xml:"http://www.w3.org/2005/Atom link"`
 		Link          plainLinks `xml:"link"`
 		Description   string     `xml:"description"`
-		Webmention    string     `xml:"https://example.org/ns/textcast/0.1 webmention"`
-		Following     string     `xml:"https://example.org/ns/textcast/0.1 following"`
-		ReactionsFeed string     `xml:"https://example.org/ns/textcast/0.1 reactionsFeed"`
+		Webmention    string     `xml:"https://weftseed.com/ns/weft/0.1 webmention"`
+		Following     string     `xml:"https://weftseed.com/ns/weft/0.1 following"`
+		ReactionsFeed string     `xml:"https://weftseed.com/ns/weft/0.1 reactionsFeed"`
 		Items         []struct {
 			Title       string     `xml:"title"`
 			GUID        string     `xml:"guid"`
@@ -75,32 +76,32 @@ type xmlParsed struct {
 			Description string     `xml:"description"`
 			PubDate     string     `xml:"pubDate"`
 			Markdown    string     `xml:"http://source.scripting.com/ markdown"`
-			Updated     string     `xml:"https://example.org/ns/textcast/0.1 updated"`
+			Updated     string     `xml:"https://weftseed.com/ns/weft/0.1 updated"`
 			InReplyTo   struct {
 				Href string `xml:"href,attr"`
 				Feed string `xml:"feed,attr"`
-			} `xml:"https://example.org/ns/textcast/0.1 inReplyTo"`
+			} `xml:"https://weftseed.com/ns/weft/0.1 inReplyTo"`
 			Root struct {
 				Href string `xml:"href,attr"`
 				Feed string `xml:"feed,attr"`
-			} `xml:"https://example.org/ns/textcast/0.1 root"`
+			} `xml:"https://weftseed.com/ns/weft/0.1 root"`
 			ReactionOf struct {
 				Href     string `xml:"href,attr"`
 				Polarity string `xml:"polarity,attr"`
 				Emoji    string `xml:"emoji,attr"`
-			} `xml:"https://example.org/ns/textcast/0.1 reactionOf"`
+			} `xml:"https://weftseed.com/ns/weft/0.1 reactionOf"`
 			Replies struct {
 				Href  string `xml:"href,attr"`
 				Count *int   `xml:"count,attr"`
-			} `xml:"https://example.org/ns/textcast/0.1 replies"`
+			} `xml:"https://weftseed.com/ns/weft/0.1 replies"`
 			Feed struct {
 				Href string `xml:"href,attr"`
 				Name string `xml:",chardata"`
-			} `xml:"https://example.org/ns/textcast/0.1 feed"`
+			} `xml:"https://weftseed.com/ns/weft/0.1 feed"`
 			Reactions struct {
 				Plus  int `xml:"plus,attr"`
 				Minus int `xml:"minus,attr"`
-			} `xml:"https://example.org/ns/textcast/0.1 reactions"`
+			} `xml:"https://weftseed.com/ns/weft/0.1 reactions"`
 		} `xml:"item"`
 	} `xml:"channel"`
 }
@@ -140,6 +141,8 @@ func StripHTML(s string) string {
 // Parse reads an RSS 2.0 document. now stamps items that carry no usable date.
 func Parse(data []byte, now time.Time) (*Parsed, error) {
 	var x xmlParsed
+	// feeds written before the rename declare the old namespace URI; read them as the new one
+	data = bytes.ReplaceAll(data, []byte(NSLegacy), []byte(NSWeft))
 	if err := xml.Unmarshal(data, &x); err != nil {
 		return nil, errors.New("not an RSS 2.0 feed: " + err.Error())
 	}

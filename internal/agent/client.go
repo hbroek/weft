@@ -1,4 +1,4 @@
-// Package agent is an AI participant that uses only the public REST API of a textcast instance.
+// Package agent is an AI participant that uses only the public REST API of a Weft host.
 package agent
 
 import (

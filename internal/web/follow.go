@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/feed"
-	"github.com/hbroek/text-thread-casting/internal/fetch"
-	"github.com/hbroek/text-thread-casting/internal/md"
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/fetch"
+	"github.com/hbroek/weft/internal/md"
+	"github.com/hbroek/weft/internal/store"
 )
 
 type tlRow struct {

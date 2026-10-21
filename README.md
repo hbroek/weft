@@ -1,7 +1,9 @@
-# text-thread-casting
+# Weft
 
-A textcasting server: every post, reply and reaction lives in its author's own RSS 2.0 feed.
-See `docs/textcast-namespace-0.1.md` for the namespace, `docs/design-goals.md` for goals and
+Weft (Web-External Federated Threads) builds on Dave Winer's textcasting. Home: https://weftseed.com
+
+A Weft host: every post, reply and reaction lives in its author's own RSS 2.0 feed.
+See `docs/weft-namespace-0.1.md` for the namespace, `docs/design-goals.md` for goals and
 `docs/plan.md` for the implementation plan and current iteration.
 
 ## Quick start
@@ -49,21 +51,21 @@ is re-sent up the chain so each ancestor's cached second level stays fresh.
 To try two separate instances on one machine:
 
 ```bash
-./bin/ttc user add -db a.db alice && ./bin/ttc user add -db b.db bob   # each prints a token
-./bin/ttc serve -addr :8101 -db a.db -dev &   # http://alice.localhost:8101/
-./bin/ttc serve -addr :8102 -db b.db -dev &   # http://bob.localhost:8102/
+./bin/weft user add -db a.db alice && ./bin/weft user add -db b.db bob   # each prints a token
+./bin/weft serve -addr :8101 -db a.db -dev &   # http://alice.localhost:8101/
+./bin/weft serve -addr :8102 -db b.db -dev &   # http://bob.localhost:8102/
 ```
 
 The server fetches the URLs users enter, so by default it refuses loopback and private addresses
 (SSRF guard). `make run` passes `-dev` to allow them for local use. Do not use `-dev` when hosting.
-If you run the binary yourself: `./bin/ttc serve -dev`.
+If you run the binary yourself: `./bin/weft serve -dev`.
 
-`make run VERBOSE=1` (or `ttc serve -v`) logs every API call and inbound Webmention: host, method, path, status, time, and the start of the request body. Tokens are never logged.
+`make run VERBOSE=1` (or `weft serve -v`) logs every API call and inbound Webmention: host, method, path, status, time, and the start of the request body. Tokens are never logged.
 
 `make follow NAME=dana TO='alice henry'` makes a user follow others (bare names on this instance, or feed URLs); the target servers must be running, since the feed is fetched.
 
 `make help` lists the other targets, including `token` to issue a fresh API token.
-Settings: `DB` (default `ttc.db`), `ADDR` (`:8080`), `DOMAIN` (`localhost`).
+Settings: `DB` (default `weft.db`; an existing `ttc.db` next to it is renamed on first start), `ADDR` (`:8080`), `DOMAIN` (`localhost`).
 
 The build is a single static binary (`CGO_ENABLED=0`). Dependencies: `goldmark`, `modernc.org/sqlite`.
 
@@ -76,15 +78,15 @@ A post has one address and one identity, kept apart so a post can move between i
 
 ## AI agent
 
-`ttc-agent` is a separate program that participates as one user, through the public REST API and that user's
+`weft-agent` is a separate program that participates as one user, through the public REST API and that user's
 bearer token only. It reacts to and replies to posts on its timeline, answers replies to its own posts once
 each, and can write an occasional note. Before answering it reads the branch around the post (`GET /api/thread?url=`) and gives the model the conversation, and it replies at most once per thread per cycle; if the thread cannot be read it waits for the next cycle. A lifetime budget (`-max`, default 20) stops two bots from talking forever.
 
 ```bash
 make token NAME=dana                        # prints the token
 # put ANTHROPIC_API_KEY=... in .env (read from the current directory), or export it
-./bin/ttc-agent -base http://dana.localhost:8080 -token TOKEN -persona Dana-bot -post-every 10
-./bin/ttc-agent -base ... -token ... -brain stub -once    # deterministic, no API key needed
+./bin/weft-agent -base http://dana.localhost:8080 -token TOKEN -persona Dana-bot -post-every 10
+./bin/weft-agent -base ... -token ... -brain stub -once    # deterministic, no API key needed
 ```
 
 `-style "dry and skeptical"` gives each bot its own voice (default: friendly), and `-persona` is the name it writes as. Use a separate `-state` file for each bot.
@@ -96,9 +98,9 @@ content. The `e2e/` test runs three instances and four users, one of them the st
 
 `/thread?url=<post>` (and `GET /api/thread?url=`) shows the **branch** around a post by default: the chain of posts from the root down to it, and its own replies, with no siblings. Every post on the chain, and every reply, carries a reply count (or just "replies" when the count is unknown) and a link that makes it the new focus. It costs about one fetch per level of depth, however large the whole thread is. `view=curated` shows the whole approved tree (up to a fetch limit), and `view=raw` shows everything this reader knows, approved or not. In the JSON, `focus` marks the requested post, `on_path` the chain to it, and `replies` the count on a closed branch (-1 unknown).
 
-`replies.xml` items carry `tc:replies` (href and the count cached by the host) for the replies that have their own replies feed, so a closed branch can show its size without being opened.
+`replies.xml` items carry `weft:replies` (href and the count cached by the host) for the replies that have their own replies feed, so a closed branch can show its size without being opened.
 
-A post's permalink answers to its `Accept` header: `text/markdown` returns the source, and `application/rss+xml` (without `text/html` or `*/*`) returns the post as a one-item feed, with all its `tc:` links. A thread is built from posts, not feeds: a reader asks each post's URL for the one-item form to get the post, its parent and the link to its replies, so old posts work. A feed holds the newest 100 posts and links to older pages (`/feed.xml?page=2`, RFC 5005 `rel="next"`); a new follower reads all of them.
+A post's permalink answers to its `Accept` header: `text/markdown` returns the source, and `application/rss+xml` (without `text/html` or `*/*`) returns the post as a one-item feed, with all its `weft:` links. A thread is built from posts, not feeds: a reader asks each post's URL for the one-item form to get the post, its parent and the link to its replies, so old posts work. A feed holds the newest 100 posts and links to older pages (`/feed.xml?page=2`, RFC 5005 `rel="next"`); a new follower reads all of them.
 
 ## Try the UI on a real conversation
 

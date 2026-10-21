@@ -111,7 +111,7 @@ func (c *Client) GetAs(ctx context.Context, rawurl, accept string) (*Result, err
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "text-thread-casting/0.1")
+	req.Header.Set("User-Agent", "Weft/0.1 (+https://weftseed.com)")
 	req.Header.Set("Accept", accept)
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -185,7 +185,7 @@ func (c *Client) PostForm(ctx context.Context, rawurl string, form url.Values) (
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", "text-thread-casting/0.1")
+	req.Header.Set("User-Agent", "Weft/0.1 (+https://weftseed.com)")
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return 0, err

@@ -18,10 +18,10 @@ func TestReactionRoundTripAcrossInstances(t *testing.T) {
 		t.Fatalf("reaction url: %s", out)
 	}
 	rf := bob.get("/reactions.xml")
-	if !strings.Contains(rf, `<tc:reactionOf href="`+ua+`" polarity="+">`) || !strings.Contains(rf, `<guid isPermaLink="true">`+bob.base+`/reactions/1<`) {
+	if !strings.Contains(rf, `<weft:reactionOf href="`+ua+`" polarity="+">`) || !strings.Contains(rf, `<guid isPermaLink="true">`+bob.base+`/reactions/1<`) {
 		t.Errorf("reactions feed:\n%s", rf)
 	}
-	if !strings.Contains(bob.get("/feed.xml"), "<tc:reactionsFeed>"+bob.base+"/reactions.xml<") {
+	if !strings.Contains(bob.get("/feed.xml"), "<weft:reactionsFeed>"+bob.base+"/reactions.xml<") {
 		t.Errorf("main feed does not advertise the reactions feed")
 	}
 	page := bob.get("/reactions/1")
@@ -35,7 +35,7 @@ func TestReactionRoundTripAcrossInstances(t *testing.T) {
 	if !strings.Contains(got, `"polarity":"+"`) || !strings.Contains(got, `"emoji":"👍"`) || !strings.Contains(got, `"trusted":false`) {
 		t.Fatalf("received: %s", got)
 	}
-	if f := alice.get("/feed.xml"); !strings.Contains(f, `<tc:reactions plus="0" minus="0">`) {
+	if f := alice.get("/feed.xml"); !strings.Contains(f, `<weft:reactions plus="0" minus="0">`) {
 		t.Errorf("untrusted reaction was tallied:\n%s", f)
 	}
 
@@ -45,12 +45,12 @@ func TestReactionRoundTripAcrossInstances(t *testing.T) {
 	if !strings.Contains(out, "/reactions/1") {
 		t.Fatalf("changing a reaction must keep its permalink: %s", out)
 	}
-	if rf := bob.get("/reactions.xml"); !strings.Contains(rf, `polarity="-" emoji="😕"`) || !strings.Contains(rf, "<tc:updated>") || strings.Count(rf, "<item>") != 1 {
+	if rf := bob.get("/reactions.xml"); !strings.Contains(rf, `polarity="-" emoji="😕"`) || !strings.Contains(rf, "<weft:updated>") || strings.Count(rf, "<item>") != 1 {
 		t.Errorf("edited reaction:\n%s", rf)
 	}
 	settle(ctx, alice, bob)
 	f := alice.get("/feed.xml")
-	if !strings.Contains(f, `<tc:reactions plus="0" minus="1">`) || !strings.Contains(f, `<tc:emoji value="😕" count="1">`) {
+	if !strings.Contains(f, `<weft:reactions plus="0" minus="1">`) || !strings.Contains(f, `<weft:emoji value="😕" count="1">`) {
 		t.Errorf("tally after change:\n%s", f)
 	}
 	if !strings.Contains(alice.get(pathOf(ua)), "😕 1") {

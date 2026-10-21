@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/feed"
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/store"
 )
 
 type replyRow struct {

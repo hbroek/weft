@@ -8,17 +8,17 @@ import (
 
 var now = time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
 
-func TestParseTextcastFeed(t *testing.T) {
+func TestParseWeftFeed(t *testing.T) {
 	x := `<?xml version="1.0"?>
-<rss version="2.0" xmlns:tc="https://example.org/ns/textcast/0.1" xmlns:source="http://source.scripting.com/">
+<rss version="2.0" xmlns:weft="https://weftseed.com/ns/weft/0.1" xmlns:source="http://source.scripting.com/">
 <channel><title>Bob</title><link>https://bob.example/</link><description>d</description>
-<tc:webmention>https://bob.example/wm</tc:webmention>
+<weft:webmention>https://bob.example/wm</weft:webmention>
 <item><guid isPermaLink="true">https://bob.example/p/1</guid><link>https://bob.example/p/1</link>
 <description>&lt;p&gt;Hi &lt;em&gt;there&lt;/em&gt;&lt;script&gt;x()&lt;/script&gt;&lt;/p&gt;</description>
 <source:markdown>Hi *there*</source:markdown>
 <pubDate>Mon, 12 Oct 2026 22:15:00 -0400</pubDate>
-<tc:updated>Mon, 12 Oct 2026 22:40:00 -0400</tc:updated>
-<tc:inReplyTo href="https://alice.example/n/1"/></item>
+<weft:updated>Mon, 12 Oct 2026 22:40:00 -0400</weft:updated>
+<weft:inReplyTo href="https://alice.example/n/1"/></item>
 </channel></rss>`
 	p, err := Parse([]byte(x), now)
 	if err != nil {
@@ -88,5 +88,20 @@ func TestParseKeysItemsByPermalinkAndKeepsGUIDAsIdentity(t *testing.T) {
 	}
 	if b := p.Items[1]; b.GUID != "https://b.example/p/2" {
 		t.Errorf("without a link the guid is the key: %+v", b)
+	}
+}
+
+func TestParseLegacyNamespace(t *testing.T) {
+	old := `<rss version="2.0" xmlns:tc="` + NSLegacy + `"><channel><title>B</title><link>https://bob.example/</link>
+<tc:webmention>https://bob.example/wm</tc:webmention>
+<item><guid>https://bob.example/n/2</guid><link>https://bob.example/n/2</link><description>hi</description>
+<pubDate>Mon, 12 Oct 2026 22:40:00 -0400</pubDate>
+<tc:inReplyTo href="https://alice.example/n/1"/></item></channel></rss>`
+	p, err := Parse([]byte(old), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Webmention != "https://bob.example/wm" || len(p.Items) != 1 || p.Items[0].InReplyTo != "https://alice.example/n/1" {
+		t.Errorf("old namespace not read: %+v", p)
 	}
 }

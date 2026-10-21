@@ -8,8 +8,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/hbroek/text-thread-casting/internal/feed"
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/store"
 )
 
 // validEmoji accepts a short run of symbol-like runes. Letters, digits, spaces and

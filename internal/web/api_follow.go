@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/feed"
+	"github.com/hbroek/weft/internal/feed"
 )
 
 type timelineJSON struct {

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/feed"
-	"github.com/hbroek/text-thread-casting/internal/fetch"
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/fetch"
+	"github.com/hbroek/weft/internal/store"
 )
 
 const maxWMAttempts = 6
@@ -20,7 +20,7 @@ const maxWMAttempts = 6
 //
 // The parent may be one of the host user's own posts, an item in a feed this instance
 // has cached, an item in the feed named by feedHint, or something unknown. A parent
-// that carries no tc:root is itself the root, which is also how replies to plain RSS
+// that carries no weft:root is itself the root, which is also how replies to plain RSS
 // items and arbitrary pages work.
 func (s *Server) resolveThread(ctx context.Context, base string, u *store.User, parent, feedHint string) (parentFeed, root, rootFeed string) {
 	parentFeed, root, rootFeed = feedHint, parent, feedHint
@@ -37,7 +37,7 @@ func (s *Server) resolveThread(ctx context.Context, base string, u *store.User, 
 		return it.FeedURL, rootOr(it.Root, parent), pick(it.Root != "", it.RootFeed, it.FeedURL)
 	}
 	// Replies to replies often arrive without a feed (the API only knows the post's URL). Without
-	// the feed there is no way to learn the parent's own tc:root, and the parent would wrongly
+	// the feed there is no way to learn the parent's own weft:root, and the parent would wrongly
 	// become the root of the thread, so find the feed first.
 	if feedHint == "" {
 		if feedHint = s.discoverFeed(ctx, u.ID, parent); feedHint != "" {

@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/store"
 )
 
 type instance struct {
@@ -100,7 +100,7 @@ func TestReplyRoundTripAcrossInstances(t *testing.T) {
 	// Bob replies; his instance queues a Webmention for Alice's post.
 	ub1 := bob.post(t, `{"title":"The reader half","markdown":"Search and threads are missing.","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
 	bf := bob.get("/feed.xml")
-	for _, want := range []string{`<tc:inReplyTo href="` + ua + `"`, `<tc:root href="` + ua + `"`, `<tc:context href="` + ua + `"`} {
+	for _, want := range []string{`<weft:inReplyTo href="` + ua + `"`, `<weft:root href="` + ua + `"`, `<weft:context href="` + ua + `"`} {
 		if !strings.Contains(bf, want) {
 			t.Errorf("bob's feed lacks %s:\n%s", want, bf)
 		}
@@ -117,13 +117,13 @@ func TestReplyRoundTripAcrossInstances(t *testing.T) {
 	if strings.Contains(alice.get(pathOf(ua)+"/replies.xml"), "<item>") || strings.Contains(alice.get(pathOf(ua)), "Search and threads") {
 		t.Errorf("unapproved reply is visible")
 	}
-	if !strings.Contains(alice.get("/feed.xml"), `<tc:replies href="`+ua+`/replies.xml" count="0">`) {
+	if !strings.Contains(alice.get("/feed.xml"), `<weft:replies href="`+ua+`/replies.xml" count="0">`) {
 		t.Errorf("expected count 0")
 	}
 
 	alice.call(t, "POST", "/api/replies/1/status", `{"status":"approved"}`, 204)
 	rf := alice.get(pathOf(ua) + "/replies.xml")
-	for _, want := range []string{`<tc:repliesTo href="` + ua + `">`, "<tc:depth>2</tc:depth>", "<title>The reader half</title>", `<tc:feed href="` + bob.base + `/feed.xml">`, `<tc:inReplyTo href="` + ua + `">`} {
+	for _, want := range []string{`<weft:repliesTo href="` + ua + `">`, "<weft:depth>2</weft:depth>", "<title>The reader half</title>", `<weft:feed href="` + bob.base + `/feed.xml">`, `<weft:inReplyTo href="` + ua + `">`} {
 		if !strings.Contains(rf, want) {
 			t.Errorf("replies feed lacks %s:\n%s", want, rf)
 		}
@@ -136,7 +136,7 @@ func TestReplyRoundTripAcrossInstances(t *testing.T) {
 	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
 	alice.post(t, `{"markdown":"Agreed.","in_reply_to":"`+ub1+`"}`)
 	af := alice.get("/feed.xml")
-	if !strings.Contains(af, `<tc:inReplyTo href="`+ub1+`" feed="`+bob.base+`/feed.xml">`) || !strings.Contains(af, `<tc:root href="`+ua+`"`) {
+	if !strings.Contains(af, `<weft:inReplyTo href="`+ub1+`" feed="`+bob.base+`/feed.xml">`) || !strings.Contains(af, `<weft:root href="`+ua+`"`) {
 		t.Errorf("thread links wrong in alice's feed:\n%s", af)
 	}
 

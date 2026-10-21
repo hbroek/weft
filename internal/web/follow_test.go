@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/store"
 )
 
 // twoUsers starts a real listener so the server can fetch its own users' feeds,
@@ -64,8 +64,8 @@ func TestFollowAndTimeline(t *testing.T) {
 	if !strings.Contains(opml, `xmlUrl="http://`+bob+`/feed.xml"`) || !strings.Contains(opml, `text="Bob"`) {
 		t.Errorf("opml: %s", opml)
 	}
-	if feed := do(s, "GET", alice, "/feed.xml", "", "").Body.String(); !strings.Contains(feed, "<tc:following>http://"+alice+"/following.opml") {
-		t.Errorf("tc:following missing from feed")
+	if feed := do(s, "GET", alice, "/feed.xml", "", "").Body.String(); !strings.Contains(feed, "<weft:following>http://"+alice+"/following.opml") {
+		t.Errorf("weft:following missing from feed")
 	}
 
 	// HTML timeline: remote markup is neutralised

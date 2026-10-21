@@ -1,16 +1,17 @@
-// Command ttc-agent runs an AI participant for one textcast user, through the public API only.
+// Command weft-agent runs an AI participant for one Weft user, through the public API only.
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"strings"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/agent"
+	"github.com/hbroek/weft/internal/agent"
 )
 
 // loadEnv reads KEY=VALUE lines from path into the environment, without overriding variables already set.
@@ -29,10 +30,22 @@ func loadEnv(path string) {
 	}
 }
 
+// envOr reads name, falling back to a deprecated name for one release.
+func envOr(name, old string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	if v := os.Getenv(old); v != "" {
+		log.Printf("%s is deprecated, use %s", old, name)
+		return v
+	}
+	return ""
+}
+
 func main() {
 	loadEnv(".env")
 	base := flag.String("base", "", "the agent user's instance, e.g. http://dana.localhost:8080")
-	token := flag.String("token", os.Getenv("TTC_TOKEN"), "API token (or TTC_TOKEN)")
+	token := flag.String("token", envOr("WEFT_TOKEN", "TTC_TOKEN"), "API token (or WEFT_TOKEN)")
 	mode := flag.String("brain", "claude", "claude or stub")
 	model := flag.String("model", "claude-haiku-5-5", "Claude model")
 	persona := flag.String("persona", "Claude", "name the agent writes as")
@@ -41,10 +54,10 @@ func main() {
 	once := flag.Bool("once", false, "run one cycle and exit")
 	postEvery := flag.Int("post-every", 0, "write an original note every N cycles (0 = never)")
 	max := flag.Int("max", 20, "most replies and posts over the agent's lifetime")
-	state := flag.String("state", "ttc-agent.json", "file remembering what was handled")
+	state := flag.String("state", "weft-agent.json", "file remembering what was handled")
 	flag.Parse()
 	if *base == "" || *token == "" {
-		fmt.Fprintln(os.Stderr, "usage: ttc-agent -base URL -token TOKEN [-brain claude|stub] [-once] ...")
+		fmt.Fprintln(os.Stderr, "usage: weft-agent -base URL -token TOKEN [-brain claude|stub] [-once] ...")
 		os.Exit(2)
 	}
 	var b agent.Brain = &agent.Stub{}

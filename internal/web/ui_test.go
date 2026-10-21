@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/feed"
+	"github.com/hbroek/weft/internal/feed"
 )
 
 const host = "alice.localhost:8080"
@@ -83,7 +83,7 @@ func TestHumanFlow(t *testing.T) {
 		t.Fatalf("edit: %d", w.Code)
 	}
 	feed := do(s, "GET", host, "/feed.xml", "", "").Body.String()
-	if !strings.Contains(feed, "<tc:updated>") || !strings.Contains(feed, "<title>Now titled</title>") || strings.Contains(feed, "sneaky") {
+	if !strings.Contains(feed, "<weft:updated>") || !strings.Contains(feed, "<title>Now titled</title>") || strings.Contains(feed, "sneaky") {
 		t.Fatalf("feed after edit:\n%s", feed)
 	}
 	// the title changed but the permalink must not: its slug is frozen when the post is made
@@ -181,10 +181,10 @@ func TestThreadLinkOnlyWhereThereIsAThread(t *testing.T) {
 	item := func(n, extra string) string {
 		return `<item><title>` + n + `</title><link>http://a.example/` + n + `</link><guid>http://a.example/` + n + `</guid><description>x</description>` + extra + `</item>`
 	}
-	xml := `<rss version="2.0" xmlns:tc="https://example.org/ns/textcast/0.1"><channel><title>A</title>` +
-		item("lonely", `<tc:replies href="http://a.example/lonely/replies.xml" count="0"/>`) +
-		item("popular", `<tc:replies href="http://a.example/popular/replies.xml" count="2"/>`) +
-		item("answer", `<tc:inReplyTo href="http://a.example/popular"/><tc:replies href="http://a.example/answer/replies.xml" count="0"/>`) +
+	xml := `<rss version="2.0" xmlns:weft="https://weftseed.com/ns/weft/0.1"><channel><title>A</title>` +
+		item("lonely", `<weft:replies href="http://a.example/lonely/replies.xml" count="0"/>`) +
+		item("popular", `<weft:replies href="http://a.example/popular/replies.xml" count="2"/>`) +
+		item("answer", `<weft:inReplyTo href="http://a.example/popular"/><weft:replies href="http://a.example/answer/replies.xml" count="0"/>`) +
 		item("unknown", ``) + `</channel></rss>`
 	p, err := feed.Parse([]byte(xml), time.Now())
 	if err != nil {

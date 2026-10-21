@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/feed"
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/store"
 )
 
 var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doctype html>
@@ -214,7 +214,7 @@ func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
 		io.WriteString(w, p.Markdown)
 		return
 	case "rss":
-		s.writeFeed(w, r, q, []*store.Post{p}) // this one post, as a feed item with all its tc: links
+		s.writeFeed(w, r, q, []*store.Post{p}) // this one post, as a feed item with all its weft: links
 		return
 	}
 	title := p.Title

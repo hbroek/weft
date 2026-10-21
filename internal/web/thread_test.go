@@ -24,7 +24,7 @@ func TestSubtreeCachingAndBubbleUp(t *testing.T) {
 	uc := carol.post(t, `{"markdown":"Count me in.","in_reply_to":"`+ub+`","in_reply_to_feed":"`+bob.base+`/feed.xml"}`)
 
 	// Carol learned the thread root from Bob's feed, not just her parent
-	if cf := carol.get("/feed.xml"); !strings.Contains(cf, `<tc:root href="`+ua+`"`) || !strings.Contains(cf, `<tc:inReplyTo href="`+ub+`"`) {
+	if cf := carol.get("/feed.xml"); !strings.Contains(cf, `<weft:root href="`+ua+`"`) || !strings.Contains(cf, `<weft:inReplyTo href="`+ub+`"`) {
 		t.Fatalf("carol's reply links:\n%s", cf)
 	}
 	settle(ctx, all...)
@@ -35,9 +35,9 @@ func TestSubtreeCachingAndBubbleUp(t *testing.T) {
 	}
 	// Bob's server bubbled the change; Alice's feed now caches Carol one level down
 	rf := alice.get(pathOf(ua) + "/replies.xml")
-	if !strings.Contains(rf, "<tc:depth>2</tc:depth>") || strings.Count(rf, "<item>") != 2 ||
-		!strings.Contains(rf, `<guid isPermaLink="true">`+uc+`<`) || !strings.Contains(rf, `<tc:inReplyTo href="`+ub+`">`) ||
-		!strings.Contains(rf, `<tc:feed href="`+carol.base+`/feed.xml">Carol<`) {
+	if !strings.Contains(rf, "<weft:depth>2</weft:depth>") || strings.Count(rf, "<item>") != 2 ||
+		!strings.Contains(rf, `<guid isPermaLink="true">`+uc+`<`) || !strings.Contains(rf, `<weft:inReplyTo href="`+ub+`">`) ||
+		!strings.Contains(rf, `<weft:feed href="`+carol.base+`/feed.xml">Carol<`) {
 		t.Fatalf("alice's replies feed should cache carol's reply under bob's:\n%s", rf)
 	}
 
@@ -241,14 +241,14 @@ func TestReplyToReplyWithoutFeedHintKeepsRoot(t *testing.T) {
 
 	// Alice answers Bob's reply knowing only its URL
 	uf := alice.post(t, `{"markdown":"Follow-up","in_reply_to":"`+ub+`"}`)
-	if f := alice.get("/feed.xml"); !strings.Contains(f, `<tc:root href="`+ua+`"`) {
+	if f := alice.get("/feed.xml"); !strings.Contains(f, `<weft:root href="`+ua+`"`) {
 		t.Fatalf("root should stay Alice's first post:\n%s", f)
 	}
 	settle(ctx, alice, bob)
 
 	// Bob answers Alice's follow-up, again with no feed hint: he must find the root through her page
 	bob.post(t, `{"markdown":"Third","in_reply_to":"`+uf+`"}`)
-	if f := bob.get("/feed.xml"); strings.Count(f, `<tc:root href="`+ua+`"`) != 2 {
+	if f := bob.get("/feed.xml"); strings.Count(f, `<weft:root href="`+ua+`"`) != 2 {
 		t.Fatalf("both of Bob's replies should have Alice's first post as root:\n%s", f)
 	}
 }
@@ -331,7 +331,7 @@ func TestThreadFocusFindsPostsOlderThanTheFeedWindow(t *testing.T) {
 	w := httptest.NewRecorder()
 	bob.s.ServeHTTP(w, r)
 	if !strings.HasPrefix(w.Header().Get("Content-Type"), "application/rss+xml") || strings.Count(w.Body.String(), "<item>") != 1 ||
-		!strings.Contains(w.Body.String(), `<tc:inReplyTo href="`+ua+`"`) {
+		!strings.Contains(w.Body.String(), `<weft:inReplyTo href="`+ua+`"`) {
 		t.Fatalf("one-item feed: %s\n%s", w.Header().Get("Content-Type"), w.Body)
 	}
 	for _, accept := range []string{"", "text/html,application/xhtml+xml,*/*;q=0.8", "application/rss+xml, application/xml;q=0.9, text/html;q=0.8, */*;q=0.5"} {

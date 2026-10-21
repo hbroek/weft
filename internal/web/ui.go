@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/md"
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/md"
+	"github.com/hbroek/weft/internal/store"
 )
 
-const cookieName = "ttc_session"
+const cookieName = "weft_session"
 
 func (s *Server) loginForm(w http.ResponseWriter, r *http.Request, q *req) {
 	s.show(w, "login", http.StatusOK, s.data(r, q, "Log in"))

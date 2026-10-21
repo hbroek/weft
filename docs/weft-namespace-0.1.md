@@ -1,30 +1,32 @@
-# Textcast Namespace 0.1 (Draft)
+# Weft Namespace 0.1 (Draft)
 
-Oct 12, 2026 · @Henry · revised Oct 14, 2026 (reactions replace likes; `tc:context` may be a bare URL)
+Weft (Web-External Federated Threads) builds on Dave Winer's textcasting.
+
+Oct 12, 2026 · @Henry · revised Oct 14, 2026 (reactions replace likes; `weft:context` may be a bare URL)
 
 ## Status and purpose
 
-This is a first working draft of an RSS 2.0 namespace for textcasting: two-way, Markdown-based publishing where every post lives in its author's own feed. It defines how a post marks itself as a reply, how threads are reassembled, how reactions are counted, and how feeds move or get edited.
+This is a first working draft of an RSS 2.0 namespace for Weft, which builds on Dave Winer's textcasting: two-way, Markdown-based publishing where every post lives in its author's own feed. It defines how a post marks itself as a reply, how threads are reassembled, how reactions are counted, and how feeds move or get edited.
 
 The spec only adds what RSS 2.0 lacks. Anything RSS 2.0, Winer's Source namespace or Webmention already covers is reused, not redefined. Elements are marked **required**, **recommended** or **optional**.
 
 ## Design principles
 
 1. **Titles are optional but allowed.** A post may be a one-line note with no `<title>`, or a long titled essay. Apps must handle both equally well. RSS 2.0 already permits this: an item needs at least one of `<title>` or `<description>`. In textcasting, `<description>` is always present, so `<title>` is truly optional.
-2. **Markdown is the source of truth.** Authors write Markdown. The feed carries both rendered HTML (for any reader) and the original Markdown (for textcasting apps).
+2. **Markdown is the source of truth.** Authors write Markdown. The feed carries both rendered HTML (for any reader) and the original Markdown (for Weft apps).
 3. **No length limit.** There are no threads of numbered posts; a long thought is one post.
 4. **Posts are editable.** Edits update the item in place and notify anyone the post replied to.
 5. **You own your words.** Every post, reply and reaction lives in its author's own feed at its author's own URL.
-6. **Public by design.** Everything in a textcast feed is public. Private posts and messages are out of scope.
+6. **Public by design.** Everything in a Weft feed is public. Private posts and messages are out of scope.
 7. **Degrade gracefully.** A plain RSS reader that ignores this namespace still shows every post correctly.
 
 ## Namespace declaration
 
-The namespace prefix is `tc`. The URI below is a placeholder until a permanent home is chosen.
+The namespace prefix is `weft`. Parsers match on the URI, not the prefix. Feeds written before the rename declare `https://example.org/ns/textcast/0.1` with the prefix `tc`; readers accept that URI as an alias of the current one for one release.
 
 ```xml
 <rss version="2.0"
-  xmlns:tc="https://example.org/ns/textcast/0.1"
+  xmlns:weft="https://weftseed.com/ns/weft/0.1"
   xmlns:source="http://source.scripting.com/"
   xmlns:atom="http://www.w3.org/2005/Atom">
 ```
@@ -43,11 +45,11 @@ The author's profile uses standard RSS 2.0: `<title>` is the author or publicati
 
 | Element | Status | Meaning |
 | --- | --- | --- |
-| `<tc:webmention>` | Required | URL of the author's Webmention endpoint, where replies and reactions are sent |
-| `<tc:following>` | Recommended | URL of an OPML file listing the feeds this author follows; the public follow graph used for trust weighting |
-| `<tc:reactionsFeed>` | Recommended | URL of the author's separate reactions feed (likes and dislikes) |
-| `<tc:movedTo>` | Optional | New feed URL when the feed has moved; readers update their subscription |
-| `<tc:key>` | Optional | URL of the author's public signing key, for verifiable snapshots |
+| `<weft:webmention>` | Required | URL of the author's Webmention endpoint, where replies and reactions are sent |
+| `<weft:following>` | Recommended | URL of an OPML file listing the feeds this author follows; the public follow graph used for trust weighting |
+| `<weft:reactionsFeed>` | Recommended | URL of the author's separate reactions feed (likes and dislikes) |
+| `<weft:movedTo>` | Optional | New feed URL when the feed has moved; readers update their subscription |
+| `<weft:key>` | Optional | URL of the author's public signing key, for verifiable snapshots |
 
 For update pings, publish either an RSS 2.0 `<cloud>` element (rssCloud) or `<atom:link rel="hub">` (WebSub). At least one is recommended.
 
@@ -60,66 +62,66 @@ Every post, reply and reaction is an RSS 2.0 `<item>`.
 | Element | Status | Rule |
 | --- | --- | --- |
 | `<guid isPermaLink="false">` | Required | The post's identity: `urn:uuid:` plus a UUID (version 7 recommended) made once when the post is created. It is not a URL and never changes, so the post stays the same post if its author moves to another host. |
-| `<link>` | Required | The post's HTML permalink: the author's host plus a slug, such as `https://alice.example/posts/the-reader-half-k3x9`. This URL is the post's address in replies (`tc:inReplyTo`, `tc:root`), reactions and Webmentions. It is the only URL that serves the post. The slug is built from the title or the first sentence of a note plus a short random suffix, is unique in the author's namespace, and never changes after publishing, even if the post is edited. A deleted post keeps its slug reserved. |
+| `<link>` | Required | The post's HTML permalink: the author's host plus a slug, such as `https://alice.example/posts/the-reader-half-k3x9`. This URL is the post's address in replies (`weft:inReplyTo`, `weft:root`), reactions and Webmentions. It is the only URL that serves the post. The slug is built from the title or the first sentence of a note plus a short random suffix, is unique in the author's namespace, and never changes after publishing, even if the post is edited. A deleted post keeps its slug reserved. |
 | `<description>` | Required | Rendered HTML of the post. |
 | `<title>` | Optional | Include only if the author gave one. Apps must not invent titles from the first line. |
 | `<source:markdown>` | Recommended | The original Markdown, unaltered. |
 | `<pubDate>` | Required | First publication time. |
-| `<tc:updated>` | Optional | Time of the latest edit, RFC 822 format like `pubDate`. Present only on edited items. |
+| `<weft:updated>` | Optional | Time of the latest edit, RFC 822 format like `pubDate`. Present only on edited items. |
 | `<category>` | Optional | Tags; one element per tag. |
 | `<enclosure>` | Optional | Attached media, as in podcasting. |
 
 ### Reply elements
 
-`<tc:inReplyTo>` marks the item as a reply. It is the child's upward link, and it survives even if the parent rejects or deletes the reply.
+`<weft:inReplyTo>` marks the item as a reply. It is the child's upward link, and it survives even if the parent rejects or deletes the reply.
 
 ```xml
-<tc:inReplyTo href="https://alice.example/2026/10/12/notes"
+<weft:inReplyTo href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
               feed="https://alice.example/feed.xml"/>
 ```
 
 - `href` (required): the parent's permalink, equal to the parent's `<link>`.
-- `feed` (optional): the parent's feed URL. A textcast reader does not need it: it reads the parent from its permalink (see *Post representations*). It matters when the parent is not a textcast post, since a plain RSS item can only be found through its feed. Required in that case (see *Replying to any RSS 2.0 item*).
+- `feed` (optional): the parent's feed URL. A Weft reader does not need it: it reads the parent from its permalink (see *Post representations*). It matters when the parent is not a textcast post, since a plain RSS item can only be found through its feed. Required in that case (see *Replying to any RSS 2.0 item*).
 
-`<tc:root>` names the post that started the thread, like email's `References` header. Any reply can be placed in its conversation even if middle posts disappear.
+`<weft:root>` names the post that started the thread, like email's `References` header. Any reply can be placed in its conversation even if middle posts disappear.
 
 ```xml
-<tc:root href="https://alice.example/2026/10/12/notes"
+<weft:root href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
          feed="https://alice.example/feed.xml"/>
 ```
 
 - Required on every reply. Omitted on the root post itself.
-- When replying directly to the root, `tc:root` and `tc:inReplyTo` point to the same URL.
+- When replying directly to the root, `weft:root` and `weft:inReplyTo` point to the same URL.
 
-`<tc:context>` carries a short snippet of the parent, so the reply still makes sense if the parent goes offline.
+`<weft:context>` carries a short snippet of the parent, so the reply still makes sense if the parent goes offline.
 
 ```xml
-<tc:context href="https://alice.example/2026/10/12/notes"
+<weft:context href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
             retrieved="Mon, 12 Oct 2026 22:30:00 -0400">
   RSS plus links already gives you a social web.
-</tc:context>
+</weft:context>
 ```
 
 - Recommended. In its minimal form it is an empty element carrying only `href` (and `retrieved`): the URL of the parent. A text snippet is optional: plain text, kept brief, no more than about 300 characters.
 - It is a quote for context, not a copy. Apps must not display it as the parent post when the parent is reachable.
-- Optional `signature` attribute: the parent's signature over its own text, verifiable with the parent's `tc:key`.
+- Optional `signature` attribute: the parent's signature over its own text, verifiable with the parent's `weft:key`.
 - A reply to a plain RSS 2.0 item or any other page treats the parent as if it were already deleted: the link (and the snippet, when present) are all a reader can rely on. The parent may be any URL, textcast or not.
 - Optional `origin` attribute: `author` (written by the replier, the default) or `generated` (summarized by an app, for example with AI). Readers may label generated context, and authors should review it before publishing.
 
 ### Reaction elements
 
-`<tc:reactionOf href="…" polarity="+" emoji="🎉"/>` marks the item as a reaction to the post at `href`.
+`<weft:reactionOf href="…" polarity="+" emoji="🎉"/>` marks the item as a reaction to the post at `href`.
 
 - `href` (required): the permalink of the post reacted to.
 - `polarity` (required): `+` for a positive reaction (a like, an upvote) or `-` for a negative one (a dislike). Every reaction has a polarity, so any app can count and weigh reactions without understanding emoji.
 - `emoji` (optional): one emoji, or a short emoji sequence, adding nuance. When absent, apps show 👍 for `+` and 👎 for `-`. Apps must not treat the emoji as text or markup, and may ignore values that are not emoji.
 
-A reaction item has no `<title>` and an empty `<description>`. A user has at most one active reaction per post: changing it edits the same item in place and sets `tc:updated`; withdrawing it deletes the item (the permalink then returns 410). Reactions are published in the reactions feed, not the main feed.
+A reaction item has no `<title>` and an empty `<description>`. A user has at most one active reaction per post: changing it edits the same item in place and sets `weft:updated`; withdrawing it deletes the item (the permalink then returns 410). Reactions are published in the reactions feed, not the main feed.
 
 ### Reply and reaction tally elements
 
-- `<tc:replies href="…" count="7"/>` (recommended): the URL of this post's replies feed and the number of approved replies.
-- `<tc:reactions plus="12" minus="2"><tc:emoji value="🎉" count="4"/></tc:reactions>` (optional): the number of verified positive and negative reactions received, with an optional per-emoji breakdown. Only reactions from senders the post's author follows are counted by default. It is a cache; the reactions themselves live in the reactors' feeds and can be recounted.
+- `<weft:replies href="…" count="7"/>` (recommended): the URL of this post's replies feed and the number of approved replies.
+- `<weft:reactions plus="12" minus="2"><weft:emoji value="🎉" count="4"/></weft:reactions>` (optional): the number of verified positive and negative reactions received, with an optional per-emoji breakdown. Only reactions from senders the post's author follows are counted by default. It is a cache; the reactions themselves live in the reactors' feeds and can be recounted.
 
 ## Replies feed
 
@@ -127,32 +129,32 @@ Each post may publish a replies feed: an RSS 2.0 feed of the replies its author 
 
 Channel elements of a replies feed:
 
-- `<tc:repliesTo href="…"/>` (required): the permalink of the post these replies belong to.
-- `<tc:depth>` (optional, default 1): how many levels of descendants this feed caches.
+- `<weft:repliesTo href="…"/>` (required): the permalink of the post these replies belong to.
+- `<weft:depth>` (optional, default 1): how many levels of descendants this feed caches.
 - `<lastBuildDate>` (required): when the cache was last refreshed.
 
 Each `<item>` is a reference to a reply, not a full copy:
 
-- `<guid>` and `<link>`: the reply's permalink.
+- `<guid>` and `<link>`: the reply's permalink. The `guid` may be that permalink with `isPermaLink="true"`; the `urn:uuid:` identity stays in the author's own feed.
 - `<description>`: a short excerpt for display.
-- `<author>` or `<tc:feed href="…">Display name</tc:feed>`: who wrote it, by feed URL. The element text is an optional display name.
-- `<tc:inReplyTo>`: the reply's parent. Required when `tc:depth` is greater than 1, so deeper items can be placed in the tree.
-- `<tc:replies href="…" count="…"/>` (optional): where the reply's own replies are published and how many the feed's host has cached, so a reader can show a closed branch's size without opening it. Items one level down need not carry it.
-- `<tc:reactions plus="…" minus="…"/>`: the reply's reaction tally, if known.
+- `<author>` or `<weft:feed href="…">Display name</weft:feed>`: who wrote it, by feed URL. The element text is an optional display name.
+- `<weft:inReplyTo>`: the reply's parent. Required when `weft:depth` is greater than 1, so deeper items can be placed in the tree.
+- `<weft:replies href="…" count="…"/>` (optional): where the reply's own replies are published and how many the feed's host has cached, so a reader can show a closed branch's size without opening it. Items one level down need not carry it.
+- `<weft:reactions plus="…" minus="…"/>`: the reply's reaction tally, if known.
 
 ### Cached subtrees
 
-A replies feed fills its second level from the replies feeds of its own replies. Reference implementation: it caches one level below each approved reply (`tc:depth` of 2) and keeps it fresh with the bubble-up rule below, so the cache only changes when a real change was reported. Deeper levels are found by reading the replies feed of a reply, one level at a time.
+A replies feed fills its second level from the replies feeds of its own replies. Reference implementation: it caches one level below each approved reply (`weft:depth` of 2) and keeps it fresh with the bubble-up rule below, so the cache only changes when a real change was reported. Deeper levels are found by reading the replies feed of a reply, one level at a time.
 
-With `tc:depth` of 2 or 3, one fetch returns most of a conversation. Readers rebuild the tree from each item's `tc:inReplyTo`. A post's cache goes stale when a deeper reply arrives; the update rule under Processing rules keeps it fresh.
+With `weft:depth` of 2 or 3, one fetch returns most of a conversation. Readers rebuild the tree from each item's `weft:inReplyTo`. A post's cache goes stale when a deeper reply arrives; the update rule under Processing rules keeps it fresh.
 
 ### Curated and raw views
 
-The replies feed is the curated view: only approved replies. The raw view is every item anywhere whose `tc:inReplyTo` or `tc:root` points into the thread, as an index sees it. Apps should let readers switch between them.
+The replies feed is the curated view: only approved replies. The raw view is every item anywhere whose `weft:inReplyTo` or `weft:root` points into the thread, as an index sees it. Apps should let readers switch between them.
 
 ## Reactions feed
 
-Reactions go in a separate feed, linked from the main feed's `tc:reactionsFeed`, so they don't bury posts for subscribers. Each reaction is an item with a `guid` permalink of its own (an HTML page) and a `tc:reactionOf`. Each reaction is also sent to the reacted post's Webmention endpoint.
+Reactions go in a separate feed, linked from the main feed's `weft:reactionsFeed`, so they don't bury posts for subscribers. Each reaction is an item with a `guid` permalink of its own (an HTML page) and a `weft:reactionOf`. Each reaction is also sent to the reacted post's Webmention endpoint.
 
 A person's feeds share one identity: the channel `<link>` (homepage) of the main feed and the reactions feed are the same. Receivers use it to recognise that a reaction comes from someone they follow, even though they follow the main feed.
 
@@ -163,12 +165,12 @@ Reactions are public. Private flags to a post owner are out of scope.
 A thread is built from posts, not from feeds. A feed lists an author's newest posts for subscribers, and an old post may no longer be in it. Every post therefore stands on its own at its permalink, which serves these representations by content negotiation (the URL is the same; `Vary: Accept`):
 
 - **HTML** (the default, and for any `Accept` that includes `text/html` or `*/*`): the page described below.
-- **`Accept: application/rss+xml`**: the post as a one-item RSS 2.0 feed, with every `tc:` element a feed item has: `tc:inReplyTo`, `tc:root`, `tc:replies` (where its approved replies are published), reactions. This gives a reader the post, its parent and the way to its replies in one request, whatever the age of the post.
+- **`Accept: application/rss+xml`**: the post as a one-item RSS 2.0 feed, with every `weft:` element a feed item has: `weft:inReplyTo`, `weft:root`, `weft:replies` (where its approved replies are published), reactions. This gives a reader the post, its parent and the way to its replies in one request, whatever the age of the post.
 - **`Accept: text/markdown`**: the post's markdown source.
 
 A deleted post answers 410 Gone in every representation.
 
-A reader that has a reply and wants its context needs only the permalinks: the reply's `tc:inReplyTo` for the parent, and `tc:replies` for the approved replies below it.
+A reader that has a reply and wants its context needs only the permalinks: the reply's `weft:inReplyTo` for the parent, and `weft:replies` for the approved replies below it.
 
 ## Paged feeds
 
@@ -190,21 +192,21 @@ Recommended for IndieWeb compatibility: microformats2 markup (`h-entry`, with `u
 ### Publishing a post
 
 1. Render the Markdown to HTML and write the permalink page.
-2. Add the item to the feed, with `source:markdown`, and `tc:inReplyTo`, `tc:root` and `tc:context` if it is a reply.
+2. Add the item to the feed, with `source:markdown`, and `weft:inReplyTo`, `weft:root` and `weft:context` if it is a reply.
 3. If it is a reply, send a Webmention to the parent. Sending one to the root as well is optional.
 4. Ping subscribers and indexes through rssCloud or WebSub.
 
 ### Receiving a Webmention
 
 1. Fetch the source URL and confirm it links to the target post. If not, reject it.
-2. Read the source's feed item. If it has `tc:inReplyTo` matching the target, treat it as a reply; if it has `tc:reactionOf` matching the target with a `polarity` of `+` or `-`, treat it as a reaction; otherwise it is a plain mention and is ignored.
-3. Apply moderation: auto-approve senders the author follows (from `tc:following`), queue others, drop blocked domains. Reactions are recorded once verified, but only those from followed senders count in the public tally.
-4. On approval, add the reply to the post's replies feed and update the `tc:replies` and `tc:reactions` counts.
-5. **Bubble up.** If this post is itself a reply, re-send its own Webmention to its parent. Under the Webmention spec, a re-sent Webmention means the source changed, so the parent refreshes its cached subtree. Repeat up to the root, or stop at the parent's `tc:depth`.
+2. Read the source's feed item. If it has `weft:inReplyTo` matching the target, treat it as a reply; if it has `weft:reactionOf` matching the target with a `polarity` of `+` or `-`, treat it as a reaction; otherwise it is a plain mention and is ignored.
+3. Apply moderation: auto-approve senders the author follows (from `weft:following`), queue others, drop blocked domains. Reactions are recorded once verified, but only those from followed senders count in the public tally.
+4. On approval, add the reply to the post's replies feed and update the `weft:replies` and `weft:reactions` counts.
+5. **Bubble up.** If this post is itself a reply, re-send its own Webmention to its parent. Under the Webmention spec, a re-sent Webmention means the source changed, so the parent refreshes its cached subtree. Repeat up to the root, or stop at the parent's `weft:depth`.
 
 ### Editing a post
 
-Update the item in place, set `tc:updated`, and re-send Webmentions to every post it replied to or reacted to. The `guid` and the `link` never change.
+Update the item in place, set `weft:updated`, and re-send Webmentions to every post it replied to or reacted to. The `guid` and the `link` never change.
 
 ### Deleting a post
 
@@ -212,7 +214,7 @@ The permalink returns HTTP 410 Gone, ideally with a small tombstone page. Remove
 
 ### Moving a feed
 
-Redirect the old feed URL with HTTP 301 and add `tc:movedTo` to the old feed. Keep both in place for at least 90 days. Permalinks should redirect too, so replies keep working.
+Redirect the old feed URL with HTTP 301 and add `weft:movedTo` to the old feed. Keep both in place for at least 90 days. Permalinks should redirect too, so replies keep working.
 
 ### Orphaned replies
 
@@ -221,18 +223,18 @@ Readers handle a reply whose parent is unavailable as follows:
 | Parent state | How readers show the reply |
 | --- | --- |
 | Rejected (parent online, reply not in its replies feed) | As an unapproved branch, visible in the raw view, collapsed or hidden in the curated view |
-| Offline (no response) | Under its `tc:root`, with its `tc:context` snippet standing in for the parent |
-| Deleted (410 Gone) | Under a tombstone reading "original post removed"; showing `tc:context` is the app's choice |
+| Offline (no response) | Under its `weft:root`, with its `weft:context` snippet standing in for the parent |
+| Deleted (410 Gone) | Under a tombstone reading "original post removed"; showing `weft:context` is the app's choice |
 
 In every case, replies further down the branch stay attached to their own parents.
 
 ### Replying to any RSS 2.0 item
 
-A textcast app can reply to an item in any RSS 2.0 feed, not just textcast feeds. The parent needs no `tc:` elements and its author needs no textcast app. The reply is built as if the parent were already deleted:
+A Weft app can reply to an item in any RSS 2.0 feed, not just Weft feeds. The parent needs no `weft:` elements and its author needs no Weft app. The reply is built as if the parent were already deleted:
 
-1. **Point up.** `tc:inReplyTo href` is the item's `<link>`, or its `guid` when `isPermaLink` is true and there is no link. The `feed` attribute is required here, since nothing else identifies the source feed.
-2. **Set the root.** The non-textcast item has no thread ancestry, so it is the root: `tc:root` equals `tc:inReplyTo`.
-3. **Carry context.** `tc:context` is required. The app can draft it from the item's title and description, by excerpting or summarizing with AI, marked `origin="generated"`. The author can edit it before publishing.
+1. **Point up.** `weft:inReplyTo href` is the item's `<link>`, or its `guid` when `isPermaLink` is true and there is no link. The `feed` attribute is required here, since nothing else identifies the source feed.
+2. **Set the root.** The non-Weft item has no thread ancestry, so it is the root: `weft:root` equals `weft:inReplyTo`.
+3. **Carry context.** `weft:context` is required. The app can draft it from the item's title and description, by excerpting or summarizing with AI, marked `origin="generated"`. The author can edit it before publishing.
 4. **Notify if possible.** If the item's page advertises a Webmention endpoint, send one. If not, the parent's author is never notified; the reply is still found through indexes and by readers following both feeds.
 
 This makes the whole existing RSS web, including blogs, news sites and podcasts, something you can reply to on day one.
@@ -243,15 +245,15 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 
 ```xml
 <rss version="2.0"
-  xmlns:tc="https://example.org/ns/textcast/0.1"
+  xmlns:weft="https://weftseed.com/ns/weft/0.1"
   xmlns:source="http://source.scripting.com/">
 <channel>
   <title>Alice</title>
   <link>https://alice.example/</link>
   <description>Notes on the open web.</description>
-  <tc:webmention>https://alice.example/webmention</tc:webmention>
-  <tc:following>https://alice.example/following.opml</tc:following>
-  <tc:reactionsFeed>https://alice.example/reactions.xml</tc:reactionsFeed>
+  <weft:webmention>https://alice.example/webmention</weft:webmention>
+  <weft:following>https://alice.example/following.opml</weft:following>
+  <weft:reactionsFeed>https://alice.example/reactions.xml</weft:reactionsFeed>
   <cloud domain="rpc.example.org" port="80" path="/rsscloud/pleaseNotify"
          registerProcedure="" protocol="http-post"/>
 
@@ -263,8 +265,8 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
     <source:markdown>RSS plus links already gives you a social web. Who's building the *reader* half?</source:markdown>
     <pubDate>Mon, 12 Oct 2026 21:00:00 -0400</pubDate>
     <category>textcasting</category>
-    <tc:replies href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp/replies.xml" count="1"/>
-    <tc:reactions plus="1" minus="0"/>
+    <weft:replies href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp/replies.xml" count="1"/>
+    <weft:reactions plus="1" minus="0"/>
   </item>
 </channel>
 </rss>
@@ -280,13 +282,13 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
   <description>&lt;p&gt;Search and threads are what's missing. Here's a sketch…&lt;/p&gt;</description>
   <source:markdown>Search and threads are what's missing. Here's a sketch…</source:markdown>
   <pubDate>Mon, 12 Oct 2026 22:15:00 -0400</pubDate>
-  <tc:updated>Mon, 12 Oct 2026 22:40:00 -0400</tc:updated>
-  <tc:inReplyTo href="https://alice.example/2026/10/12/notes"
+  <weft:updated>Mon, 12 Oct 2026 22:40:00 -0400</weft:updated>
+  <weft:inReplyTo href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
                 feed="https://alice.example/feed.xml"/>
-  <tc:root href="https://alice.example/2026/10/12/notes"
+  <weft:root href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
            feed="https://alice.example/feed.xml"/>
-  <tc:context href="https://alice.example/2026/10/12/notes"
-              retrieved="Mon, 12 Oct 2026 22:10:00 -0400">RSS plus links already gives you a social web.</tc:context>
+  <weft:context href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
+              retrieved="Mon, 12 Oct 2026 22:10:00 -0400">RSS plus links already gives you a social web.</weft:context>
 </item>
 ```
 
@@ -295,33 +297,33 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 ```xml
 <item>
   <guid isPermaLink="true">https://carol.example/reactions/2026-10-12-1</guid>
+  <link>https://carol.example/reactions/2026-10-12-1</link>
   <description/>
   <pubDate>Mon, 12 Oct 2026 22:20:00 -0400</pubDate>
-  <tc:reactionOf href="https://alice.example/2026/10/12/notes" polarity="+" emoji="🎉"/>
+  <weft:reactionOf href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp" polarity="+" emoji="🎉"/>
 </item>
 ```
 
 ### Alice's replies feed for the post, caching two levels
 
 ```xml
-<rss version="2.0" xmlns:tc="https://example.org/ns/textcast/0.1">
+<rss version="2.0" xmlns:weft="https://weftseed.com/ns/weft/0.1">
 <channel>
   <title>Replies to: RSS plus links already gives you a social web</title>
-  <link>https://alice.example/2026/10/12/notes</link>
+  <link>https://alice.example/posts/rss-plus-links-already-gives-you-w3kp</link>
   <description>Approved replies</description>
   <lastBuildDate>Mon, 12 Oct 2026 22:45:00 -0400</lastBuildDate>
-  <tc:repliesTo href="https://alice.example/2026/10/12/notes"/>
-  <tc:depth>2</tc:depth>
+  <weft:repliesTo href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"/>
+  <weft:depth>2</weft:depth>
 
   <item>
     <title>The reader half is the hard part</title>
-    <link>https://bob.example/posts/reader-half</link>
     <guid isPermaLink="false">urn:uuid:0194f3b8-90aa-7c13-8e21-6d4f0a9b7c25</guid>
-  <link>https://bob.example/posts/reader-half</link>
+    <link>https://bob.example/posts/reader-half</link>
     <description>Search and threads are what's missing.</description>
-    <tc:feed href="https://bob.example/feed.xml"/>
-    <tc:inReplyTo href="https://alice.example/2026/10/12/notes"/>
-    <tc:reactions plus="3" minus="0"/>
+    <weft:feed href="https://bob.example/feed.xml"/>
+    <weft:inReplyTo href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"/>
+    <weft:reactions plus="3" minus="0"/>
   </item>
 
   <item>
@@ -329,8 +331,8 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
     <link>https://dana.example/n/8812</link>
     <guid isPermaLink="true">https://dana.example/n/8812</guid>
     <description>Agreed. Webmention covers notification.</description>
-    <tc:feed href="https://dana.example/feed.xml"/>
-    <tc:inReplyTo href="https://bob.example/posts/reader-half"/>
+    <weft:feed href="https://dana.example/feed.xml"/>
+    <weft:inReplyTo href="https://bob.example/posts/reader-half"/>
   </item>
 </channel>
 </rss>
@@ -338,9 +340,9 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 
 ## Compatibility
 
-- **Plain RSS readers** ignore the `tc:` elements and show every post normally, titled or not.
+- **Plain RSS readers** ignore the `weft:` elements and show every post normally, titled or not.
 - **IndieWeb sites** interoperate through Webmention and microformats on permalink pages.
-- **Atom Threading** (RFC 4685) users can map `thr:in-reply-to` to `tc:inReplyTo`. `tc:` adds the root pointer and context snippet that Atom Threading lacks.
+- **Atom Threading** (RFC 4685) users can map `thr:in-reply-to` to `weft:inReplyTo`. `weft:` adds the root pointer and context snippet that Atom Threading lacks.
 - **Search** uses OpenSearch with RSS results; it is outside this namespace.
 
 ## Out of scope
@@ -351,11 +353,10 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 
 ## Open questions
 
-- [ ] Permanent namespace URI and who maintains it.
 - [ ] Should replies also send a Webmention to the root, so root authors see all thread activity?
-- [ ] Signature format for `tc:context` and `tc:key`, or drop signing from 0.1 entirely.
-- [ ] Maximum length for `tc:context`: is about 300 characters right?
+- [ ] Signature format for `weft:context` and `weft:key`, or drop signing from 0.1 entirely.
+- [ ] Maximum length for `weft:context`: is about 300 characters right?
 - [ ] How private flags (as opposed to public `-` reactions) reach a post owner.
 - [ ] Weighting reactions by the trust graph beyond "followed or not".
 - [ ] Whether to require the Webmention Vouch extension for senders the receiver doesn't follow.
-- [ ] Default and maximum `tc:depth` for replies feeds, to keep cache sizes bounded.
+- [ ] Default and maximum `weft:depth` for replies feeds, to keep cache sizes bounded.

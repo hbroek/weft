@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/store"
 )
 
 func setup(t *testing.T) (*Server, string) {

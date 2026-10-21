@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/fetch"
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/fetch"
+	"github.com/hbroek/weft/internal/store"
 )
 
 // Config controls how hosts map to users.

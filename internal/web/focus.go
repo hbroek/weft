@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/feed"
+	"github.com/hbroek/weft/internal/feed"
 )
 
 // The focused thread view shows one post in its conversation: the chain of ancestors from the

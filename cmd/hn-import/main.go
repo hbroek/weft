@@ -1,9 +1,9 @@
-// Command hn-import copies the current Hacker News front page into a new textcast database:
+// Command hn-import copies the current Hacker News front page into a new Weft database:
 // every story and comment becomes a post in its author's own feed, every comment a reply to its
 // parent, and every author a user. It exists to give the UI a large, real conversation to run on.
 //
 //	hn-import -db hackernews.db -port 8090
-//	ttc serve -db hackernews.db -addr :8090 -dev -poll 30s
+//	weft serve -db hackernews.db -addr :8090 -dev -poll 30s
 //
 // Hacker News does not publish who voted or what comments scored, so the only votes are each
 // story's point total, stored as anonymous trusted "+" reactions.
@@ -24,9 +24,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hbroek/text-thread-casting/internal/feed"
-	"github.com/hbroek/text-thread-casting/internal/md"
-	"github.com/hbroek/text-thread-casting/internal/store"
+	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/md"
+	"github.com/hbroek/weft/internal/store"
 )
 
 type node struct {
@@ -45,7 +45,7 @@ type importer struct {
 	st                   *store.Store
 	scheme, domain, port string
 	users                map[string]*user // by HN name
-	taken                map[string]bool  // ttc names in use
+	taken                map[string]bool  // weft names in use
 	subs                 map[subKey][]store.Subreply
 	stats                struct{ users, posts, replies, votes, deleted, maxDepth int }
 	storyFeeds           map[string][]feed.ParsedItem // feed URL -> its story items, to prefill followers' caches
@@ -163,7 +163,7 @@ func main() {
 	s := im.stats
 	fmt.Printf("\n%s: %d users, %d stories and comments (%d replies, deepest %d levels), %d votes, %d deleted comments kept as placeholders\n",
 		*dbPath, s.users, s.posts, s.replies, s.maxDepth, s.votes, s.deleted)
-	fmt.Printf("\nServe it:   make run-hn      (or: ./bin/ttc serve -db %s -addr :%s -dev -poll 30s)\n", *dbPath, *port)
+	fmt.Printf("\nServe it:   make run-hn      (or: ./bin/weft serve -db %s -addr :%s -dev -poll 30s)\n", *dbPath, *port)
 	fmt.Printf("Browse as:  %s://%s.%s:%s/login   password %q\n", *scheme, *viewer, *domain, *port, *password)
 }
 
@@ -177,7 +177,7 @@ func count(n *node) int {
 
 var nameChars = regexp.MustCompile(`[^a-z0-9-]+`)
 
-// user returns the ttc user for a Hacker News name, creating it. Names are lowercased, with
+// user returns the Weft user for a Hacker News name, creating it. Names are lowercased, with
 // underscores and other characters turned into hyphens so that name.localhost is a valid host.
 func (im *importer) user(hn string) *user {
 	if hn == "" {
