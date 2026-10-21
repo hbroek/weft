@@ -1,3 +1,5 @@
+<img src="img/weft-icon-128.png" alt="Weft logo" width="96" align="right">
+
 # Weft
 
 Weft (Web-External Federated Threads) builds on Dave Winer's textcasting. Home: https://weftseed.com
@@ -114,3 +116,7 @@ A post's permalink answers to its `Accept` header: `text/markdown` returns the s
 ## Try the UI on a real conversation
 
 `make hackernews` copies the current Hacker News front page into a new `hackernews.db` (it refuses to touch an existing file): each of the top 20 stories and all its comments become posts in their authors' own feeds, every comment is an approved reply to its parent with the thread root set, and every author is a user (names are lowercased, `_` becomes `-`). Story points become anonymous likes, since Hacker News does not publish who voted or what comments scored. Then `make run-hn` serves it on port 8090 (`HNPORT=` and `HNDB=` override). Log in at `http://me.localhost:8090/login` with password `hackernews`; that user follows every story's submitter, so the stories are already in its timeline.
+
+## Icons
+
+`img/` holds the logo at every size (16 to 1024 px, the 500 px avatar, and the square SVG). The ones the site uses are compiled into the binary from `internal/web/static/` and served at `/static/` and `/favicon.ico` on every host: the favicon (`.ico` and SVG), the Apple touch icon, the 192 and 512 px icons for `site.webmanifest`, and the SVG logo in the page footer.

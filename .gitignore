@@ -3,3 +3,4 @@
 /bin/
 .env
 *agent*.json
+.DS_Store

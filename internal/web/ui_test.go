@@ -339,3 +339,29 @@ func TestBookmarkletOnHome(t *testing.T) {
 		t.Errorf("bookmarklet should be one line with the address filled in:\n%s", js)
 	}
 }
+
+// The site icons are served from the binary on any host and linked from every page.
+func TestSiteIcons(t *testing.T) {
+	s, _ := setup(t)
+	for path, ctype := range map[string]string{
+		"/favicon.ico":                 "image/x-icon",
+		"/static/weft-icon.svg":        "image/svg+xml",
+		"/static/apple-touch-icon.png": "image/png",
+		"/static/weft-icon-512.png":    "image/png",
+		"/static/site.webmanifest":     "application/manifest+json",
+	} {
+		w := do(s, "GET", "nobody.example", path, "", "") // no user lives here: the icons do not need one
+		if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), ctype) || w.Body.Len() == 0 {
+			t.Errorf("%s: %d %q (%d bytes)", path, w.Code, w.Header().Get("Content-Type"), w.Body.Len())
+		}
+	}
+	if w := do(s, "GET", host, "/static/nope.png", "", ""); w.Code != 404 {
+		t.Errorf("missing icon: %d", w.Code)
+	}
+	page := do(s, "GET", host, "/", "", "").Body.String()
+	for _, want := range []string{`rel="icon" href="/static/weft-icon.svg"`, `rel="icon" href="/favicon.ico"`, `rel="apple-touch-icon"`, `rel="manifest"`, "Published with Weft"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Weft",
+  "short_name": "Weft",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#26337a",
+  "theme_color": "#26337a",
+  "icons": [
+    {"src": "/static/weft-icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/static/weft-icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}

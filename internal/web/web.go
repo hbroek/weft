@@ -49,6 +49,8 @@ func New(cfg Config, st *store.Store) *Server {
 	}
 	s := &Server{cfg: cfg, st: st, mux: http.NewServeMux(), web: fetch.New(cfg.AllowPrivate), wake: make(chan struct{}, 1)}
 	// public pages
+	s.mux.Handle("GET /static/", s.staticHandler())
+	s.mux.Handle("GET /favicon.ico", s.staticHandler())
 	s.mux.HandleFunc("GET /{$}", s.user(s.home))
 	s.mux.HandleFunc("GET /feed.xml", s.user(s.feed))
 	s.mux.HandleFunc("GET /posts/{slug}", s.user(s.permalink))

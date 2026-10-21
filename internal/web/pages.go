@@ -18,6 +18,11 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}}</title>
 <link rel="alternate" type="application/rss+xml" href="{{.FeedURL}}">
+<link rel="icon" href="/static/weft-icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="manifest" href="/static/site.webmanifest">
+<meta name="theme-color" content="#26337a">
 <link rel="webmention" href="{{.WebmentionURL}}">
 {{range .Links}}<link rel="{{.Rel}}"{{if .Type}} type="{{.Type}}"{{end}} href="{{.Href}}">
 {{end}}<style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;background:#f3f4f6;color:#1c1c1e}
@@ -27,6 +32,7 @@ nav a,nav button{margin-right:1rem}nav form{display:inline}
 nav button,.linkbtn{background:none;border:0;padding:0;font:inherit;color:LinkText;cursor:pointer;text-decoration:underline}
 input[type=text],input[type=password],textarea{width:100%;box-sizing:border-box;font:inherit;padding:.4rem}
 ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #0002}.node{margin:.75rem 0}
+footer{margin:2rem 0 1rem;text-align:center}footer a{color:#555;text-decoration:none}footer img{vertical-align:-4px;border-radius:4px}
 article img,.node img,#preview img{max-width:100%;max-height:28rem;height:auto;object-fit:contain;border-radius:8px}
 article,.node{overflow-wrap:anywhere}.note{display:block;color:#a60}.focus{scroll-margin-top:4rem;background:#f4f8ff;box-shadow:0 0 0 2px #1a6fe055,0 4px 14px #0000000d}
 .react{display:flex;align-items:center;gap:.25rem;margin:.25rem 0}
@@ -44,7 +50,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <nav>{{if .Owner}}<a href="/compose">Compose</a><a href="/timeline">Timeline</a><a href="/following">Following</a><a href="/replies">Replies</a>
 <form method="post" action="/logout"><button>Log out</button></form>{{else}}<a href="/login">Log in</a>{{end}}</nav></header>
 <main>{{end}}
-{{define "foot"}}</main></body></html>{{end}}
+{{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></body></html>{{end}}
 {{define "posts"}}{{template "head" .}}
 {{if .Keyword}}<p class="kwhead">Posts tagged <strong>{{.Keyword}}</strong> <small>· <a href="/">All posts</a> · <a href="{{.TopicFeed}}">Feed for this topic</a></small></p>{{end}}
 {{if .Bookmarklet}}<p class="bm"><small>Bookmark card: drag <a href="{{.Bookmarklet}}">Weft it</a> to your bookmarks bar, then click it on any page to compose a post from that page.</small></p>{{end}}

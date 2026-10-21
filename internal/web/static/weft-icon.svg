@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Weft">
+  <defs>
+    <mask id="thread" maskUnits="userSpaceOnUse" x="0" y="0" width="120" height="120">
+      <path d="M14 60 Q25 34 36 60 Q48 86 60 60 Q72 34 84 60 Q95 86 106 60" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round"/>
+    </mask>
+  </defs>
+  <rect width="120" height="120" rx="28" fill="#26337A"/>
+  <g stroke="#EEF0FA" stroke-width="8" stroke-linecap="round">
+    <line x1="36" y1="24" x2="36" y2="96"/>
+    <line x1="84" y1="24" x2="84" y2="96"/>
+  </g>
+  <path d="M14 60 Q25 34 36 60 Q48 86 60 60 Q72 34 84 60 Q95 86 106 60" fill="none" stroke="#26337A" stroke-width="16" stroke-linecap="round"/>
+  <path d="M14 60 Q25 34 36 60 Q48 86 60 60 Q72 34 84 60 Q95 86 106 60" fill="none" stroke="#F08A4B" stroke-width="10" stroke-linecap="round"/>
+  <line x1="60" y1="24" x2="60" y2="96" stroke="#26337A" stroke-width="14" mask="url(#thread)"/>
+  <line x1="60" y1="24" x2="60" y2="96" stroke="#EEF0FA" stroke-width="8" stroke-linecap="round"/>
+</svg>
