@@ -308,7 +308,7 @@ func (s *Server) unfollowForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.requireOwner(w, r, q) {
 		return
 	}
-	if err := s.st.Unfollow(q.host.ID, r.FormValue("url")); err != nil {
+	if err := s.unfollow(q.host.ID, r.FormValue("url")); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -356,7 +356,38 @@ func (s *Server) follow(ctx context.Context, userID int64, raw string) (string, 
 		return "", err
 	}
 	s.refreshLikes(ctx, res.URL, p)
-	return res.URL, s.st.Follow(userID, res.URL)
+	if err := s.st.Follow(userID, res.URL); err != nil {
+		return "", err
+	}
+	s.retrustLikes(userID)
+	return res.URL, nil
+}
+
+// unfollow stops following a feed and recounts the likes on the user's posts.
+func (s *Server) unfollow(userID int64, feedURL string) error {
+	if err := s.st.Unfollow(userID, feedURL); err != nil {
+		return err
+	}
+	s.retrustLikes(userID)
+	return nil
+}
+
+// retrustLikes makes the likes on the user's posts count exactly when their senders are followed
+// now, so following someone counts the likes they already gave and unfollowing drops them.
+func (s *Server) retrustLikes(userID int64) {
+	xs, err := s.st.LikesInOf(userID)
+	if err != nil {
+		return
+	}
+	for _, x := range xs {
+		if x.FeedURL == "" {
+			continue
+		}
+		want, err := s.st.IsFollowingSite(userID, personFeed(x.FeedURL), siteOf(x.FeedURL))
+		if err == nil && want != x.Trusted {
+			s.st.SetLikeInTrust(x.PostID, x.Source, want)
+		}
+	}
 }
 
 // Follow makes the user follow a feed or site URL: the same as the Following page, for admin tools.

@@ -167,6 +167,34 @@ func (s *Store) LikesInFor(postID int64) ([]LikeIn, error) {
 	return out, rows.Err()
 }
 
+// LikesInOf lists every received like on the user's posts, counted or not.
+func (s *Store) LikesInOf(userID int64) ([]LikeIn, error) {
+	rows, err := s.db.Query(`SELECT l.id,l.post_id,l.source,l.feed_url,l.author,l.trusted,l.created FROM likes_in l
+		JOIN posts p ON p.id=l.post_id WHERE p.user_id=?`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []LikeIn
+	for rows.Next() {
+		var r LikeIn
+		var tr int
+		var c int64
+		if err := rows.Scan(&r.ID, &r.PostID, &r.Source, &r.FeedURL, &r.Author, &tr, &c); err != nil {
+			return nil, err
+		}
+		r.Trusted, r.Created = tr != 0, time.Unix(c, 0)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// SetLikeInTrust changes whether a received like is counted.
+func (s *Store) SetLikeInTrust(postID int64, source string, trusted bool) error {
+	_, err := s.db.Exec(`UPDATE likes_in SET trusted=? WHERE post_id=? AND source=?`, b2i(trusted), postID, source)
+	return err
+}
+
 // Tallies returns, for each of the user's posts that has any, the number of likes from trusted senders.
 func (s *Store) Tallies(userID int64) (map[int64]int, error) {
 	rows, err := s.db.Query(`SELECT l.post_id, COUNT(*) FROM likes_in l JOIN posts p ON p.id=l.post_id

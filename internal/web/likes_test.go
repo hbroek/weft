@@ -160,11 +160,11 @@ func TestTimelineShowsLikesOfFollowed(t *testing.T) {
 	}
 
 	off := do4(alice, "/timeline", ck)
-	if strings.Contains(off, "liked") || !strings.Contains(off, `href="/timeline?likes=1">Show likes<`) {
+	if strings.Contains(off, " liked <a") || !strings.Contains(off, `href="/timeline?likes=1">Show likes<`) {
 		t.Errorf("likes must be off by default, with a way to switch them on:\n%s", off)
 	}
 	on := do4(alice, "/timeline?likes=1", ck)
-	if !strings.Contains(on, "liked") || !strings.Contains(on, "your post “Hello weft”") || !strings.Contains(on, `href="`+ua+`"`) || !strings.Contains(on, ">Hide likes<") {
+	if !strings.Contains(on, " liked <a") || !strings.Contains(on, "your post “Hello weft”") || !strings.Contains(on, `href="`+ua+`"`) || !strings.Contains(on, ">Hide likes<") {
 		t.Errorf("likes missing from the timeline:\n%s", on)
 	}
 
@@ -178,7 +178,7 @@ func TestTimelineShowsLikesOfFollowed(t *testing.T) {
 	// Withdrawn likes disappear after the next refresh.
 	bob.call(t, "DELETE", "/api/likes", `{"target":"`+ua+`"}`, 204)
 	alice.s.RefreshAll(ctx)
-	if strings.Contains(do4(alice, "/timeline?likes=1", ck), "liked") {
+	if strings.Contains(do4(alice, "/timeline?likes=1", ck), " liked <a") {
 		t.Errorf("withdrawn like still shown")
 	}
 }
@@ -453,5 +453,39 @@ func TestOwnPostsInTimeline(t *testing.T) {
 	one := do4(alice, "/timeline?feed="+url.QueryEscape(bob.base+"/feed.xml"), ck)
 	if strings.Contains(one, "Alice says hello") || strings.Contains(one, "my posts") {
 		t.Errorf("one person's page should hold no own posts or toggle:\n%s", one)
+	}
+}
+
+// Following someone counts the likes they already gave your posts, and unfollowing drops them.
+func TestFollowingRecountsLikes(t *testing.T) {
+	alice, carol := newInstance(t, "alice"), newInstance(t, "carol")
+	ctx := t.Context()
+	ua := alice.post(t, `{"markdown":"Count my likes"}`)
+	carol.call(t, "POST", "/api/likes", `{"target":"`+ua+`"}`, 200)
+	settle(ctx, alice, carol)
+	if strings.Contains(alice.get("/"), "1 like") {
+		t.Fatalf("carol is not followed, so her like must not count yet")
+	}
+
+	alice.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
+	if home := alice.get("/"); !strings.Contains(home, "1 like") {
+		t.Errorf("following carol should count her earlier like:\n%s", home)
+	}
+	alice.call(t, "DELETE", "/api/following", `{"url":"`+carol.base+`/feed.xml"}`, 204)
+	if strings.Contains(alice.get("/"), "1 like") {
+		t.Errorf("unfollowing carol should drop her like from the count")
+	}
+
+	// likes recorded before they named their feed point at the likes feed; they recount too
+	xs, _ := alice.s.st.LikesInOf(1)
+	if len(xs) != 1 {
+		t.Fatalf("likes received: %d", len(xs))
+	}
+	old := xs[0]
+	old.FeedURL = carol.base + "/likes.xml"
+	alice.s.st.UpsertLikeIn(old)
+	alice.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
+	if !strings.Contains(alice.get("/"), "1 like") {
+		t.Errorf("a like recorded from the likes feed should count once the sender is followed")
 	}
 }

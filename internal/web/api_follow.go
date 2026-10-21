@@ -102,7 +102,7 @@ func (s *Server) apiUnfollow(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if err := s.st.Unfollow(q.host.ID, in.URL); err != nil {
+	if err := s.unfollow(q.host.ID, in.URL); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
