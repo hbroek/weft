@@ -2,8 +2,13 @@ package web
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/hbroek/weft/internal/feed"
 )
 
 // The pages a person navigates can also be asked for as Markdown (Accept: text/markdown): the same
@@ -294,4 +299,135 @@ func (d pageData) mdLikers(b *strings.Builder) {
 	if d.LikeNote != "" {
 		b.WriteString("\n" + mdLine(d.LikeNote) + "\n")
 	}
+}
+
+// ---- feeds as Markdown ----
+
+// wantsMarkdown reports whether the request asks for Markdown and for no HTML-like type (a feed reader
+// that says */* still gets the feed).
+func wantsMarkdown(r *http.Request) bool { return negotiate(r.Header.Get("Accept")) == "markdown" }
+
+// writeChannel answers with the feed, or with the same content as a Markdown document when that is
+// what the request asks for.
+func (s *Server) writeChannel(w http.ResponseWriter, r *http.Request, ch feed.Channel) {
+	w.Header().Add("Vary", "Accept")
+	if wantsMarkdown(r) {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		io.WriteString(w, markdownChannel(ch))
+		return
+	}
+	b, err := feed.New(ch).Marshal()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
+	w.Write(b)
+}
+
+func feedDate(s string) string {
+	if t, err := time.Parse(time.RFC1123Z, s); err == nil {
+		return t.Local().Format("2 Jan 2006 at 15:04")
+	}
+	return s
+}
+
+// markdownChannel is a feed's content as one document: the channel, its items, and the links to
+// the neighbouring pages of the feed.
+func markdownChannel(ch feed.Channel) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n", mdLine(ch.Title))
+	if ch.Description != "" {
+		b.WriteString("\n" + mdLine(ch.Description) + "\n")
+	}
+	if ch.Link != "" {
+		b.WriteString("\n" + mdLink(ch.Link, ch.Link) + "\n")
+	}
+	var also []string
+	if ch.LikesFeed != "" {
+		also = append(also, mdLink("Likes", ch.LikesFeed))
+	}
+	if ch.Following != "" {
+		also = append(also, mdLink("Following", ch.Following))
+	}
+	if len(also) > 0 {
+		b.WriteString("\nAlso: " + strings.Join(also, " · ") + "\n")
+	}
+	if len(ch.Items) == 0 {
+		b.WriteString("\nNothing here yet.\n")
+	}
+	site := strings.TrimSuffix(ch.Link, "/")
+	for _, it := range ch.Items {
+		who := ""
+		if it.Feed != nil && it.Feed.Name != "" {
+			who = "**" + mdLine(it.Feed.Name) + "** · "
+		}
+		if it.LikeOf != nil {
+			what := orStr(it.LikeOf.Title, it.LikeOf.Href)
+			line := "\n- " + who + "liked " + mdLink(what, it.LikeOf.Href)
+			if it.LikeOf.Description != "" {
+				line += ": " + mdLine(it.LikeOf.Description)
+			}
+			b.WriteString(line + " (" + feedDate(it.PubDate) + ")\n")
+			continue
+		}
+		b.WriteString("\n---\n\n")
+		when := feedDate(it.PubDate)
+		if it.Updated != "" {
+			when += " · edited"
+		}
+		if it.Title != "" {
+			fmt.Fprintf(&b, "## %s\n\n%s%s\n", mdLink(it.Title, it.Link), who, when)
+		} else {
+			fmt.Fprintf(&b, "%s%s · %s\n", who, when, mdLink("permalink", it.Link))
+		}
+		if it.InReplyTo != nil && it.InReplyTo.Href != "" {
+			fmt.Fprintf(&b, "\nIn reply to %s\n", mdLink(siteHost(it.InReplyTo.Href), it.InReplyTo.Href))
+			if c := it.Context; c != nil && (c.Title != "" || c.Description != "") {
+				b.WriteString("\n> " + cardLine(&parentCard{Href: it.InReplyTo.Href, Title: orStr(c.Title, siteHost(it.InReplyTo.Href)), Description: c.Description, Host: siteHost(it.InReplyTo.Href)}) + "\n")
+			}
+		}
+		b.WriteString("\n" + strings.TrimSpace(orStr(it.Markdown, it.Description)) + "\n")
+		var meta []string
+		if len(it.Categories) > 0 {
+			var ks []string
+			for _, k := range it.Categories {
+				if site != "" {
+					ks = append(ks, mdLink(k, site+"/?keyword="+url.PathEscape(k)))
+				} else {
+					ks = append(ks, mdLine(k))
+				}
+			}
+			meta = append(meta, "Keywords: "+strings.Join(ks, ", "))
+		}
+		if it.Likes != nil && it.Likes.Count > 0 {
+			meta = append(meta, fmt.Sprintf("%d likes", it.Likes.Count))
+		}
+		if it.Replies != nil && it.Replies.Href != "" {
+			text := "Replies"
+			if it.Replies.Count > 0 {
+				text = fmt.Sprintf("%d replies", it.Replies.Count)
+			}
+			meta = append(meta, mdLink(text, it.Replies.Href))
+		}
+		if len(meta) > 0 {
+			b.WriteString("\n" + strings.Join(meta, " · ") + "\n")
+		}
+	}
+	var nav []string
+	for _, l := range ch.Links {
+		switch l.Rel {
+		case "first":
+			nav = append(nav, mdLink("First page", l.Href))
+		case "previous":
+			nav = append(nav, mdLink("Newer posts", l.Href))
+		case "next":
+			nav = append(nav, mdLink("Older posts", l.Href))
+		}
+	}
+	if len(nav) > 0 {
+		b.WriteString("\n---\n\n" + strings.Join(nav, " · ") + "\n")
+	}
+	return b.String()
 }

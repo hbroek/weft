@@ -74,13 +74,7 @@ func (s *Server) likesFeed(w http.ResponseWriter, r *http.Request, q *req) {
 		last = time.Now()
 	}
 	ch.LastBuildDate = feed.RFC822(last)
-	b, err := feed.New(ch).Marshal()
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
-	w.Write(b)
+	s.writeChannel(w, r, ch)
 }
 
 // likePage is the HTML permalink of a like. Webmention receivers check that it links

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hbroek/weft/internal/store"
 )
 
 func TestLikeRoundTripAcrossInstances(t *testing.T) {
@@ -814,5 +817,75 @@ func TestPagesAsMarkdown(t *testing.T) {
 	}
 	if w := getMD(alice, "/timeline", ""); w.Code != 303 {
 		t.Errorf("a visitor must not read the timeline as Markdown: %d", w.Code)
+	}
+}
+
+func getAccept(i *instance, path, accept string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("GET", "http://"+i.host+path, nil)
+	if accept != "" {
+		r.Header.Set("Accept", accept)
+	}
+	w := httptest.NewRecorder()
+	i.s.ServeHTTP(w, r)
+	return w
+}
+
+// The feeds answer Accept: text/markdown with their content as one Markdown document; feed readers,
+// which accept anything, keep getting the XML.
+func TestFeedsAsMarkdown(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	ctx := t.Context()
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	un := alice.post(t, `{"title":"Alice note","markdown":"Alice says *hi*","keywords":["go","open web"]}`)
+	alice.post(t, `{"markdown":"A reply","in_reply_to":"https://blog.example/x","context":{"title":"The web","description":"About links."}}`)
+	bob.post(t, `{"markdown":"Bob answers **Alice**","in_reply_to":"`+un+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
+	alice.call(t, "POST", "/api/likes", `{"target":"https://blog.example/x","context":{"title":"The web","description":"About links."}}`, 200)
+	settle(ctx, alice, bob)
+
+	md := func(name, path string, want ...string) string {
+		t.Helper()
+		w := getAccept(alice, path, "text/markdown")
+		body := w.Body.String()
+		if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/markdown") || w.Header().Get("Vary") != "Accept" {
+			t.Errorf("%s: %d %q vary=%q\n%s", name, w.Code, w.Header().Get("Content-Type"), w.Header().Get("Vary"), body)
+		}
+		for _, x := range want {
+			if !strings.Contains(body, x) {
+				t.Errorf("%s lacks %q:\n%s", name, x, body)
+			}
+		}
+		if strings.Contains(body, "<item>") || strings.Contains(body, "<rss") {
+			t.Errorf("%s is still XML:\n%s", name, body)
+		}
+		return body
+	}
+	main := md("feed.xml", "/feed.xml", "# Alice", "## ["+"Alice note]("+un+")", "Alice says *hi*", "Keywords: [go]("+alice.base+"/?keyword=go), [open web]("+alice.base+"/?keyword=open%20web)",
+		"1 replies", "In reply to [blog.example](https://blog.example/x)", "> **[The web](https://blog.example/x)**: About links.", "Also: [Likes]("+alice.base+"/likes.xml) · [Following]("+alice.base+"/following.opml)")
+	if strings.Contains(main, "Older posts") {
+		t.Errorf("one page has no next link")
+	}
+	md("topic feed", "/feed.xml?category=go", "# Alice: go", "Alice says *hi*")
+	md("replies.xml", pathOf(un)+"/replies.xml", "# Replies to: Alice note", "**Bob**", "Bob answers")
+	md("likes.xml", "/likes.xml", "# Alice likes", "liked [The web](https://blog.example/x): About links.")
+	md("following.opml", "/following.opml", "# Alice follows", "- [Bob]("+bob.base+"/feed.xml)")
+
+	// paging: the older posts are one link away
+	for i := 0; i < 101; i++ {
+		if _, err := alice.s.st.AddPost(store.NewPost{UserID: 1, Markdown: fmt.Sprintf("filler %d", i), HTML: "<p>f</p>"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	md("paged feed", "/feed.xml", "[Older posts]("+alice.base+"/feed.xml?page=2)")
+	md("second page", "/feed.xml?page=2", "[Newer posts]("+alice.base+"/feed.xml)", "[First page]("+alice.base+"/feed.xml)")
+
+	// feed readers and plain requests keep the XML
+	for _, accept := range []string{"", "*/*", "application/rss+xml, application/xml;q=0.9, */*;q=0.8", "application/rss+xml"} {
+		w := getAccept(alice, "/feed.xml", accept)
+		if !strings.HasPrefix(w.Header().Get("Content-Type"), "application/rss+xml") || !strings.Contains(w.Body.String(), "<rss") {
+			t.Errorf("Accept %q should get the XML feed: %q", accept, w.Header().Get("Content-Type"))
+		}
+	}
+	if w := getAccept(alice, "/following.opml", "*/*"); !strings.HasPrefix(w.Header().Get("Content-Type"), "text/x-opml") {
+		t.Errorf("opml for */*: %q", w.Header().Get("Content-Type"))
 	}
 }

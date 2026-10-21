@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"html"
 	"html/template"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -548,6 +550,25 @@ func (s *Server) opml(w http.ResponseWriter, r *http.Request, q *req) {
 			t = f.URL
 		}
 		doc.Body = append(doc.Body, outline{Type: "rss", Text: t, XMLURL: f.URL, HTMLURL: f.Link})
+	}
+	w.Header().Add("Vary", "Accept")
+	if wantsMarkdown(r) {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		var b strings.Builder
+		fmt.Fprintf(&b, "# %s\n\n", mdLine(doc.Title))
+		for _, o := range doc.Body {
+			line := "- " + mdLink(o.Text, o.XMLURL)
+			if o.HTMLURL != "" {
+				line += " (" + o.HTMLURL + ")"
+			}
+			b.WriteString(line + "\n")
+		}
+		if len(doc.Body) == 0 {
+			b.WriteString("Not following anyone yet.\n")
+		}
+		io.WriteString(w, b.String())
+		return
 	}
 	b, err := xml.MarshalIndent(doc, "", "  ")
 	if err != nil {
