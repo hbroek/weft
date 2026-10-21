@@ -25,7 +25,9 @@ article{margin:1rem 0}time{color:#888;font-size:.85em}
 nav a,nav button{margin-right:1rem}nav form{display:inline}
 nav button,.linkbtn{background:none;border:0;padding:0;font:inherit;color:LinkText;cursor:pointer;text-decoration:underline}
 input[type=text],input[type=password],textarea{width:100%;box-sizing:border-box;font:inherit;padding:.4rem}
-ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #0002}.node{margin:.75rem 0}.note{display:block;color:#a60}.focus{scroll-margin-top:4rem;background:#f4f8ff;box-shadow:0 0 0 2px #1a6fe055,0 4px 14px #0000000d}
+ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #0002}.node{margin:.75rem 0}
+article img,.node img,#preview img{max-width:100%;max-height:28rem;height:auto;object-fit:contain;border-radius:8px}
+article,.node{overflow-wrap:anywhere}.note{display:block;color:#a60}.focus{scroll-margin-top:4rem;background:#f4f8ff;box-shadow:0 0 0 2px #1a6fe055,0 4px 14px #0000000d}
 .react{display:flex;align-items:center;gap:.25rem;margin:.25rem 0}
 .likebtn{display:inline-flex;align-items:center;background:none;border:0;padding:.15rem .25rem;color:inherit;cursor:pointer}
 .likebtn svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
