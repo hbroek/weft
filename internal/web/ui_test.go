@@ -265,7 +265,7 @@ func TestKeywordsEndToEnd(t *testing.T) {
 	if !strings.Contains(feedXML, "<category>pickleball</category>") || !strings.Contains(feedXML, "<category>open web</category>") || strings.Count(feedXML, "<category>") != 2 {
 		t.Errorf("feed categories:\n%s", feedXML)
 	}
-	if pg := do(s, "GET", host, loc, "", "").Body.String(); !strings.Contains(pg, `<span class="p-category">open web</span>`) {
+	if pg := do(s, "GET", host, loc, "", "").Body.String(); !strings.Contains(pg, `<a class="p-category" href="/?keyword=open%20web">open web</a>`) {
 		t.Errorf("chips missing on the post page:\n%s", pg)
 	}
 

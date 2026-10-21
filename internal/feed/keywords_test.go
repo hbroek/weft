@@ -52,3 +52,15 @@ func TestKeywordsRoundTripThroughAFeed(t *testing.T) {
 		t.Errorf("remote categories: %q", k)
 	}
 }
+
+func TestKeywordFilterHelpers(t *testing.T) {
+	if got := Keyword("  open   web, "); got != "open web" {
+		t.Errorf("Keyword = %q", got)
+	}
+	if Keyword(" , ") != "" {
+		t.Error("empty keyword")
+	}
+	if !HasKeyword([]string{"Go", "open web"}, "OPEN WEB") || HasKeyword([]string{"Go"}, "gopher") {
+		t.Error("HasKeyword")
+	}
+}

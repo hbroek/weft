@@ -43,3 +43,22 @@ func SplitKeywords(text string) []string { return Keywords(strings.Split(text, "
 
 // JoinKeywords is the box's text for a list of keywords.
 func JoinKeywords(k []string) string { return strings.Join(k, ", ") }
+
+// Keyword cleans one keyword as Keywords would, or returns "" if nothing is left. It reads the
+// ?keyword= and ?category= filters.
+func Keyword(s string) string {
+	if k := Keywords([]string{s}); len(k) > 0 {
+		return k[0]
+	}
+	return ""
+}
+
+// HasKeyword reports whether list holds kw, ignoring case.
+func HasKeyword(list []string, kw string) bool {
+	for _, k := range list {
+		if strings.EqualFold(k, kw) {
+			return true
+		}
+	}
+	return false
+}

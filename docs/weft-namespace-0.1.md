@@ -68,7 +68,7 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 | `<source:markdown>` | Recommended | The original Markdown, unaltered. |
 | `<pubDate>` | Required | First publication time. |
 | `<weft:updated>` | Optional | Time of the latest edit, RFC 822 format like `pubDate`. Present only on edited items. |
-| `<category>` | Optional | Keywords: one element per keyword or phrase, as typed by the author (not Markdown, not hashtags). Writers should publish at most 10 of up to 50 characters, with no commas, and readers should apply the same limits to what other hosts publish. A reader decides how to show them; Weft shows them as chips under the post. |
+| `<category>` | Optional | Keywords: one element per keyword or phrase, as typed by the author (not Markdown, not hashtags). Writers should publish at most 10 of up to 50 characters, with no commas, and readers should apply the same limits to what other hosts publish. A reader decides how to show them; Weft shows them as chips under the post, and serves a topic feed at `feed.xml?category=<keyword>` (the posts with that keyword, matched ignoring case, paged like the main feed). The query is a convenience, not part of the format: a reader follows the feed address it is given. |
 | `<enclosure>` | Optional | Attached media, as in podcasting. |
 
 ### Reply elements

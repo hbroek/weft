@@ -3,6 +3,7 @@ package web
 import (
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -216,7 +217,76 @@ func TestKeywordsReachFollowers(t *testing.T) {
 	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	lw := httptest.NewRecorder()
 	bob.s.ServeHTTP(lw, lr)
-	if tl := do4(bob, "/timeline", cookieOf(lw)); !strings.Contains(tl, `<p class="kw"><span>pickleball</span><span>open web</span></p>`) {
+	if tl := do4(bob, "/timeline", cookieOf(lw)); !strings.Contains(tl, `<a href="/timeline?keyword=pickleball" title="Posts with this keyword from everyone you follow">pickleball</a>`) {
 		t.Errorf("chips missing from the timeline:\n%s", tl)
+	}
+}
+
+// A keyword chip filters three ways: an author's site, the owner's timeline, and a topic feed
+// that can be followed on its own.
+func TestKeywordFilters(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	alice.post(t, `{"markdown":"First game","keywords":["pickleball","open web"]}`)
+	alice.post(t, `{"markdown":"Second game","keywords":["Pickleball"]}`)
+	alice.post(t, `{"markdown":"Unrelated gophers","keywords":["go"]}`)
+
+	// 1. the author's site
+	home := alice.call(t, "GET", "/", "", 200)
+	if !strings.Contains(home, `<a class="p-category" href="/?keyword=open%20web">open web</a>`) {
+		t.Errorf("chips on the site are not links:\n%s", home)
+	}
+	page := alice.call(t, "GET", "/?keyword=PICKLEBALL", "", 200)
+	if !strings.Contains(page, "First game") || !strings.Contains(page, "Second game") || strings.Contains(page, "Unrelated gophers") {
+		t.Errorf("site filter:\n%s", page)
+	}
+	if !strings.Contains(page, `Posts tagged <strong>PICKLEBALL</strong>`) || !strings.Contains(page, `<link rel="alternate" type="application/rss+xml" href="`+alice.base+`/feed.xml?category=PICKLEBALL">`) {
+		t.Errorf("filter heading or topic feed link missing:\n%s", page)
+	}
+	if none := alice.call(t, "GET", "/?keyword=nothing", "", 200); strings.Contains(none, "First game") {
+		t.Errorf("unknown keyword shows posts")
+	}
+
+	// 3. the topic feed
+	xml := alice.call(t, "GET", "/feed.xml?category=pickleball", "", 200)
+	if strings.Count(xml, "<item>") != 2 || strings.Contains(xml, "gophers") || !strings.Contains(xml, "<title>Alice: pickleball</title>") ||
+		!strings.Contains(xml, `href="`+alice.base+`/feed.xml?category=pickleball"`) {
+		t.Errorf("topic feed:\n%s", xml)
+	}
+	if all := alice.call(t, "GET", "/feed.xml", "", 200); strings.Count(all, "<item>") != 3 {
+		t.Errorf("main feed changed:\n%s", all)
+	}
+
+	// following the filtered address follows only the topic
+	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/?keyword=pickleball"}`, 200)
+	if tl := bob.call(t, "GET", "/api/timeline", "", 200); strings.Contains(tl, "gophers") || !strings.Contains(tl, "Second game") {
+		t.Errorf("topic follow: %s", tl)
+	}
+
+	// 2. bob's timeline: follow the whole feed too, then filter
+	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/feed.xml"}`, 200)
+	bob.s.st.SetPassword("bob", "correct horse")
+	lr := httptest.NewRequest("POST", bob.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
+	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	lw := httptest.NewRecorder()
+	bob.s.ServeHTTP(lw, lr)
+	ck := cookieOf(lw)
+	all := do4(bob, "/timeline", ck)
+	if !strings.Contains(all, "Unrelated gophers") || strings.Contains(all, "Only from") {
+		t.Errorf("unfiltered timeline:\n%s", all)
+	}
+	f := do4(bob, "/timeline?keyword=go&likes=1", ck)
+	if !strings.Contains(f, "Unrelated gophers") || strings.Contains(f, "First game") || !strings.Contains(f, "Clear filter") || strings.Contains(f, "Show likes") {
+		t.Errorf("timeline filter:\n%s", f)
+	}
+	// a chip filters the view it is in: the whole timeline, or the one feed being looked at
+	one := do4(bob, "/timeline?feed="+url.QueryEscape(alice.base+"/feed.xml"), ck)
+	if !regexp.MustCompile(`href="/timeline\?feed=[^"&]+&amp;keyword=go"`).MatchString(one) || strings.Contains(one, `href="/timeline?keyword=go"`) {
+		t.Errorf("chip in a single-feed view should keep the feed:\n%s", one)
+	}
+	if !strings.Contains(all, `href="/timeline?keyword=go"`) {
+		t.Errorf("chip in the full timeline should filter everything")
+	}
+	if o := do4(bob, "/timeline?keyword=pickleball&feed="+url.QueryEscape(alice.base+"/feed.xml"), ck); !strings.Contains(o, "First game") || strings.Contains(o, "gophers") {
+		t.Errorf("timeline filter with feed:\n%s", o)
 	}
 }

@@ -180,7 +180,18 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	showLikes := r.FormValue("likes") == "1"
+	kw := feed.Keyword(r.FormValue("keyword"))
+	if kw != "" {
+		// a keyword filter shows posts only; likes carry no keywords
+		kept := rows[:0]
+		for _, row := range rows {
+			if !row.IsLike && feed.HasKeyword(row.Keywords, kw) {
+				kept = append(kept, row)
+			}
+		}
+		rows = kept
+	}
+	showLikes := kw == "" && r.FormValue("likes") == "1"
 	if showLikes {
 		if rows, err = s.withLikes(r, q, only, rows); err != nil {
 			http.Error(w, err.Error(), 500)
@@ -189,6 +200,12 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	d := s.data(r, q, "Timeline")
 	d.ShowLikes = showLikes
+	if kw != "" {
+		d.Keyword, d.ClearKeyword = kw, "/timeline"
+		if only != "" {
+			d.ClearKeyword += "?feed=" + url.QueryEscape(only)
+		}
+	}
 	toggle := url.Values{}
 	if only != "" {
 		toggle.Set("feed", only)

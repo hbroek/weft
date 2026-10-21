@@ -504,6 +504,33 @@ func (s *Store) PostsPage(userID int64, limit, offset int) ([]*Post, error) {
 	return out, rows.Err()
 }
 
+// PostsWithKeyword is PostsPage for the posts that carry the keyword (ignoring case).
+func (s *Store) PostsWithKeyword(userID int64, kw string, limit, offset int) ([]*Post, error) {
+	rows, err := s.db.Query(`SELECT `+postCols+` FROM posts WHERE user_id=? AND deleted=0 AND keywords<>'' ORDER BY created DESC, id DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Post
+	for rows.Next() {
+		p, err := scanPost(rows)
+		if err != nil {
+			return nil, err
+		}
+		if !feed.HasKeyword(p.Keywords, kw) {
+			continue
+		}
+		if offset > 0 {
+			offset--
+			continue
+		}
+		if out = append(out, p); len(out) == limit {
+			break
+		}
+	}
+	return out, rows.Err()
+}
+
 // UpdatePost replaces a post's title, content and keywords and stamps its update time.
 func (s *Store) UpdatePost(userID, id int64, title, markdown, html string, keywords []string) (*Post, error) {
 	res, err := s.db.Exec(`UPDATE posts SET title=?,markdown=?,html=?,keywords=?,updated=? WHERE user_id=? AND id=? AND deleted=0`,

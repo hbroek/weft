@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +34,7 @@ article,.node{overflow-wrap:anywhere}.note{display:block;color:#a60}.focus{scrol
 .likebtn svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
 .likebtn[aria-pressed=true]{color:#1a6fe0}.likebtn[aria-pressed=true] svg{fill:currentColor}
 article.likeevent{color:GrayText;font-size:.9rem;background:none;border:0;box-shadow:none;padding:0 1.1rem;margin:.6rem 0}
-.kw{display:flex;flex-wrap:wrap;gap:.35rem;margin:.5rem 0 0}.kw span{background:#0000000a;border-radius:999px;padding:.05rem .65rem;font-size:.85em;color:#444}
+.kw{display:flex;flex-wrap:wrap;gap:.35rem;margin:.5rem 0 0}.kw span,.kw a{text-decoration:none;background:#0000000a;border-radius:999px;padding:.05rem .65rem;font-size:.85em;color:#444}.kw a:hover{background:#0000001a}.kwhead small{color:#555}
 .tally{cursor:help;text-decoration:underline dotted;text-underline-offset:3px}
 #preview .empty{color:GrayText}
 .sr{position:absolute;left:-9999px}
@@ -45,12 +46,13 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <main>{{end}}
 {{define "foot"}}</main></body></html>{{end}}
 {{define "posts"}}{{template "head" .}}
+{{if .Keyword}}<p class="kwhead">Posts tagged <strong>{{.Keyword}}</strong> <small>· <a href="/">All posts</a> · <a href="{{.TopicFeed}}">Feed for this topic</a></small></p>{{end}}
 {{if .Bookmarklet}}<p class="bm"><small>Bookmark card: drag <a href="{{.Bookmarklet}}">Weft it</a> to your bookmarks bar, then click it on any page to compose a post from that page.</small></p>{{end}}
 {{range .Posts}}<article class="h-entry">
 {{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{end}}
 {{if .InReplyTo}}<p><small>In reply to <a class="u-in-reply-to" href="{{.InReplyTo}}">{{.InReplyTo}}</a></small></p>{{end}}
 <div class="e-content">{{.HTML}}</div>
-{{if .Keywords}}<p class="kw">{{range .Keywords}}<span class="p-category">{{.}}</span>{{end}}</p>{{end}}
+{{if .Keywords}}<p class="kw">{{range .Keywords}}<a class="p-category" href="/?keyword={{.}}">{{.}}</a>{{end}}</p>{{end}}
 <a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}">{{.Date}}</time></a>
 {{if .Edited}} <time>(edited)</time>{{end}}
 {{if $.Owner}} <a href="{{.URL}}/edit">Edit</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}{{end}}
@@ -69,14 +71,14 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <h2>Log in to {{.Author}}</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Password <input type="password" name="password" autofocus required></label>
 <p><button>Log in</button></p></form>{{template "foot"}}{{end}}
-{{define "timeline"}}{{template "head" .}}<h2>{{if .Only}}{{.Heading}}</h2><p><small>{{.Only}} · <a href="/timeline">All feeds</a> · <a href="/following">Following</a></small></p>{{else}}Timeline</h2>{{end}}
-<p><small><a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a></small></p>
+{{define "timeline"}}{{template "head" .}}{{if .Keyword}}<p class="kwhead">Tagged <strong>{{.Keyword}}</strong>{{if .Only}} from <strong>{{.Heading}}</strong>{{end}} <small>· <a href="{{.ClearKeyword}}">Clear filter</a></small></p>{{end}}<h2>{{if .Only}}{{.Heading}}</h2><p><small>{{.Only}} · <a href="/timeline">All feeds</a> · <a href="/following">Following</a></small></p>{{else}}Timeline</h2>{{end}}
+{{if not .Keyword}}<p><small><a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a></small></p>{{end}}
 {{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small></p></article>
 {{else}}<article>
 <p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div>{{.HTML}}</div>
-{{if .Keywords}}<p class="kw">{{range .Keywords}}<span>{{.}}</span>{{end}}</p>{{end}}
+{{if .Keywords}}<p class="kw">{{range .Keywords}}{{if $.Only}}<a href="/timeline?feed={{$.Only}}&amp;keyword={{.}}" title="Posts with this keyword in this feed">{{.}}</a>{{else}}<a href="/timeline?keyword={{.}}" title="Posts with this keyword from everyone you follow">{{.}}</a>{{end}}{{end}}</p>{{end}}
 <p><a href="{{.ReplyHref}}">Reply</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}</p>
 {{if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
 <button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}">{{.Tally}}</small>{{end}}</form>{{end}}
@@ -183,6 +185,8 @@ type pageData struct {
 	Preview                                      template.HTML // the editor's rendered Markdown
 	PreviewKeywords                              []string      // the editor's keywords as chips
 	ShowLikes                                    bool
+	ClearKeyword                                 string
+	Keyword, TopicFeed                           string       // a keyword filter on the home page, and the feed of just those posts
 	Bookmarklet                                  template.URL // javascript: link that sends the current page to /compose; owner's home page only
 	LikesToggle                                  string
 	Form                                         struct{ Title, Markdown, Keywords string }
@@ -233,13 +237,25 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request, q *req) {
-	posts, err := s.st.RecentPosts(q.host.ID, 50)
+	kw := feed.Keyword(r.FormValue("keyword"))
+	var posts []*store.Post
+	var err error
+	if kw != "" {
+		posts, err = s.st.PostsWithKeyword(q.host.ID, kw, 50, 0)
+	} else {
+		posts, err = s.st.RecentPosts(q.host.ID, 50)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 	s.renderPosts(w, r, q, q.host.Display, posts, func(d *pageData) {
-		if q.owner {
+		if kw != "" {
+			// the page's feed is the topic feed, so following this address follows just these posts
+			d.Keyword, d.TopicFeed = kw, s.topicFeed(r, kw)
+			d.FeedURL = d.TopicFeed
+			d.Title = q.host.Display + ": " + kw
+		} else if q.owner {
 			d.Bookmarklet = bookmarklet(s.base(r) + "/compose")
 		}
 	})
@@ -267,7 +283,7 @@ func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
 		io.WriteString(w, p.Markdown)
 		return
 	case "rss":
-		s.writeFeed(w, r, q, []*store.Post{p}) // this one post, as a feed item with all its weft: links
+		s.writeFeed(w, r, q, []*store.Post{p}, "") // this one post, as a feed item with all its weft: links
 		return
 	}
 	title := p.Title
@@ -321,7 +337,15 @@ func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
 		}
 		page = n
 	}
-	posts, err := s.st.PostsPage(q.host.ID, feedPageSize+1, (page-1)*feedPageSize)
+	// ?category=kw is a topic feed: only the posts with that keyword, paged the same way
+	kw := feed.Keyword(r.URL.Query().Get("category"))
+	var posts []*store.Post
+	var err error
+	if kw != "" {
+		posts, err = s.st.PostsWithKeyword(q.host.ID, kw, feedPageSize+1, (page-1)*feedPageSize)
+	} else {
+		posts, err = s.st.PostsPage(q.host.ID, feedPageSize+1, (page-1)*feedPageSize)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -335,10 +359,17 @@ func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
 		posts = posts[:feedPageSize]
 	}
 	at := func(n int) string {
-		if n == 1 {
+		v := url.Values{}
+		if kw != "" {
+			v.Set("category", kw)
+		}
+		if n > 1 {
+			v.Set("page", strconv.Itoa(n))
+		}
+		if len(v) == 0 {
 			return s.base(r) + "/feed.xml"
 		}
-		return s.base(r) + "/feed.xml?page=" + strconv.Itoa(n)
+		return s.base(r) + "/feed.xml?" + v.Encode()
 	}
 	links := []feed.AtomLink{{Href: at(page), Rel: "self", Type: "application/rss+xml"}}
 	if page > 1 {
@@ -348,17 +379,29 @@ func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
 	if more {
 		links = append(links, feed.AtomLink{Href: at(page + 1), Rel: "next", Type: "application/rss+xml"})
 	}
-	s.writeFeed(w, r, q, posts, links)
+	title := ""
+	if kw != "" {
+		title = q.host.Display + ": " + kw
+	}
+	s.writeFeed(w, r, q, posts, title, links)
+}
+
+// topicFeed is the address of the feed of this host's posts with the keyword.
+func (s *Server) topicFeed(r *http.Request, kw string) string {
+	return s.base(r) + "/feed.xml?category=" + url.QueryEscape(kw)
 }
 
 // writeFeed writes the host user's feed channel holding the given posts. links default to rel="self".
-func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts []*store.Post, links ...[]feed.AtomLink) {
+func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts []*store.Post, title string, links ...[]feed.AtomLink) {
+	if title == "" {
+		title = q.host.Display
+	}
 	selfLinks := []feed.AtomLink{{Href: s.base(r) + "/feed.xml", Rel: "self", Type: "application/rss+xml"}}
 	if len(links) > 0 {
 		selfLinks = links[0]
 	}
 	ch := feed.Channel{
-		Title: q.host.Display, Link: s.base(r) + "/", Description: q.host.Bio,
+		Title: title, Link: s.base(r) + "/", Description: q.host.Bio,
 		Links:      selfLinks,
 		Webmention: s.base(r) + "/webmention",
 		Following:  s.base(r) + "/following.opml", LikesFeed: s.base(r) + "/likes.xml",
