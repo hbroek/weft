@@ -19,7 +19,8 @@ import (
 
 type tlRow struct {
 	Author, AuthorHref, Title, Link, Date, InReplyTo, ReplyHref string
-	Target, FeedURL, Mine, Tally, ThreadHref                    string
+	Target, FeedURL, Tally, ThreadHref                          string
+	Mine                                                        bool
 	HasThread                                                   bool // it replies to something or has replies
 	HTML                                                        template.HTML
 	Edited                                                      bool
@@ -63,16 +64,13 @@ func itemTarget(it store.TimelineItem) string {
 	return httpURL(it.Link)
 }
 
-// myReaction describes the user's current reaction to target, or "" if none.
-func (s *Server) myReaction(userID int64, target string) string {
+// iLike reports whether the user currently likes target.
+func (s *Server) iLike(userID int64, target string) bool {
 	if target == "" {
-		return ""
+		return false
 	}
-	x, err := s.st.ActiveReaction(userID, target)
-	if err != nil {
-		return ""
-	}
-	return orStr(x.Emoji, store.DefaultEmoji(x.Polarity)) + " (" + x.Polarity + ")"
+	_, err := s.st.ActiveLike(userID, target)
+	return err == nil
 }
 
 // replyHref links to the compose form prefilled to reply to the item.
@@ -103,8 +101,8 @@ func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineIt
 		}
 		out = append(out, tlRow{Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
 			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil,
-			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: remoteTallyText(it.Plus, it.Minus),
-			Mine: s.myReaction(userID, itemTarget(it))})
+			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(it.Likes),
+			Mine: s.iLike(userID, itemTarget(it))})
 	}
 	return out, items, nil
 }

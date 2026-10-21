@@ -19,9 +19,8 @@ type timelineJSON struct {
 	Published time.Time  `json:"published"`
 	Updated   *time.Time `json:"updated,omitempty"`
 	InReplyTo string     `json:"in_reply_to,omitempty"`
-	// The author's published tally of reactions from people they follow.
-	ReactionsPlus  int `json:"reactions_plus"`
-	ReactionsMinus int `json:"reactions_minus"`
+	// The author's published count of likes from people they follow.
+	Likes int `json:"likes"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -51,7 +50,7 @@ func (s *Server) apiTimeline(w http.ResponseWriter, r *http.Request, q *req) {
 	for _, it := range items {
 		out = append(out, timelineJSON{FeedURL: it.FeedURL, FeedTitle: it.FeedTitle, GUID: it.GUID, Link: it.Link,
 			Title: it.Title, Text: it.Text, Markdown: it.Markdown, Published: it.Published, Updated: it.Updated, InReplyTo: it.InReplyTo,
-			ReactionsPlus: it.Plus, ReactionsMinus: it.Minus})
+			Likes: it.Likes})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

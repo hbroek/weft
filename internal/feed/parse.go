@@ -14,7 +14,7 @@ import (
 type Parsed struct {
 	Title, Link, Description string
 	Webmention, Following    string
-	ReactionsFeed            string
+	LikesFeed                string
 	// Next is the rel="next" link of a paged feed (RFC 5005): the page of older items.
 	Next  string
 	Items []ParsedItem
@@ -32,12 +32,12 @@ type ParsedItem struct {
 	InReplyTo              string    // weft:inReplyTo href, if any
 	InReplyToFeed          string
 	Root, RootFeed         string // weft:root
-	// weft:reactionOf: set when the item is a reaction rather than a post.
-	ReactionOf, Polarity, Emoji string
-	Plus, Minus                 int    // weft:reactions tally
-	RepliesHref                 string // weft:replies href: where this item's approved replies are published
-	RepliesCount                int    // weft:replies count; -1 when the item does not say
-	FeedHref, FeedName          string // weft:feed: the author's feed and display name (replies feeds)
+	// weft:likeOf: set when the item is a like rather than a post.
+	LikeOf             string
+	Likes              int    // weft:likes count
+	RepliesHref        string // weft:replies href: where this item's approved replies are published
+	RepliesCount       int    // weft:replies count; -1 when the item does not say
+	FeedHref, FeedName string // weft:feed: the author's feed and display name (replies feeds)
 }
 
 // plainLinks collects <link> elements. encoding/xml matches an unqualified name in any
@@ -64,12 +64,13 @@ type xmlParsed struct {
 			Rel  string `xml:"rel,attr"`
 			Href string `xml:"href,attr"`
 		} `xml:"http://www.w3.org/2005/Atom link"`
-		Link          plainLinks `xml:"link"`
-		Description   string     `xml:"description"`
-		Webmention    string     `xml:"https://weftseed.com/ns/weft/0.1 webmention"`
-		Following     string     `xml:"https://weftseed.com/ns/weft/0.1 following"`
-		ReactionsFeed string     `xml:"https://weftseed.com/ns/weft/0.1 reactionsFeed"`
-		Items         []struct {
+		Link         plainLinks `xml:"link"`
+		Description  string     `xml:"description"`
+		Webmention   string     `xml:"https://weftseed.com/ns/weft/0.1 webmention"`
+		Following    string     `xml:"https://weftseed.com/ns/weft/0.1 following"`
+		LikesFeed    string     `xml:"https://weftseed.com/ns/weft/0.1 likesFeed"`
+		OldReactions string     `xml:"https://weftseed.com/ns/weft/0.1 reactionsFeed"` // before likes: read as the likes feed
+		Items        []struct {
 			Title       string     `xml:"title"`
 			GUID        string     `xml:"guid"`
 			Link        plainLinks `xml:"link"`
@@ -85,10 +86,13 @@ type xmlParsed struct {
 				Href string `xml:"href,attr"`
 				Feed string `xml:"feed,attr"`
 			} `xml:"https://weftseed.com/ns/weft/0.1 root"`
+			LikeOf struct {
+				Href string `xml:"href,attr"`
+			} `xml:"https://weftseed.com/ns/weft/0.1 likeOf"`
+			// Before there were only likes, an item could be a reaction with a polarity; a "+" is a like.
 			ReactionOf struct {
 				Href     string `xml:"href,attr"`
 				Polarity string `xml:"polarity,attr"`
-				Emoji    string `xml:"emoji,attr"`
 			} `xml:"https://weftseed.com/ns/weft/0.1 reactionOf"`
 			Replies struct {
 				Href  string `xml:"href,attr"`
@@ -98,9 +102,11 @@ type xmlParsed struct {
 				Href string `xml:"href,attr"`
 				Name string `xml:",chardata"`
 			} `xml:"https://weftseed.com/ns/weft/0.1 feed"`
-			Reactions struct {
-				Plus  int `xml:"plus,attr"`
-				Minus int `xml:"minus,attr"`
+			Likes struct {
+				Count int `xml:"count,attr"`
+			} `xml:"https://weftseed.com/ns/weft/0.1 likes"`
+			OldReactions struct {
+				Plus int `xml:"plus,attr"`
 			} `xml:"https://weftseed.com/ns/weft/0.1 reactions"`
 		} `xml:"item"`
 	} `xml:"channel"`
@@ -150,7 +156,7 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 		Title: strings.TrimSpace(x.Channel.Title), Link: x.Channel.Link.first(),
 		Description: strings.TrimSpace(x.Channel.Description),
 		Webmention:  strings.TrimSpace(x.Channel.Webmention), Following: strings.TrimSpace(x.Channel.Following),
-		ReactionsFeed: strings.TrimSpace(x.Channel.ReactionsFeed),
+		LikesFeed: strings.TrimSpace(orStr(x.Channel.LikesFeed, x.Channel.OldReactions)),
 	}
 	for _, l := range x.Channel.AtomLinks {
 		if l.Rel == "next" && strings.TrimSpace(l.Href) != "" {
@@ -164,9 +170,12 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 			Published: parseDate(it.PubDate), Updated: parseDate(it.Updated),
 			InReplyTo: strings.TrimSpace(it.InReplyTo.Href), InReplyToFeed: strings.TrimSpace(it.InReplyTo.Feed),
 			Root: strings.TrimSpace(it.Root.Href), RootFeed: strings.TrimSpace(it.Root.Feed),
-			ReactionOf: strings.TrimSpace(it.ReactionOf.Href), Polarity: strings.TrimSpace(it.ReactionOf.Polarity),
-			Emoji: strings.TrimSpace(it.ReactionOf.Emoji), RepliesHref: strings.TrimSpace(it.Replies.Href),
-			FeedHref: strings.TrimSpace(it.Feed.Href), FeedName: strings.TrimSpace(it.Feed.Name), Plus: max(it.Reactions.Plus, 0), Minus: max(it.Reactions.Minus, 0),
+			LikeOf: strings.TrimSpace(it.LikeOf.Href), RepliesHref: strings.TrimSpace(it.Replies.Href),
+			FeedHref: strings.TrimSpace(it.Feed.Href), FeedName: strings.TrimSpace(it.Feed.Name),
+			Likes: max(it.Likes.Count, it.OldReactions.Plus, 0),
+		}
+		if pi.LikeOf == "" && strings.TrimSpace(it.ReactionOf.Polarity) != "-" {
+			pi.LikeOf = strings.TrimSpace(it.ReactionOf.Href)
 		}
 		pi.RepliesCount = -1
 		if it.Replies.Count != nil {
@@ -185,4 +194,11 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 		p.Items = append(p.Items, pi)
 	}
 	return p, nil
+}
+
+func orStr(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return a
+	}
+	return b
 }

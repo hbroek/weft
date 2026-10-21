@@ -21,9 +21,8 @@ type Persona struct {
 
 // Decision is what the brain wants to do about one post. Empty fields mean "do nothing".
 type Decision struct {
-	Reply    string // Markdown for a reply
-	Polarity string // "+", "-" or ""
-	Emoji    string
+	Reply string // Markdown for a reply; an emoji goes in here, as text
+	Like  bool
 }
 
 // Brain supplies the words and judgement. The agent itself only moves data through the API.
@@ -35,7 +34,7 @@ type Brain interface {
 	Post(ctx context.Context, p Persona) (title, markdown string, err error)
 }
 
-// Stub is deterministic: it always reacts + and replies with a quote of the start of the post.
+// Stub is deterministic: it always likes and replies with a quote of the start of the post.
 type Stub struct {
 	mu sync.Mutex
 	n  int
@@ -46,7 +45,7 @@ func (s *Stub) Decide(_ context.Context, persona Persona, p Item, _ []ThreadNode
 	if r := []rune(text); len(r) > 40 {
 		text = string(r[:40]) + "…"
 	}
-	return Decision{Reply: fmt.Sprintf("%s here: noted \"%s\"", persona.Name, text), Polarity: "+"}, nil
+	return Decision{Reply: fmt.Sprintf("%s here: noted \"%s\"", persona.Name, text), Like: true}, nil
 }
 
 func (s *Stub) Post(_ context.Context, persona Persona) (string, string, error) {
@@ -143,8 +142,11 @@ func (c *Claude) Decide(ctx context.Context, persona Persona, p Item, thread []T
 	prompt := "Read the whole conversation first, so that your answer fits it and does not repeat what others said. " +
 		"Replies are indented under the post they answer. Only the branch around that post is shown.\n<thread>\n" + transcript(thread, p.Link) + "</thread>\n\n" +
 		"Post by " + p.FeedTitle + " that you may answer:\n<post>\n" + p.Title + "\n" + p.Text + "\n</post>\n\n" +
-		`Answer with only a JSON object: {"reply": "<markdown reply, or empty to stay silent>", "reaction": "+" or "-" or "", "emoji": "<optional single emoji>"}.`
-	var d struct{ Reply, Reaction, Emoji string }
+		`Answer with only a JSON object: {"reply": "<markdown reply, or empty to stay silent>", "like": true or false}. Put any emoji in the reply text.`
+	var d struct {
+		Reply string
+		Like  bool
+	}
 	var lastOut string
 	for attempt := 0; attempt < 2; attempt++ {
 		q := prompt
@@ -162,7 +164,7 @@ func (c *Claude) Decide(ctx context.Context, persona Persona, p Item, thread []T
 			continue
 		}
 		if json.Unmarshal([]byte(out[i:j+1]), &d) == nil {
-			return finish(d.Reply, d.Reaction, d.Emoji), nil
+			return finish(d.Reply, d.Like), nil
 		}
 	}
 	if r := []rune(lastOut); len(r) > 200 {
@@ -171,11 +173,8 @@ func (c *Claude) Decide(ctx context.Context, persona Persona, p Item, thread []T
 	return Decision{}, fmt.Errorf("no JSON in model answer: %q", lastOut)
 }
 
-func finish(reply, reaction, emoji string) Decision {
-	if reaction != "+" && reaction != "-" {
-		reaction = ""
-	}
-	return Decision{Reply: strings.TrimSpace(reply), Polarity: reaction, Emoji: strings.TrimSpace(emoji)}
+func finish(reply string, like bool) Decision {
+	return Decision{Reply: strings.TrimSpace(reply), Like: like}
 }
 
 func (c *Claude) Post(ctx context.Context, persona Persona) (string, string, error) {

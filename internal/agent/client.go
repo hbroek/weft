@@ -138,7 +138,6 @@ func (c *Client) Post(ctx context.Context, title, markdown, inReplyTo, inReplyTo
 	return
 }
 
-func (c *Client) React(ctx context.Context, target, targetFeed, polarity, emoji string) error {
-	return c.do(ctx, "POST", "/api/reactions", map[string]string{"target": target, "target_feed": targetFeed,
-		"polarity": polarity, "emoji": emoji}, nil)
+func (c *Client) Like(ctx context.Context, target, targetFeed string) error {
+	return c.do(ctx, "POST", "/api/likes", map[string]string{"target": target, "target_feed": targetFeed}, nil)
 }

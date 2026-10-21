@@ -2,7 +2,7 @@
 
 Weft (Web-External Federated Threads) builds on Dave Winer's textcasting. Home: https://weftseed.com
 
-A Weft host: every post, reply and reaction lives in its author's own RSS 2.0 feed.
+A Weft host: every post, reply and like lives in its author's own RSS 2.0 feed.
 See `docs/weft-namespace-0.1.md` for the namespace, `docs/design-goals.md` for goals and
 `docs/plan.md` for the implementation plan and current iteration.
 
@@ -35,10 +35,11 @@ sent to the parent's site. Replies you receive from people you follow are approv
 others wait on the Replies page (or `GET /api/replies?status=pending`) until you approve them.
 You can reject an approved reply later.
 
-Reacting: under each timeline post, 👍 or 👎 sets the polarity (`+` / `-`) and the optional emoji
-box adds nuance. API: `POST /api/reactions {"target","polarity","emoji"}`, `DELETE /api/reactions {"target"}`.
-Reactions are published in your reactions feed and counted at the post only when the sender is
-someone the post's author follows; `GET /api/reactions/received?post_id=N` shows all of them.
+Liking: under each timeline post, "Like" publishes a like in your likes feed, and "undo" withdraws it.
+API: `POST /api/likes {"target","target_feed"}`, `DELETE /api/likes {"target"}`. A like is counted at the
+post only when the sender is someone the post's author follows; `GET /api/likes/received?post_id=N` shows
+all of them. There are no dislikes and no emoji reactions: an emoji is just text, so put it in a reply.
+(`/api/reactions`, `/reactions.xml` and `/reactions/<n>` still answer for one release; a `-` is refused.)
 
 Threads: "Thread" under any post opens the conversation it belongs to, rooted at the original post.
 The **curated** view shows only what each author approved, read down from the root through the
@@ -74,12 +75,12 @@ The build is a single static binary (`CGO_ENABLED=0`). Dependencies: `goldmark`,
 A post has one address and one identity, kept apart so a post can move between instances.
 - **Address:** `<link>` is `https://<user host>/posts/<slug>`, for example `/posts/the-reader-half-k3x9`. The slug comes from the title (or the first sentence of an untitled note) plus a random 4-character suffix. It is unique per user, never changes (even when the post is edited), and stays reserved after the post is deleted. It is the only URL that serves the post.
 - **Identity:** `<guid isPermaLink="false">urn:uuid:…</guid>` is a UUIDv7 made when the post is created. It is not a URL and travels with the post.
-- Reactions still have instance-local addresses (`/reactions/<n>`); they will get the same treatment later.
+- Likes still have instance-local addresses (`/likes/<n>`); they will get the same treatment later.
 
 ## AI agent
 
 `weft-agent` is a separate program that participates as one user, through the public REST API and that user's
-bearer token only. It reacts to and replies to posts on its timeline, answers replies to its own posts once
+bearer token only. It likes and replies to posts on its timeline, answers replies to its own posts once
 each, and can write an occasional note. Before answering it reads the branch around the post (`GET /api/thread?url=`) and gives the model the conversation, and it replies at most once per thread per cycle; if the thread cannot be read it waits for the next cycle. A lifetime budget (`-max`, default 20) stops two bots from talking forever.
 
 ```bash
@@ -104,4 +105,4 @@ A post's permalink answers to its `Accept` header: `text/markdown` returns the s
 
 ## Try the UI on a real conversation
 
-`make hackernews` copies the current Hacker News front page into a new `hackernews.db` (it refuses to touch an existing file): each of the top 20 stories and all its comments become posts in their authors' own feeds, every comment is an approved reply to its parent with the thread root set, and every author is a user (names are lowercased, `_` becomes `-`). Story points become anonymous "+" reactions, since Hacker News does not publish who voted or what comments scored. Then `make run-hn` serves it on port 8090 (`HNPORT=` and `HNDB=` override). Log in at `http://me.localhost:8090/login` with password `hackernews`; that user follows every story's submitter, so the stories are already in its timeline.
+`make hackernews` copies the current Hacker News front page into a new `hackernews.db` (it refuses to touch an existing file): each of the top 20 stories and all its comments become posts in their authors' own feeds, every comment is an approved reply to its parent with the thread root set, and every author is a user (names are lowercased, `_` becomes `-`). Story points become anonymous likes, since Hacker News does not publish who voted or what comments scored. Then `make run-hn` serves it on port 8090 (`HNPORT=` and `HNDB=` override). Log in at `http://me.localhost:8090/login` with password `hackernews`; that user follows every story's submitter, so the stories are already in its timeline.

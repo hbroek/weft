@@ -47,25 +47,14 @@ type FeedRef struct {
 	Name string `xml:",chardata"`
 }
 
-// ReactionRef is weft:reactionOf: the item is a reaction to the post at Href. Polarity is "+" or "-";
-// Emoji is optional nuance.
-type ReactionRef struct {
-	Href     string `xml:"href,attr"`
-	Polarity string `xml:"polarity,attr"`
-	Emoji    string `xml:"emoji,attr,omitempty"`
+// LikeRef is weft:likeOf: the item is a like of the post at Href.
+type LikeRef struct {
+	Href string `xml:"href,attr"`
 }
 
-// EmojiCount is one entry of a reaction tally breakdown.
-type EmojiCount struct {
-	Value string `xml:"value,attr"`
-	Count int    `xml:"count,attr"`
-}
-
-// Reactions is weft:reactions: a post's tally of verified reactions from trusted senders.
-type Reactions struct {
-	Plus  int          `xml:"plus,attr"`
-	Minus int          `xml:"minus,attr"`
-	Emoji []EmojiCount `xml:"weft:emoji"`
+// Likes is weft:likes: a post's count of verified likes from trusted senders.
+type Likes struct {
+	Count int `xml:"count,attr"`
 }
 
 // Replies is weft:replies: the URL of a post's replies feed and the approved count.
@@ -82,7 +71,7 @@ type Channel struct {
 	Links         []AtomLink `xml:"atom:link"` // rel="self", and rel="next"/"previous"/"first" for paged feeds
 	Webmention    string     `xml:"weft:webmention,omitempty"`
 	Following     string     `xml:"weft:following,omitempty"`
-	ReactionsFeed string     `xml:"weft:reactionsFeed,omitempty"`
+	LikesFeed     string     `xml:"weft:likesFeed,omitempty"`
 	RepliesTo     *Ref       `xml:"weft:repliesTo"`
 	Depth         int        `xml:"weft:depth,omitempty"`
 	Items         []Item     `xml:"item"`
@@ -94,20 +83,20 @@ type GUID struct {
 }
 
 type Item struct {
-	Title       string       `xml:"title,omitempty"`
-	GUID        GUID         `xml:"guid"`
-	Link        string       `xml:"link"`
-	Description string       `xml:"description"`
-	Markdown    string       `xml:"source:markdown,omitempty"`
-	PubDate     string       `xml:"pubDate"`
-	Updated     string       `xml:"weft:updated,omitempty"`
-	InReplyTo   *Ref         `xml:"weft:inReplyTo"`
-	Root        *Ref         `xml:"weft:root"`
-	Context     *Context     `xml:"weft:context"`
-	Replies     *Replies     `xml:"weft:replies"`
-	ReactionOf  *ReactionRef `xml:"weft:reactionOf"`
-	Reactions   *Reactions   `xml:"weft:reactions"`
-	Feed        *FeedRef     `xml:"weft:feed"`
+	Title       string   `xml:"title,omitempty"`
+	GUID        GUID     `xml:"guid"`
+	Link        string   `xml:"link"`
+	Description string   `xml:"description"`
+	Markdown    string   `xml:"source:markdown,omitempty"`
+	PubDate     string   `xml:"pubDate"`
+	Updated     string   `xml:"weft:updated,omitempty"`
+	InReplyTo   *Ref     `xml:"weft:inReplyTo"`
+	Root        *Ref     `xml:"weft:root"`
+	Context     *Context `xml:"weft:context"`
+	Replies     *Replies `xml:"weft:replies"`
+	LikeOf      *LikeRef `xml:"weft:likeOf"`
+	Likes       *Likes   `xml:"weft:likes"`
+	Feed        *FeedRef `xml:"weft:feed"`
 }
 
 func New(c Channel) *RSS {

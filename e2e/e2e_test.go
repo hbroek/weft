@@ -142,7 +142,7 @@ func TestRoundTripWithAgent(t *testing.T) {
 	if _, err := bob.Post(ctx, "", "I do.", root.URL, alice.FeedURL()); err != nil {
 		t.Fatal(err)
 	}
-	if err := carol.React(ctx, root.URL, alice.FeedURL(), "+", "🎉"); err != nil {
+	if err := carol.Like(ctx, root.URL, alice.FeedURL()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -152,7 +152,7 @@ func TestRoundTripWithAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 2 { // one reaction and one reply to Alice's post
+	if n != 2 { // one like and one reply to Alice's post
 		t.Fatalf("agent acted %d times, want 2", n)
 	}
 	// Running again does nothing: each post is handled once.
@@ -178,9 +178,9 @@ func TestRoundTripWithAgent(t *testing.T) {
 		t.Fatalf("replies feed:\n%s", replies)
 	}
 
-	// Alice's feed tallies the two reactions (Carol's 🎉 and Dana's default 👍).
+	// Alice's feed counts the two likes (Carol's and Dana's).
 	feed := get(t, alice, "/feed.xml")
-	if !strings.Contains(feed, `<weft:reactions plus="2" minus="0">`) || !strings.Contains(feed, `<weft:replies href="`) {
+	if !strings.Contains(feed, `<weft:likes count="2">`) || !strings.Contains(feed, `<weft:replies href="`) {
 		t.Fatalf("alice's feed lacks the tallies:\n%s", feed)
 	}
 
@@ -200,7 +200,7 @@ func TestRoundTripWithAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	settle(t, ctx, all...)
-	// Alice's follow-up is on Dana's timeline at once (same instance): one reaction and one reply,
+	// Alice's follow-up is on Dana's timeline at once (same instance): one like and one reply,
 	// not two replies, because the follow-up and the reply notification are the same thread.
 	if n, err := ag.RunCycle(ctx); err != nil || n != 2 {
 		t.Fatalf("agent reply to a reply: n=%d err=%v", n, err)

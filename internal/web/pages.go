@@ -40,15 +40,15 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}">{{.Date}}</time></a>
 {{if .Edited}} <time>(edited)</time>{{end}}
 {{if $.Owner}} <a href="{{.URL}}/edit">Edit</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}{{end}}
-{{if .Tally}}<p class="tally" title="Reactions from people you follow">{{.Tally}}</p>{{end}}
+{{if .Tally}}<p class="tally" title="Likes from people you follow">{{.Tally}}</p>{{end}}
 </article>{{else}}<p>No posts yet.</p>{{end}}
 {{if .Replies}}<section><h3>Replies</h3>{{range .Replies}}<div class="reply">
 <p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} <a href="{{.Source}}"><time>{{.Date}}</time></a></p>{{if .Title}}<h4>{{.Title}}</h4>{{end}}{{.HTML}}</div>{{end}}</section>{{end}}
 {{if and .Owner .Pending}}<p><a href="/replies">{{.Pending}} reply(ies) awaiting your approval</a></p>{{end}}
 {{template "foot"}}{{end}}
-{{define "reaction"}}{{template "head" .}}<article class="h-entry">
-<p class="p-content">{{.React.Author}} reacted {{.React.Emoji}} ({{.React.Polarity}}) to
-<a class="u-like-of" href="{{.React.Target}}">{{.React.Target}}</a></p></article>
+{{define "like"}}{{template "head" .}}<article class="h-entry">
+<p class="p-content">{{.Like.Author}} liked
+<a class="u-like-of" href="{{.Like.Target}}">{{.Like.Target}}</a></p></article>
 {{template "foot"}}{{end}}
 {{define "tombstone"}}{{template "head" .}}<p>This post was removed by its author.</p>{{template "foot"}}{{end}}
 {{define "login"}}{{template "head" .}}<form method="post" action="/login">
@@ -61,12 +61,8 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div>{{.HTML}}</div>
 <p><a href="{{.ReplyHref}}">Reply</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}</p>
-{{if .Target}}<form method="post" action="/react" class="react">
-<input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
-<button name="polarity" value="+" title="Positive">&#x1F44D;</button> <button name="polarity" value="-" title="Negative">&#x1F44E;</button>
-<input type="text" name="emoji" size="4" maxlength="16" placeholder="emoji" aria-label="Optional emoji"></form>
-{{if .Mine}}<small>You reacted {{.Mine}}</small>
-<form method="post" action="/unreact" style="display:inline"><input type="hidden" name="target" value="{{.Target}}"><button class="linkbtn">undo</button></form>{{end}}
+{{if .Target}}{{if .Mine}}<form method="post" action="/unlike" class="react"><input type="hidden" name="target" value="{{.Target}}"><small>You like this</small> <button class="linkbtn">undo</button></form>
+{{else}}<form method="post" action="/like" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}"><button title="Like">&#x1F44D; Like</button></form>{{end}}
 {{if .Tally}}<small>{{.Tally}}</small>{{end}}{{end}}
 {{if .Link}}<a href="{{.Link}}"><time>{{.Date}}</time></a>{{else}}<time>{{.Date}}</time>{{end}}{{if .Edited}} <time>(edited)</time>{{end}}
 </article>{{else}}<p>Nothing yet. <a href="/following">Follow a feed</a>.</p>{{end}}
@@ -133,7 +129,7 @@ type pageData struct {
 	Replies                                    []replyRow
 	Moderation                                 []modRow
 	Pending                                    int
-	React                                      *reactData
+	Like                                       *likeData
 	Thread                                     *threadPage
 	ReplyTo, ReplyFeed                         string
 	Follows                                    []followRow
@@ -165,7 +161,7 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 		d.Posts = append(d.Posts, pagePost{
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
 			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 15:04"),
-			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Tally: tallyText(tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
+			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Tally: likesText(tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
 			HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 		})
 	}
@@ -308,7 +304,7 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 		Title: q.host.Display, Link: s.base(r) + "/", Description: q.host.Bio,
 		Links:      selfLinks,
 		Webmention: s.base(r) + "/webmention",
-		Following:  s.base(r) + "/following.opml", ReactionsFeed: s.base(r) + "/reactions.xml",
+		Following:  s.base(r) + "/following.opml", LikesFeed: s.base(r) + "/likes.xml",
 	}
 	counts, _ := s.st.ApprovedCounts(q.host.ID)
 	tallies, _ := s.st.Tallies(q.host.ID)
@@ -321,13 +317,7 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 		it := feed.Item{Title: p.Title, GUID: feed.GUID{Value: "urn:uuid:" + p.UID}, Link: url,
 			Description: p.HTML, Markdown: p.Markdown, PubDate: feed.RFC822(p.Created)}
 		it.Replies = &feed.Replies{Href: url + "/replies.xml", Count: counts[p.ID]}
-		it.Reactions = &feed.Reactions{}
-		if t := tallies[p.ID]; t != nil {
-			it.Reactions.Plus, it.Reactions.Minus = t.Plus, t.Minus
-			for _, e := range t.Emoji {
-				it.Reactions.Emoji = append(it.Reactions.Emoji, feed.EmojiCount{Value: e.Emoji, Count: e.Count})
-			}
-		}
+		it.Likes = &feed.Likes{Count: tallies[p.ID]}
 		if p.InReplyTo != "" {
 			it.InReplyTo = &feed.Ref{Href: p.InReplyTo, Feed: p.InReplyToFeed}
 			it.Root = &feed.Ref{Href: p.Root, Feed: p.RootFeed}

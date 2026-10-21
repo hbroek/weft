@@ -32,7 +32,7 @@ func (s *Store) IsFollowing(userID int64, feedURL string) (bool, error) {
 }
 
 // IsFollowingSite reports whether the user follows the author behind feedURL. A person's
-// feeds (posts, reactions) share a homepage link, so a match on either the feed URL or the
+// feeds (posts, likes) share a homepage link, so a match on either the feed URL or the
 // channel link of any followed feed counts.
 func (s *Store) IsFollowingSite(userID int64, feedURL, homepage string) (bool, error) {
 	var n int
@@ -142,9 +142,9 @@ func (s *Store) SaveFeed(feedURL string, p *feed.Parsed) error {
 		if !it.Updated.IsZero() {
 			upd = it.Updated.Unix()
 		}
-		if _, err := tx.Exec(`INSERT OR REPLACE INTO items(feed_url,guid,link,title,text,markdown,published,updated,in_reply_to,in_reply_to_feed,root,root_feed,plus,minus,replies_href,replies_count)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, feedURL, it.GUID, it.Link, it.Title, it.Text, it.Markdown,
-			it.Published.Unix(), upd, it.InReplyTo, it.InReplyToFeed, it.Root, it.RootFeed, it.Plus, it.Minus, it.RepliesHref, it.RepliesCount); err != nil {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO items(feed_url,guid,link,title,text,markdown,published,updated,in_reply_to,in_reply_to_feed,root,root_feed,likes,replies_href,replies_count)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, feedURL, it.GUID, it.Link, it.Title, it.Text, it.Markdown,
+			it.Published.Unix(), upd, it.InReplyTo, it.InReplyToFeed, it.Root, it.RootFeed, it.Likes, it.RepliesHref, it.RepliesCount); err != nil {
 			return err
 		}
 	}
@@ -165,14 +165,14 @@ type TimelineItem struct {
 	Published          time.Time
 	Updated            *time.Time
 	InReplyTo          string
-	Plus, Minus        int // the author's published reaction tally, if any
+	Likes              int // the author's published like tally, if any
 	RepliesHref        string
 	RepliesCount       int // approved replies the author published; -1 when the feed did not say
 	Root               string
 	InReplyToFeed      string
 }
 
-const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.plus, i.minus, i.replies_href, i.root, i.in_reply_to_feed, i.replies_count
+const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.likes, i.replies_href, i.root, i.in_reply_to_feed, i.replies_count
 		FROM items i JOIN follows f ON f.feed_url=i.feed_url AND f.user_id=?
 		LEFT JOIN feeds d ON d.url=i.feed_url `
 
@@ -187,7 +187,7 @@ func (s *Store) queryTimeline(q string, args ...any) ([]TimelineItem, error) {
 		var t TimelineItem
 		var pub int64
 		var upd *int64
-		if err := rows.Scan(&t.FeedURL, &t.FeedTitle, &t.GUID, &t.Link, &t.Title, &t.Text, &t.Markdown, &pub, &upd, &t.InReplyTo, &t.Plus, &t.Minus, &t.RepliesHref, &t.Root, &t.InReplyToFeed, &t.RepliesCount); err != nil {
+		if err := rows.Scan(&t.FeedURL, &t.FeedTitle, &t.GUID, &t.Link, &t.Title, &t.Text, &t.Markdown, &pub, &upd, &t.InReplyTo, &t.Likes, &t.RepliesHref, &t.Root, &t.InReplyToFeed, &t.RepliesCount); err != nil {
 			return nil, err
 		}
 		t.Published = time.Unix(pub, 0)

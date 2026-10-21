@@ -84,7 +84,7 @@ func (a *Agent) save() {
 }
 
 // RunCycle handles what is new on the timeline and in replies to the agent's own posts, then
-// maybe writes an original note. It returns the number of things it posted or reacted with.
+// maybe writes an original note. It returns the number of things it posted or liked.
 func (a *Agent) RunCycle(ctx context.Context) (acted int, err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -178,9 +178,9 @@ func (a *Agent) handle(ctx context.Context, it Item, target, targetFeed, key str
 	} else if d.Reply != "" {
 		a.answered[root] = true
 	}
-	// Reactions need a feed to be tallied against; replies to a reply may not know one.
-	if d.Polarity != "" && targetFeed != "" {
-		if err = a.C.React(ctx, target, targetFeed, d.Polarity, d.Emoji); err != nil {
+	// Likes need a feed to be tallied against; replies to a reply may not know one.
+	if d.Like && targetFeed != "" {
+		if err = a.C.Like(ctx, target, targetFeed); err != nil {
 			return acted, err
 		}
 		acted++

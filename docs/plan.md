@@ -2,7 +2,7 @@
 
 ## Goal
 
-Several hosted users, human or AI agent, can post, reply, react and edit, with every post living in its author's own RSS 2.0 feed. A scripted scenario proves the full loop: Alice posts, Bob replies, Carol reacts, the agent replies as Dana, and Alice's thread view shows all of it.
+Several hosted users, human or AI agent, can post, reply, like and edit, with every post living in its author's own RSS 2.0 feed. A scripted scenario proves the full loop: Alice posts, Bob replies, Carol likes, the agent replies as Dana, and Alice's thread view shows all of it.
 
 ## Decisions so far
 
@@ -13,7 +13,7 @@ Several hosted users, human or AI agent, can post, reply, react and edit, with e
 - Hosting: `<name>.<hosted domain>` or `weft.mydomain.com` (routing by `Host` header). The test setup uses `*.localhost`.
 - The server renders the HTML app and serves a REST API. Client JS is plain HTML5/CSS/JS with no libraries.
 - Humans log in through the web UI. Agents and CLIs use bearer tokens on the same public REST API.
-- Reactions: every reaction has a required polarity, `+` or `-`, plus an optional emoji for nuance (default 👍 for `+`, 👎 for `-`). Spec change: `<weft:reactionOf href="…" polarity="+" emoji="🎉"/>`, replacing `weft:likeOf`. Tallies are kept per polarity, and per emoji for display.
+- Likes: a like is one positive signal, `<weft:likeOf href="…"/>`, with no polarity and no emoji. There are no dislikes; emoji belong in replies. (Iterations 5 and 6 first built reactions with a polarity and an emoji; they were taken out on Oct 20, 2026.)
 - Moderation: replies from followed users auto-approve and others queue; the owner can unapprove at any time.
 - `weft:context` is the parent's URL only for now. The URL may point to any page or RSS item, Weft or not.
 - Email is optional on accounts (login is by username and password). Nothing in iterations 0 to 7 sends mail.
@@ -41,7 +41,7 @@ docs/
 Each ends with something runnable and a test.
 
 ### 0. Skeleton (done)
-Go module, `git init`, the SQLite schema (users, posts, reactions, follows, mentions, sessions), config, and `weft serve`. Host-based routing for `*.localhost`. Test: the server starts and answers on two hostnames.
+Go module, `git init`, the SQLite schema (users, posts, likes, follows, mentions, sessions), config, and `weft serve`. Host-based routing for `*.localhost`. Test: the server starts and answers on two hostnames.
 
 ### 1. One user publishes (done)
 Admin CLI creates a user and a token. `POST /api/posts` takes Markdown with an optional title. The server renders HTML and stores both. Output: the permalink page (HTML with the discovery `<link>` tags) and `/feed.xml` as valid RSS 2.0 with `source:markdown` and `weft:webmention`. Test: the feed parses, untitled posts have no `<title>`, and plain-RSS rendering is correct.
@@ -55,17 +55,17 @@ A follow list per user, published as OPML at `weft:following`. A feed fetcher (p
 ### 4. Replies and Webmention (done)
 Reply composer (`weft:inReplyTo`, `weft:root`, `weft:context` as URL). On publish, send a Webmention to the parent. The receiver verifies the source, reads the source's feed item, applies auto-approve or queue, and writes the replies feed (depth 1) and `weft:replies` counts. Test: two server instances on different ports, Bob replies to Alice across them, and Alice's replies feed shows it.
 
-### 5. Reactions (done)
-`weft:reactionOf` items in a separate reactions feed (`weft:likesFeed`), sent by Webmention, tallied at the parent. + and - buttons (shown as 👍 and 👎) plus an optional emoji picker in the UI. Test: a cross-instance reaction is counted, and removing it (410) lowers the count.
+### 5. Likes (done)
+`weft:likeOf` items in a separate likes feed (`weft:likesFeed`), sent by Webmention, counted at the parent. A Like button and an undo in the UI. Test: a cross-instance like is counted, and withdrawing it (410) lowers the count.
 
 ### 6. Threads, bubble-up, orphans (done)
 Thread view built from `weft:root` and `weft:inReplyTo`. Curated and raw views, with unapprove and re-approve. Bubble-up Webmention to ancestors. Orphan handling (rejected, offline, deleted). Edit and delete re-notify.
 
 ### 7. Agent and end-to-end scenario (done)
-`weft-agent`: poll followed feeds through the public API, pick posts to react to or reply to, use the Claude API for the text, and post as its user. A stub mode gives deterministic output. The `e2e/` test starts three instances with four users, one of them an agent, and runs the scenario in the Goal. Assertions cover feeds, replies feeds, reaction counts and the thread view.
+`weft-agent`: poll followed feeds through the public API, pick posts to like or reply to, use the Claude API for the text, and post as its user. A stub mode gives deterministic output. The `e2e/` test starts three instances with four users, one of them an agent, and runs the scenario in the Goal. Assertions cover feeds, replies feeds, reaction counts and the thread view.
 
 ### Optional: vouching (web of trust)
-Not scheduled. A stranger who replies or reacts counts as vouched for when feeds you follow list them in their public `following.opml` (matched by feed URL or homepage link). Fetch and cache each followee's OPML on refresh; the vouch count is how many of your followees follow the stranger, two hops at most. Candidate uses: show "followed by alice, carol" in the replies queue, and count strangers vouched by at least 2 followees in the reaction tally. Replies stay auto-approved only for direct follows. Unlike the Webmention Vouch extension, this is computed entirely by the receiver.
+Not scheduled. A stranger who replies or likes counts as vouched for when feeds you follow list them in their public `following.opml` (matched by feed URL or homepage link). Fetch and cache each followee's OPML on refresh; the vouch count is how many of your followees follow the stranger, two hops at most. Candidate uses: show "followed by alice, carol" in the replies queue, and count strangers vouched by at least 2 followees in the reaction tally. Replies stay auto-approved only for direct follows. Unlike the Webmention Vouch extension, this is computed entirely by the receiver.
 
 ### 8. Later
 Generated context snippets for non-Weft parents. Atom input. WebSub. Packaging and a hosted-environment signup. License.
@@ -74,12 +74,11 @@ Generated context snippets for non-Weft parents. Atom input. WebSub. Packaging a
 
 ## Spec updates to make along the way
 
-- `weft:reactionOf` with `polarity` and optional `emoji` replaces `weft:likeOf`, and the likes feed becomes the reactions feed. `weft:likes` becomes a tally with positive and negative counts.
-- Public dislikes and the removal of the "private downvote" open question.
+- Reactions with a polarity and an emoji were tried, then removed: only `weft:likeOf` and a `weft:likes` count remain, and there are no dislikes.
 - Allow `weft:context` to be a bare URL to any page in 0.1, and drop the snippet requirement for non-Weft parents until later.
 
 ## Risks
 
 - Cross-instance Webmention verification must fetch pages over HTTP and guard against SSRF. Block private ranges in production, allow `*.localhost` in test mode.
 - Feed polling cost and staleness, until a ping mechanism exists.
-- Reaction spam, since anyone can send reactions. Only followed users count in the default tally.
+- Like spam, since anyone can send likes. Only followed users count in the default tally.

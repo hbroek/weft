@@ -15,7 +15,7 @@ func TestClaudeDecideParsesFencedJSON(t *testing.T) {
 		gotKey = r.Header.Get("x-api-key")
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
-		io.WriteString(w, `{"content":[{"type":"text","text":"Sure:\n`+"```json"+`\n{\"reply\":\"Nice one!\",\"reaction\":\"+\",\"emoji\":\"🎉\"}\n`+"```"+`"}]}`)
+		io.WriteString(w, `{"content":[{"type":"text","text":"Sure:\n`+"```json"+`\n{\"reply\":\"Nice one!\",\"like\":true}\n`+"```"+`"}]}`)
 	}))
 	defer ts.Close()
 	c := NewClaude("k123", "claude-haiku-5-5")
@@ -25,7 +25,7 @@ func TestClaudeDecideParsesFencedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Reply != "Nice one!" || d.Polarity != "+" || d.Emoji != "🎉" {
+	if d.Reply != "Nice one!" || !d.Like {
 		t.Fatalf("decision: %+v", d)
 	}
 	if gotKey != "k123" || !strings.Contains(gotBody, `"model":"claude-haiku-5-5"`) || !strings.Contains(gotBody, "untrusted") ||
@@ -52,7 +52,7 @@ func TestClaudeRetriesWhenAnswerHasNoJSON(t *testing.T) {
 			io.WriteString(w, `{"content":[{"type":"text","text":"I would rather stay out of this one."}]}`)
 			return
 		}
-		io.WriteString(w, `{"content":[{"type":"text","text":"{\"reply\":\"Fine, then.\",\"reaction\":\"\",\"emoji\":\"\"}"}]}`)
+		io.WriteString(w, `{"content":[{"type":"text","text":"{\"reply\":\"Fine, then.\",\"like\":false}"}]}`)
 	}))
 	defer ts.Close()
 	c := NewClaude("k", "m")

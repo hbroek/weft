@@ -216,7 +216,7 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 
 	page, err := s.web.Get(ctx, it.Source)
 	if err != nil {
-		if fetch.IsGone(err) { // the sender deleted their reply or reaction
+		if fetch.IsGone(err) { // the sender deleted their reply or like
 			s.dropMention(host.ID, postID, it.Target, it.Source)
 			return "source gone; removed", false
 		}
@@ -257,7 +257,7 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 		if !item.Updated.IsZero() {
 			r.Updated = &item.Updated
 		}
-		s.st.DeleteReactionIn(postID, it.Source)
+		s.st.DeleteLikeIn(postID, it.Source)
 		changed, err := s.st.UpsertReply(r)
 		if err != nil {
 			return err.Error(), true
@@ -267,27 +267,23 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 			s.bubble(host.ID, postID, it.Target)
 		}
 		return "reply " + status, false
-	case item != nil && item.ReactionOf == it.Target && (item.Polarity == store.Plus || item.Polarity == store.Minus):
-		emoji := item.Emoji
-		if emoji == "" || !validEmoji(emoji) {
-			emoji = store.DefaultEmoji(item.Polarity)
-		}
+	case item != nil && item.LikeOf == it.Target:
 		s.dropReply(host.ID, postID, it.Target, it.Source)
-		if err := s.st.UpsertReactionIn(store.ReactionIn{PostID: postID, Source: it.Source, FeedURL: fr.URL,
-			Author: parsed.Title, Polarity: item.Polarity, Emoji: emoji, Trusted: trusted}); err != nil {
+		if err := s.st.UpsertLikeIn(store.LikeIn{PostID: postID, Source: it.Source, FeedURL: fr.URL,
+			Author: parsed.Title, Trusted: trusted}); err != nil {
 			return err.Error(), true
 		}
-		return "reaction recorded", false
+		return "like recorded", false
 	default:
 		s.dropMention(host.ID, postID, it.Target, it.Source)
-		return "plain mention: source is neither a reply nor a reaction to target", false
+		return "plain mention: source is neither a reply nor a like of target", false
 	}
 }
 
-// dropMention forgets any reply or reaction previously recorded from source.
+// dropMention forgets any reply or like previously recorded from source.
 func (s *Server) dropMention(userID, postID int64, target, source string) {
 	s.dropReply(userID, postID, target, source)
-	s.st.DeleteReactionIn(postID, source)
+	s.st.DeleteLikeIn(postID, source)
 }
 
 // dropReply removes a stored reply and, if it had been visible, tells the post's own parent.

@@ -105,3 +105,23 @@ func TestParseLegacyNamespace(t *testing.T) {
 		t.Errorf("old namespace not read: %+v", p)
 	}
 }
+
+// Feeds written when a reaction had a polarity and an emoji still read: a "+" is a like, a "-" is nothing.
+func TestParseOldReactions(t *testing.T) {
+	old := `<rss version="2.0" xmlns:weft="` + NSWeft + `"><channel><title>B</title><link>https://bob.example/</link>
+<weft:reactionsFeed>https://bob.example/reactions.xml</weft:reactionsFeed>
+<item><guid>https://bob.example/r/1</guid><link>https://bob.example/r/1</link><pubDate>Mon, 12 Oct 2026 22:40:00 -0400</pubDate>
+<weft:reactionOf href="https://alice.example/n/1" polarity="+" emoji="🎉"/></item>
+<item><guid>https://bob.example/r/2</guid><link>https://bob.example/r/2</link><pubDate>Mon, 12 Oct 2026 22:41:00 -0400</pubDate>
+<weft:reactionOf href="https://alice.example/n/2" polarity="-"/></item>
+<item><guid>https://bob.example/n/3</guid><link>https://bob.example/n/3</link><description>hi</description><pubDate>Mon, 12 Oct 2026 22:42:00 -0400</pubDate>
+<weft:reactions plus="2" minus="1"/></item></channel></rss>`
+	p, err := Parse([]byte(old), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.LikesFeed != "https://bob.example/reactions.xml" || len(p.Items) != 3 ||
+		p.Items[0].LikeOf != "https://alice.example/n/1" || p.Items[1].LikeOf != "" || p.Items[2].Likes != 2 {
+		t.Errorf("old reactions: %+v", p)
+	}
+}

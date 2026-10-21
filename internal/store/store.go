@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -113,26 +114,22 @@ CREATE TABLE IF NOT EXISTS subreplies (
   published INTEGER NOT NULL,
   UNIQUE(post_id, source)
 );
-CREATE TABLE IF NOT EXISTS reactions (
+CREATE TABLE IF NOT EXISTS likes (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id),
   target TEXT NOT NULL,
   target_feed TEXT NOT NULL DEFAULT '',
-  polarity TEXT NOT NULL,
-  emoji TEXT NOT NULL DEFAULT '',
   created INTEGER NOT NULL,
   updated INTEGER,
   deleted INTEGER NOT NULL DEFAULT 0
 );
-CREATE UNIQUE INDEX IF NOT EXISTS reactions_active ON reactions(user_id, target) WHERE deleted=0;
-CREATE TABLE IF NOT EXISTS reactions_in (
+CREATE UNIQUE INDEX IF NOT EXISTS likes_active ON likes(user_id, target) WHERE deleted=0;
+CREATE TABLE IF NOT EXISTS likes_in (
   id INTEGER PRIMARY KEY,
   post_id INTEGER NOT NULL REFERENCES posts(id),
   source TEXT NOT NULL,
   feed_url TEXT NOT NULL DEFAULT '',
   author TEXT NOT NULL DEFAULT '',
-  polarity TEXT NOT NULL,
-  emoji TEXT NOT NULL,
   trusted INTEGER NOT NULL DEFAULT 0,
   created INTEGER NOT NULL,
   UNIQUE(post_id, source)
@@ -174,8 +171,7 @@ CREATE TABLE IF NOT EXISTS items (
   in_reply_to_feed TEXT NOT NULL DEFAULT '',
   root TEXT NOT NULL DEFAULT '',
   root_feed TEXT NOT NULL DEFAULT '',
-  plus INTEGER NOT NULL DEFAULT 0,
-  minus INTEGER NOT NULL DEFAULT 0,
+  likes INTEGER NOT NULL DEFAULT 0,
   replies_href TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (feed_url, guid)
 );
@@ -189,6 +185,10 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
+	if err := migrateLikes(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, err
@@ -218,10 +218,47 @@ func Open(path string) (*Store, error) {
 	for _, c := range []string{"root", "replies_href"} {
 		db.Exec(`ALTER TABLE replies ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 	}
-	for _, c := range []string{"plus", "minus"} {
-		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` INTEGER NOT NULL DEFAULT 0`)
-	}
+	db.Exec(`ALTER TABLE items ADD COLUMN likes INTEGER NOT NULL DEFAULT 0`)
 	return &Store{db: db}, nil
+}
+
+func hasColumn(db *sql.DB, table, col string) bool {
+	var n int
+	db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, table, col).Scan(&n)
+	return n > 0
+}
+
+// migrateLikes turns the reactions tables of earlier databases into likes. A reaction had a polarity
+// and an emoji; now there is only the like, so negative reactions are dropped and the emoji go with them.
+// It runs before the schema is created and does nothing on a database that has no reactions table.
+func migrateLikes(db *sql.DB) error {
+	var steps []string
+	if hasColumn(db, "reactions", "polarity") {
+		steps = append(steps,
+			`DELETE FROM reactions WHERE polarity='-'`,
+			`DROP INDEX IF EXISTS reactions_active`,
+			`ALTER TABLE reactions DROP COLUMN polarity`,
+			`ALTER TABLE reactions DROP COLUMN emoji`,
+			`ALTER TABLE reactions RENAME TO likes`)
+	}
+	if hasColumn(db, "reactions_in", "polarity") {
+		steps = append(steps,
+			`DELETE FROM reactions_in WHERE polarity='-'`,
+			`ALTER TABLE reactions_in DROP COLUMN polarity`,
+			`ALTER TABLE reactions_in DROP COLUMN emoji`,
+			`ALTER TABLE reactions_in RENAME TO likes_in`)
+	}
+	if hasColumn(db, "items", "plus") {
+		steps = append(steps,
+			`ALTER TABLE items RENAME COLUMN plus TO likes`,
+			`ALTER TABLE items DROP COLUMN minus`)
+	}
+	for _, q := range steps {
+		if _, err := db.Exec(q); err != nil {
+			return fmt.Errorf("migrating reactions to likes: %s: %w", q, err)
+		}
+	}
+	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }

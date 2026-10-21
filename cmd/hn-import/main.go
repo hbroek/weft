@@ -6,7 +6,7 @@
 //	weft serve -db hackernews.db -addr :8090 -dev -poll 30s
 //
 // Hacker News does not publish who voted or what comments scored, so the only votes are each
-// story's point total, stored as anonymous trusted "+" reactions.
+// story's point total, stored as anonymous trusted likes.
 package main
 
 import (
@@ -253,8 +253,8 @@ func (im *importer) story(n *node) *posted {
 		votes = *n.Points
 	}
 	for i := 0; i < votes; i++ {
-		err := im.st.UpsertReactionIn(store.ReactionIn{PostID: root.id, Source: fmt.Sprintf("hn-vote:%d:%d", n.ID, i), Author: "Hacker News voter",
-			Polarity: store.Plus, Emoji: store.DefaultEmoji(store.Plus), Trusted: true})
+		err := im.st.UpsertLikeIn(store.LikeIn{PostID: root.id, Source: fmt.Sprintf("hn-vote:%d:%d", n.ID, i), Author: "Hacker News voter",
+			Trusted: true})
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -262,7 +262,7 @@ func (im *importer) story(n *node) *posted {
 	im.stats.votes += votes
 	im.storyFeeds[root.feed] = append(im.storyFeeds[root.feed], feed.ParsedItem{
 		GUID: root.url, UID: root.url, Link: root.url, Title: n.Title, Text: feed.StripHTML(mustRender(sb.String())), Markdown: sb.String(),
-		Published: time.Unix(n.CreatedAt, 0), RepliesHref: root.url + "/replies.xml", RepliesCount: len(n.Children), Plus: votes,
+		Published: time.Unix(n.CreatedAt, 0), RepliesHref: root.url + "/replies.xml", RepliesCount: len(n.Children), Likes: votes,
 	})
 	im.storyTitles[root.feed] = u.display
 	return root
