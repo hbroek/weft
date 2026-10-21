@@ -98,8 +98,10 @@ func (s *Server) thread(w http.ResponseWriter, r *http.Request, q *req) {
 	view := threadView(r.URL.Query().Get("view"))
 	tree, root := s.buildThread(r, q, target, view)
 	d := s.data(r, q, "Thread")
-	d.Thread = &threadPage{Root: tree, View: view, RootURL: root, FocusHref: threadHref(target, ""), CuratedHref: threadHref(root, "curated"),
-		RawHref: threadHref(root, "raw"), Count: countNodes(tree)}
+	// all three views keep the post you came from as the target (each finds the root itself), so
+	// "This branch" always comes back to the same branch
+	d.Thread = &threadPage{Root: tree, View: view, RootURL: root, FocusHref: threadHref(target, ""), CuratedHref: threadHref(target, "curated"),
+		RawHref: threadHref(target, "raw"), Count: countNodes(tree)}
 	s.show(w, "thread", http.StatusOK, d)
 }
 
@@ -450,6 +452,11 @@ func (b *threadBuilder) childrenOf(n *tnode) []*tnode {
 	if href == "" && n.repliesCount != 0 {
 		href = b.findRepliesHref(n)
 	}
+	if href == "" && n.repliesCount != 0 {
+		// a post that publishes no replies feed (a plain page or RSS item) cannot approve replies, so
+		// the replies this reader knows of stand
+		return b.knownReplies(n.URL)
+	}
 	if href == "" || n.repliesCount == 0 {
 		return nil
 	}
@@ -463,6 +470,28 @@ func (b *threadBuilder) childrenOf(n *tnode) []*tnode {
 			continue
 		}
 		out = append(out, b.feedChild(it))
+	}
+	return out
+}
+
+// knownReplies are the direct replies to u that the reader knows of: the host's own posts and posts
+// in the feeds the host follows.
+func (b *threadBuilder) knownReplies(u string) []*tnode {
+	var out []*tnode
+	host := b.q.host.ID
+	if ps, err := b.s.st.PostsInThread(host, u); err == nil {
+		for _, p := range ps {
+			if p.InReplyTo == u && !p.Deleted {
+				out = append(out, b.localNode(p))
+			}
+		}
+	}
+	if items, err := b.s.st.ItemsInThread(host, u); err == nil {
+		for _, it := range items {
+			if it.InReplyTo == u && itemTarget(it) != "" {
+				out = append(out, b.itemNode(it))
+			}
+		}
 	}
 	return out
 }

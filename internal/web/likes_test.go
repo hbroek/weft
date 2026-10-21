@@ -602,6 +602,22 @@ func TestReplyToPageCarriesSnapshot(t *testing.T) {
 		t.Errorf("thread root should be a card:\n%s", th)
 	}
 
+	// "Whole thread" shows the reply too: a plain page cannot approve replies, so the known ones stand.
+	// The view links all keep the post you came from, so "This branch" comes back to it.
+	cur := threadPageOf(bob, bck, postURL, "curated")
+	if !strings.Contains(cur, "I disagree with the") || !strings.Contains(cur, `class="pcard"`) || !strings.Contains(cur, "(2 posts)") {
+		t.Errorf("whole-thread view should show the page and the reply:\n%s", cur)
+	}
+	back := `href="/thread?url=` + url.QueryEscape(postURL) + `#focus">This branch</a>`
+	for name, v := range map[string]string{"curated": "curated", "raw": "raw"} {
+		if pg := threadPageOf(bob, bck, postURL, v); !strings.Contains(pg, back) || !strings.Contains(pg, "(2 posts)") {
+			t.Errorf("%s view: This branch must return to the reply and show 2 posts:\n%s", name, pg)
+		}
+	}
+	if br := threadPageOf(bob, bck, postURL, ""); !strings.Contains(br, "(2 posts)") || !strings.Contains(br, `url=`+url.QueryEscape(postURL)+`&amp;view=curated">Whole thread`) {
+		t.Errorf("branch view links:\n%s", br)
+	}
+
 	// unsafe images and long text are cleaned; the API takes the same snapshot
 	out := alice.call(t, "POST", "/api/posts", `{"markdown":"api reply","in_reply_to":"`+page+`","context":{"title":"`+strings.Repeat("t", 300)+`","description":"d","image":"javascript:alert(1)"}}`, 201)
 	_ = out
