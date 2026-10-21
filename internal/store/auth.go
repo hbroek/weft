@@ -49,8 +49,8 @@ func (s *Store) SetPassword(name, pw string) error {
 func (s *Store) CheckPassword(name, pw string) (*User, error) {
 	var salt, want []byte
 	u := &User{}
-	err := s.db.QueryRow(`SELECT id,name,display,bio,pw_salt,pw_hash FROM users WHERE name=?`, name).
-		Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &salt, &want)
+	err := s.db.QueryRow(`SELECT id,name,display,bio,avatar,pw_salt,pw_hash FROM users WHERE name=?`, name).
+		Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar, &salt, &want)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -81,8 +81,8 @@ func (s *Store) CreateSession(userID int64) (string, error) {
 
 func (s *Store) UserBySession(tok string) (*User, error) {
 	u := &User{}
-	err := s.db.QueryRow(`SELECT u.id,u.name,u.display,u.bio FROM sessions s JOIN users u ON u.id=s.user_id
-		WHERE s.token_hash=? AND s.expires>?`, hashToken(tok), time.Now().Unix()).Scan(&u.ID, &u.Name, &u.Display, &u.Bio)
+	err := s.db.QueryRow(`SELECT u.id,u.name,u.display,u.bio,u.avatar FROM sessions s JOIN users u ON u.id=s.user_id
+		WHERE s.token_hash=? AND s.expires>?`, hashToken(tok), time.Now().Unix()).Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

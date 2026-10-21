@@ -48,7 +48,7 @@ a { color: var(--link); }
 .top-r form { margin: 0; }
 .site { color: var(--header-text); font-weight: 600; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .site:hover { text-decoration: underline; }
-.top .btn { background: var(--orange); color: var(--indigo); border: 0; border-radius: 999px; padding: .3rem .95rem; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+.top .btn { white-space: nowrap; background: var(--orange); color: var(--indigo); border: 0; border-radius: 999px; padding: .3rem .95rem; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
 .top .btn:hover { filter: brightness(1.08); }
 .th { background: none; border: 0; color: var(--header-text); padding: .35rem; border-radius: 8px; cursor: pointer; display: inline-flex; }
 .th:hover { background: #eef0fa24; }
@@ -120,3 +120,13 @@ button:hover { filter: brightness(1.1); }
 footer { margin: 2rem 0 1rem; text-align: center; }
 footer a { color: var(--muted); text-decoration: none; }
 footer img { vertical-align: -4px; border-radius: 4px; }
+
+/* avatars: the image, or the first letter of the name when there is none or it fails to load */
+.av { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 2rem; height: 2rem; border-radius: 50%; overflow: hidden; vertical-align: middle; margin-right: .55rem; background: var(--orange); color: var(--indigo); font-weight: 700; font-size: .95rem; line-height: 1; }
+.av img[hidden], .av span[hidden] { display: none; }
+.av img { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; border-radius: 0; display: block; }
+.card-top .who { display: flex; align-items: center; flex-wrap: wrap; gap: 0 .3rem; min-width: 0; }
+.card-top .who .av { margin-right: .25rem; }
+.site { display: inline-flex; align-items: center; }
+.site .av { width: 1.7rem; height: 1.7rem; font-size: .8rem; margin-right: .5rem; }
+.site > span:last-child { overflow: hidden; text-overflow: ellipsis; }

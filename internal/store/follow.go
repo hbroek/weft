@@ -97,9 +97,9 @@ func (s *Store) SaveFeed(feedURL string, p *feed.Parsed) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO feeds(url,title,link,fetched,error) VALUES(?,?,?,?,'')
-		ON CONFLICT(url) DO UPDATE SET title=excluded.title, link=excluded.link, fetched=excluded.fetched, error=''`,
-		feedURL, p.Title, p.Link, time.Now().Unix()); err != nil {
+	if _, err := tx.Exec(`INSERT INTO feeds(url,title,link,fetched,error,image) VALUES(?,?,?,?,'',?)
+		ON CONFLICT(url) DO UPDATE SET title=excluded.title, link=excluded.link, fetched=excluded.fetched, error='', image=excluded.image`,
+		feedURL, p.Title, p.Link, time.Now().Unix(), p.Image); err != nil {
 		return err
 	}
 	if len(p.Items) == 0 || p.Next == "" {
@@ -171,9 +171,10 @@ type TimelineItem struct {
 	Root               string
 	InReplyToFeed      string
 	Keywords           []string
+	FeedImage          string // the feed's channel image: the author's avatar
 }
 
-const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.likes, i.replies_href, i.root, i.in_reply_to_feed, i.replies_count, i.keywords
+const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.likes, i.replies_href, i.root, i.in_reply_to_feed, i.replies_count, i.keywords, COALESCE(d.image,'')
 		FROM items i JOIN follows f ON f.feed_url=i.feed_url AND f.user_id=?
 		LEFT JOIN feeds d ON d.url=i.feed_url `
 
@@ -189,7 +190,7 @@ func (s *Store) queryTimeline(q string, args ...any) ([]TimelineItem, error) {
 		var pub int64
 		var upd *int64
 		var kw string
-		if err := rows.Scan(&t.FeedURL, &t.FeedTitle, &t.GUID, &t.Link, &t.Title, &t.Text, &t.Markdown, &pub, &upd, &t.InReplyTo, &t.Likes, &t.RepliesHref, &t.Root, &t.InReplyToFeed, &t.RepliesCount, &kw); err != nil {
+		if err := rows.Scan(&t.FeedURL, &t.FeedTitle, &t.GUID, &t.Link, &t.Title, &t.Text, &t.Markdown, &pub, &upd, &t.InReplyTo, &t.Likes, &t.RepliesHref, &t.Root, &t.InReplyToFeed, &t.RepliesCount, &kw, &t.FeedImage); err != nil {
 			return nil, err
 		}
 		t.Published = time.Unix(pub, 0)

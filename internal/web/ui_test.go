@@ -374,7 +374,7 @@ func TestHeaderAndThemes(t *testing.T) {
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
 
 	vis := do(s, "GET", host, "/", "", "").Body.String()
-	for _, want := range []string{`<header class="top">`, `class="brand" href="/"`, `<span>Weft</span>`, `<a class="site" href="/">Alice</a>`, `id="theme"`, `<a class="btn" href="/login">Log in</a>`, `href="/static/weft.css"`, `localStorage.getItem('weft-theme')`} {
+	for _, want := range []string{`<header class="top">`, `class="brand" href="/"`, `<span>Weft</span>`, `<a class="site" href="/">`, `<span>Alice</span></a>`, `id="theme"`, `<a class="btn" href="/login">Log in</a>`, `href="/static/weft.css"`, `localStorage.getItem('weft-theme')`} {
 		if !strings.Contains(vis, want) {
 			t.Errorf("visitor's header lacks %q", want)
 		}
@@ -409,5 +409,50 @@ func TestMenuShowsCurrentView(t *testing.T) {
 		if on == "" && len(got) != 0 || on != "" && (len(got) != 1 || got[0][1] != on) {
 			t.Errorf("%s: marked %v, want %q", path, got, on)
 		}
+	}
+}
+
+// A user can set an avatar image address; without one the pages show the first letter of the name.
+func TestAvatarAndInitialFallback(t *testing.T) {
+	s, _ := setup(t)
+	s.st.SetPassword("alice", "correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+
+	// only the owner reaches the profile page
+	if w := do(s, "GET", host, "/profile", "", ""); w.Code == 200 {
+		t.Errorf("a visitor must not see the profile form: %d", w.Code)
+	}
+	// no avatar yet: the letter, no image
+	if page := do(s, "GET", host, "/", "", "").Body.String(); !strings.Contains(page, `<span class="av"><span>A</span></span>`) || strings.Contains(page, `class="av"><img`) {
+		t.Errorf("without an avatar the header should show the first letter:\n%s", page)
+	}
+
+	// unsafe or malformed addresses are refused
+	for _, bad := range []string{"javascript:alert(1)", "data:image/png;base64,AAAA", "me.png", "ftp://x.example/me.png"} {
+		w := form(s, "POST", "/profile", ck, url.Values{"display": {"Alice"}, "avatar": {bad}}, "")
+		if w.Code != 400 || !strings.Contains(w.Body.String(), "full http:// or https:// image address") {
+			t.Errorf("%q: %d", bad, w.Code)
+		}
+	}
+	if u, _ := s.st.UserByName("alice"); u.Avatar != "" {
+		t.Errorf("a refused address was saved: %q", u.Avatar)
+	}
+
+	// a good one is saved and shown, escaped, with the letter ready as the fallback
+	w := form(s, "POST", "/profile", ck, url.Values{"display": {"Alice A"}, "bio": {"hi"}, "avatar": {`https://img.example/a.png?x="y"`}}, "")
+	if w.Code != 303 {
+		t.Fatalf("save profile: %d %s", w.Code, w.Body)
+	}
+	page := do(s, "GET", host, "/", "", "").Body.String()
+	if !strings.Contains(page, `<img src="https://img.example/a.png?x=%22y%22"`) || !strings.Contains(page, `onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>A</span>`) || !strings.Contains(page, ">Alice A<") {
+		t.Errorf("avatar not shown with its fallback:\n%s", page)
+	}
+	if feedXML := do(s, "GET", host, "/feed.xml", "", "").Body.String(); !strings.Contains(feedXML, "<url>https://img.example/a.png?x=%22y%22</url>") && !strings.Contains(feedXML, "<url>https://img.example/a.png?x=&#34;y&#34;</url>") {
+		t.Errorf("the feed should carry the avatar as its channel image:\n%s", feedXML)
+	}
+	// clearing it brings the letter back
+	form(s, "POST", "/profile", ck, url.Values{"display": {"Alice A"}, "avatar": {""}}, "")
+	if page := do(s, "GET", host, "/", "", "").Body.String(); strings.Contains(page, "<img src=\"https://img.example") {
+		t.Errorf("a cleared avatar still shows")
 	}
 }

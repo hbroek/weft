@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"html"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ type Parsed struct {
 	Title, Link, Description string
 	Webmention, Following    string
 	LikesFeed                string
+	Image                    string // the channel image address (an http(s) URL), the author's avatar
 	// Next is the rel="next" link of a paged feed (RFC 5005): the page of older items.
 	Next  string
 	Items []ParsedItem
@@ -60,6 +62,9 @@ func (l plainLinks) first() string {
 type xmlParsed struct {
 	XMLName xml.Name `xml:"rss"`
 	Channel struct {
+		Image struct {
+			URL string `xml:"url"`
+		} `xml:"image"`
 		Title     string `xml:"title"`
 		AtomLinks []struct {
 			Rel  string `xml:"rel,attr"`
@@ -156,8 +161,8 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 	}
 	p := &Parsed{
 		Title: strings.TrimSpace(x.Channel.Title), Link: x.Channel.Link.first(),
-		Description: strings.TrimSpace(x.Channel.Description),
-		Webmention:  strings.TrimSpace(x.Channel.Webmention), Following: strings.TrimSpace(x.Channel.Following),
+		Description: strings.TrimSpace(x.Channel.Description), Image: httpAddress(x.Channel.Image.URL),
+		Webmention: strings.TrimSpace(x.Channel.Webmention), Following: strings.TrimSpace(x.Channel.Following),
 		LikesFeed: strings.TrimSpace(orStr(x.Channel.LikesFeed, x.Channel.OldReactions)),
 	}
 	for _, l := range x.Channel.AtomLinks {
@@ -203,4 +208,17 @@ func orStr(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// httpAddress returns s if it is an absolute http(s) URL of sensible length, else "".
+func httpAddress(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > 2048 {
+		return ""
+	}
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return u.String()
 }

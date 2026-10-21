@@ -28,6 +28,7 @@ type User struct {
 	Name    string
 	Display string
 	Bio     string
+	Avatar  string // an http(s) image address, or "" (the page shows the first letter of the name)
 }
 
 type Post struct {
@@ -207,6 +208,8 @@ func Open(path string) (*Store, error) {
 	// Databases created by iteration 1 lack the password columns; errors mean they already exist.
 	db.Exec(`ALTER TABLE users ADD COLUMN pw_salt BLOB`)
 	db.Exec(`ALTER TABLE users ADD COLUMN pw_hash BLOB`)
+	db.Exec(`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`)
+	db.Exec(`ALTER TABLE feeds ADD COLUMN image TEXT NOT NULL DEFAULT ''`)
 	for _, c := range []string{"in_reply_to", "in_reply_to_feed", "root", "root_feed"} {
 		db.Exec(`ALTER TABLE posts ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 	}
@@ -301,6 +304,18 @@ func (s *Store) AddUser(name, display, bio string) (token string, err error) {
 	return token, err
 }
 
+// UpdateProfile sets the name shown, the bio and the avatar address of a user. An empty display
+// name falls back to the user name.
+func (s *Store) UpdateProfile(userID int64, display, bio, avatar string) error {
+	if display == "" {
+		if err := s.db.QueryRow(`SELECT name FROM users WHERE id=?`, userID).Scan(&display); err != nil {
+			return err
+		}
+	}
+	_, err := s.db.Exec(`UPDATE users SET display=?, bio=?, avatar=? WHERE id=?`, display, bio, avatar, userID)
+	return err
+}
+
 // ResetToken replaces a user's API token and returns the new one (shown once).
 func (s *Store) ResetToken(name string) (string, error) {
 	b := make([]byte, 24)
@@ -338,7 +353,7 @@ func (s *Store) UserNames() ([]string, error) {
 
 func (s *Store) UserByID(id int64) (*User, error) {
 	u := &User{}
-	err := s.db.QueryRow(`SELECT id,name,display,bio FROM users WHERE id=?`, id).Scan(&u.ID, &u.Name, &u.Display, &u.Bio)
+	err := s.db.QueryRow(`SELECT id,name,display,bio,avatar FROM users WHERE id=?`, id).Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -347,7 +362,7 @@ func (s *Store) UserByID(id int64) (*User, error) {
 
 func (s *Store) UserByName(name string) (*User, error) {
 	u := &User{}
-	err := s.db.QueryRow(`SELECT id,name,display,bio FROM users WHERE name=?`, name).Scan(&u.ID, &u.Name, &u.Display, &u.Bio)
+	err := s.db.QueryRow(`SELECT id,name,display,bio,avatar FROM users WHERE name=?`, name).Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -356,7 +371,7 @@ func (s *Store) UserByName(name string) (*User, error) {
 
 func (s *Store) UserByToken(token string) (*User, error) {
 	u := &User{}
-	err := s.db.QueryRow(`SELECT id,name,display,bio FROM users WHERE token_hash=?`, hashToken(token)).Scan(&u.ID, &u.Name, &u.Display, &u.Bio)
+	err := s.db.QueryRow(`SELECT id,name,display,bio,avatar FROM users WHERE token_hash=?`, hashToken(token)).Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

@@ -2,6 +2,7 @@ package feed
 
 import (
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -62,5 +63,27 @@ func TestKeywordFilterHelpers(t *testing.T) {
 	}
 	if !HasKeyword([]string{"Go", "open web"}, "OPEN WEB") || HasKeyword([]string{"Go"}, "gopher") {
 		t.Error("HasKeyword")
+	}
+}
+
+func TestChannelImageIsTheAvatar(t *testing.T) {
+	ch := Channel{Title: "Alice", Link: "http://a.example/", Image: &ChannelImage{URL: "https://a.example/me.png", Title: "Alice", Link: "http://a.example/"}}
+	b, err := New(ch).Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`(?s)<image>\s*<url>https://a.example/me.png</url>`).Match(b) {
+		t.Errorf("channel image not written:\n%s", b)
+	}
+	p, err := Parse(b, time.Now())
+	if err != nil || p.Image != "https://a.example/me.png" {
+		t.Errorf("channel image not read: %v %q", err, p.Image)
+	}
+	for _, bad := range []string{"javascript:alert(1)", "data:image/png;base64,AAAA", "/relative.png", ""} {
+		ch.Image = &ChannelImage{URL: bad}
+		b, _ := New(ch).Marshal()
+		if p, err := Parse(b, time.Now()); err != nil || p.Image != "" {
+			t.Errorf("%q must not become an avatar: %v %q", bad, err, p.Image)
+		}
 	}
 }

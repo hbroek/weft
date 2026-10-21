@@ -124,3 +124,7 @@ A post's permalink answers to its `Accept` header: `text/markdown` returns the s
 ## Look
 
 Every page has a header with the logo on the left and the site name, a theme button and Log in or Log out on the right. The styles are in `internal/web/static/weft.css` (compiled in), built on indigo `#26337A`, thread orange `#F08A4B` and off-white `#EEF0FA`. The theme button cycles auto (follows the system), light and dark, and the choice is remembered in the browser.
+
+## Avatars
+
+A user can have an avatar image address (`http://` or `https://`): set it on the Profile page (the "Edit profile" link under your bio) or with `weft user set -avatar URL NAME` (`weft user add` takes `-avatar` too, and `-avatar ""` removes it). It shows in the header and on your cards, and it is published as the feed's RSS `<image>`, so people who follow you see it on your posts in their timeline. Without one, or if the image fails to load, a circle with the first letter of the name is shown. Avatars from other feeds are only used if they are plain http(s) addresses, and are loaded without sending a referrer.

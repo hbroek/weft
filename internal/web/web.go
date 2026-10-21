@@ -86,6 +86,8 @@ func New(cfg Config, st *store.Store) *Server {
 	s.mux.HandleFunc("GET /following.opml", s.user(s.opml))
 	s.mux.HandleFunc("GET /timeline", s.user(s.timeline))
 	s.mux.HandleFunc("GET /liked-by", s.user(s.likedByPage))
+	s.mux.HandleFunc("GET /profile", s.user(s.profileForm))
+	s.mux.HandleFunc("POST /profile", s.user(s.profile))
 	s.mux.HandleFunc("GET /following", s.user(s.followingPage))
 	s.mux.HandleFunc("POST /following", s.user(s.followForm))
 	s.mux.HandleFunc("POST /following/remove", s.user(s.unfollowForm))

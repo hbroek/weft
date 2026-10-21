@@ -534,3 +534,26 @@ func TestAgo(t *testing.T) {
 		}
 	}
 }
+
+// A followed author's avatar (their feed's channel image) shows on their timeline cards, and the
+// first letter of their name does when they have none.
+func TestTimelineAvatars(t *testing.T) {
+	alice, bob, carol := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol")
+	bob.s.st.UpdateProfile(1, "Bob", "", "https://img.example/bob.png")
+	bob.post(t, `{"markdown":"from bob"}`)
+	carol.post(t, `{"markdown":"from carol"}`)
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	alice.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
+	alice.s.st.UpdateProfile(1, "Alice", "", "https://img.example/alice.png")
+	alice.post(t, `{"markdown":"from alice"}`)
+	tl := do4(alice, "/timeline", loginCookie(t, alice))
+	for _, want := range []string{
+		`<span class="av"><img src="https://img.example/bob.png"`,   // bob's feed image
+		`<span class="av"><span>C</span></span>`,                    // carol has none: her letter
+		`<span class="av"><img src="https://img.example/alice.png"`, // your own row
+	} {
+		if !strings.Contains(tl, want) {
+			t.Errorf("timeline lacks %q:\n%s", want, tl)
+		}
+	}
+}

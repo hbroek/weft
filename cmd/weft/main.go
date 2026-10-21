@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +20,8 @@ import (
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-db weft.db] [-dev] [-v] [-poll 5m|0]
-  weft user add [-db weft.db] [-display NAME] [-bio TEXT] [-password PW] USERNAME
+  weft user add [-db weft.db] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW] USERNAME
+  weft user set [-db weft.db] [-display NAME] [-bio TEXT] [-avatar URL] USERNAME   (changes only the fields given; -avatar "" removes it)
   weft user passwd [-db weft.db] -password PW USERNAME
   weft user token  [-db weft.db] USERNAME      (issues a new API token, invalidating the old one)
   weft user follow [-db weft.db] [-domain localhost] [-scheme http] [-port 8080] USERNAME TARGET...
@@ -76,13 +78,14 @@ func main() {
 		log.Printf("listening on %s, users at <name>.%s (dev=%v)", *addr, *domain, *dev)
 		log.Fatal(http.ListenAndServe(*addr, srv))
 	case "user":
-		if len(os.Args) < 3 || (os.Args[2] != "add" && os.Args[2] != "passwd" && os.Args[2] != "token" && os.Args[2] != "list" && os.Args[2] != "follow") {
+		if len(os.Args) < 3 || (os.Args[2] != "add" && os.Args[2] != "passwd" && os.Args[2] != "token" && os.Args[2] != "list" && os.Args[2] != "follow" && os.Args[2] != "set") {
 			usage()
 		}
 		fs := flag.NewFlagSet("user "+os.Args[2], flag.ExitOnError)
 		db := fs.String("db", "weft.db", "SQLite file")
 		display := fs.String("display", "", "display name")
 		bio := fs.String("bio", "", "bio")
+		avatar := fs.String("avatar", "", "avatar image address (http:// or https://); without one the first letter of the name is shown")
 		pw := fs.String("password", "", "login password for the web UI (min 8 characters)")
 		domain := fs.String("domain", "localhost", "follow: base domain for bare user names")
 		scheme := fs.String("scheme", "http", "follow: scheme for bare user names")
@@ -105,7 +108,33 @@ func main() {
 			log.Fatal(err)
 		}
 		defer st.Close()
+		if *avatar != "" {
+			if u, err := url.Parse(*avatar); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				log.Fatal("avatar must be a full http:// or https:// address")
+			}
+		}
 		switch os.Args[2] {
+		case "set":
+			u, err := st.UserByName(fs.Arg(0))
+			if err != nil {
+				log.Fatalf("no user %q", fs.Arg(0))
+			}
+			given := map[string]bool{}
+			fs.Visit(func(f *flag.Flag) { given[f.Name] = true }) // only change what was asked for
+			d, b, a := u.Display, u.Bio, u.Avatar
+			if given["display"] {
+				d = *display
+			}
+			if given["bio"] {
+				b = *bio
+			}
+			if given["avatar"] {
+				a = *avatar
+			}
+			if err := st.UpdateProfile(u.ID, d, b, a); err != nil {
+				log.Fatal(err)
+			}
+			return
 		case "follow":
 			u, err := st.UserByName(fs.Arg(0))
 			if err != nil {
@@ -167,6 +196,13 @@ func main() {
 		if *pw != "" {
 			if err := st.SetPassword(fs.Arg(0), *pw); err != nil {
 				log.Fatal(err)
+			}
+		}
+		if *avatar != "" {
+			if u, err := st.UserByName(fs.Arg(0)); err == nil {
+				if err := st.UpdateProfile(u.ID, u.Display, u.Bio, *avatar); err != nil {
+					log.Fatal(err)
+				}
 			}
 		}
 		fmt.Println(tok)

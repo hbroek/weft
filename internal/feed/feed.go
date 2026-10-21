@@ -64,17 +64,25 @@ type Replies struct {
 }
 
 type Channel struct {
-	Title         string     `xml:"title"`
-	Link          string     `xml:"link"`
-	Description   string     `xml:"description"`
-	LastBuildDate string     `xml:"lastBuildDate"`
-	Links         []AtomLink `xml:"atom:link"` // rel="self", and rel="next"/"previous"/"first" for paged feeds
-	Webmention    string     `xml:"weft:webmention,omitempty"`
-	Following     string     `xml:"weft:following,omitempty"`
-	LikesFeed     string     `xml:"weft:likesFeed,omitempty"`
-	RepliesTo     *Ref       `xml:"weft:repliesTo"`
-	Depth         int        `xml:"weft:depth,omitempty"`
-	Items         []Item     `xml:"item"`
+	Title         string        `xml:"title"`
+	Link          string        `xml:"link"`
+	Description   string        `xml:"description"`
+	LastBuildDate string        `xml:"lastBuildDate"`
+	Image         *ChannelImage `xml:"image,omitempty"` // the author's avatar (RSS 2.0 channel image)
+	Links         []AtomLink    `xml:"atom:link"`       // rel="self", and rel="next"/"previous"/"first" for paged feeds
+	Webmention    string        `xml:"weft:webmention,omitempty"`
+	Following     string        `xml:"weft:following,omitempty"`
+	LikesFeed     string        `xml:"weft:likesFeed,omitempty"`
+	RepliesTo     *Ref          `xml:"weft:repliesTo"`
+	Depth         int           `xml:"weft:depth,omitempty"`
+	Items         []Item        `xml:"item"`
+}
+
+// ChannelImage is the RSS 2.0 <image> of a channel; Weft uses it as the author's avatar.
+type ChannelImage struct {
+	URL   string `xml:"url"`
+	Title string `xml:"title"`
+	Link  string `xml:"link"`
 }
 
 type GUID struct {

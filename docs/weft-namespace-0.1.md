@@ -37,7 +37,7 @@ Reused namespaces:
 | --- | --- |
 | `source:` | `source:markdown`, the post's original Markdown (Dave Winer's Source namespace) |
 | `atom:` | `atom:link rel="self"` and `rel="hub"` for WebSub pings |
-| RSS 2.0 core | `<cloud>` for rssCloud pings, `<category>` for keywords, `<enclosure>` for media |
+| RSS 2.0 core | `<cloud>` for rssCloud pings, `<category>` for keywords, `<enclosure>` for media, and the channel `<image>` (its `<url>`) as the author's avatar |
 
 ## Channel elements
 
