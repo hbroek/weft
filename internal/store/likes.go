@@ -186,3 +186,24 @@ func (s *Store) Tallies(userID int64) (map[int64]int, error) {
 	}
 	return out, rows.Err()
 }
+
+// Likers returns, for each of the user's posts that has any, the names of the senders whose likes
+// count (the ones the user follows), oldest like first. A sender without a name is shown by its feed.
+func (s *Store) Likers(userID int64) (map[int64][]string, error) {
+	rows, err := s.db.Query(`SELECT l.post_id, COALESCE(NULLIF(l.author,''), l.feed_url) FROM likes_in l JOIN posts p ON p.id=l.post_id
+		WHERE p.user_id=? AND l.trusted=1 ORDER BY l.created, l.id`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64][]string{}
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], name)
+	}
+	return out, rows.Err()
+}

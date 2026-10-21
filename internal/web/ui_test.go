@@ -205,3 +205,39 @@ func TestThreadLinkOnlyWhereThereIsAThread(t *testing.T) {
 		}
 	}
 }
+
+// The editor shows a preview under the Publish button, rendered by the same Markdown renderer that
+// publishes, and a /preview endpoint feeds it as you type.
+func TestEditorPreview(t *testing.T) {
+	s, _ := setup(t)
+	if err := s.st.SetPassword("alice", "correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+
+	page := do3(s, "GET", host, "/compose", ck).Body.String()
+	i, j := strings.Index(page, "<button>Publish</button>"), strings.Index(page, `id="preview-body"`)
+	if i < 0 || j < i || !strings.Contains(page, "Nothing to preview yet.") {
+		t.Errorf("preview must come after the Publish button and start empty:\n%s", page)
+	}
+
+	pv := form(s, "POST", "/preview", ck, url.Values{"markdown": {"first *post* with <script>alert(1)</script>"}}, "")
+	if pv.Code != 200 || !strings.Contains(pv.Body.String(), "<em>post</em>") || strings.Contains(pv.Body.String(), "<script>") {
+		t.Errorf("preview: %d %s", pv.Code, pv.Body)
+	}
+	if pv.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Errorf("preview type: %s", pv.Header().Get("Content-Type"))
+	}
+	if w := form(s, "POST", "/preview", "", url.Values{"markdown": {"x"}}, ""); w.Code == 200 {
+		t.Errorf("logged-out preview must not render: %d", w.Code)
+	}
+	if w := form(s, "POST", "/preview", ck, url.Values{"markdown": {"x"}}, "http://evil.example"); w.Code != 403 {
+		t.Errorf("cross-origin preview: %d", w.Code)
+	}
+
+	// editing an existing post starts with its preview already rendered
+	loc := form(s, "POST", "/compose", ck, url.Values{"markdown": {"a *draft* post"}}, "").Header().Get("Location")
+	if p := do3(s, "GET", host, loc+"/edit", ck).Body.String(); !strings.Contains(p, "<em>draft</em>") {
+		t.Errorf("edit page lacks the preview:\n%s", p)
+	}
+}

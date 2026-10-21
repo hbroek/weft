@@ -19,17 +19,20 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <link rel="alternate" type="application/rss+xml" href="{{.FeedURL}}">
 <link rel="webmention" href="{{.WebmentionURL}}">
 {{range .Links}}<link rel="{{.Rel}}"{{if .Type}} type="{{.Type}}"{{end}} href="{{.Href}}">
-{{end}}<style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem}
-article{margin:2rem 0;border-bottom:1px solid #8884;padding-bottom:1rem}time{color:#888;font-size:.85em}
+{{end}}<style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;background:#f3f4f6;color:#1c1c1e}
+article,.node{background:#fff;border:1px solid #0000000f;border-radius:12px;box-shadow:0 1px 2px #0000001a,0 4px 14px #0000000d;padding:.9rem 1.1rem}
+article{margin:1rem 0}time{color:#888;font-size:.85em}
 nav a,nav button{margin-right:1rem}nav form{display:inline}
 nav button,.linkbtn{background:none;border:0;padding:0;font:inherit;color:LinkText;cursor:pointer;text-decoration:underline}
 input[type=text],input[type=password],textarea{width:100%;box-sizing:border-box;font:inherit;padding:.4rem}
-ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #8883}.node{margin:.75rem 0}.note{display:block;color:#a60}.focus{scroll-margin-top:4rem;background:#8881;padding:.25rem .5rem;border-radius:4px}
+ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #0002}.node{margin:.75rem 0}.note{display:block;color:#a60}.focus{scroll-margin-top:4rem;background:#f4f8ff;box-shadow:0 0 0 2px #1a6fe055,0 4px 14px #0000000d}
 .react{display:flex;align-items:center;gap:.25rem;margin:.25rem 0}
 .likebtn{display:inline-flex;align-items:center;background:none;border:0;padding:.15rem .25rem;color:inherit;cursor:pointer}
 .likebtn svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
 .likebtn[aria-pressed=true]{color:#1a6fe0}.likebtn[aria-pressed=true] svg{fill:currentColor}
-.likeevent{color:GrayText;font-size:.9rem}
+article.likeevent{color:GrayText;font-size:.9rem;background:none;border:0;box-shadow:none;padding:0 1.1rem;margin:.6rem 0}
+.tally{cursor:help;text-decoration:underline dotted;text-underline-offset:3px}
+#preview .empty{color:GrayText}
 .sr{position:absolute;left:-9999px}
 textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}label{display:block;margin-top:1rem}</style>
 </head><body>
@@ -46,7 +49,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}">{{.Date}}</time></a>
 {{if .Edited}} <time>(edited)</time>{{end}}
 {{if $.Owner}} <a href="{{.URL}}/edit">Edit</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}{{end}}
-{{if .Tally}}<p class="tally" title="Likes from people you follow">{{.Tally}}</p>{{end}}
+{{if .Tally}}<p class="tally" title="{{.TallyTip}}">{{.Tally}}</p>{{end}}
 </article>{{else}}<p>No posts yet.</p>{{end}}
 {{if .Replies}}<section><h3>Replies</h3>{{range .Replies}}<div class="reply">
 <p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} <a href="{{.Source}}"><time>{{.Date}}</time></a></p>{{if .Title}}<h4>{{.Title}}</h4>{{end}}{{.HTML}}</div>{{end}}</section>{{end}}
@@ -70,7 +73,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <div>{{.HTML}}</div>
 <p><a href="{{.ReplyHref}}">Reply</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}</p>
 {{if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
-<button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small>{{.Tally}}</small>{{end}}</form>{{end}}
+<button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}">{{.Tally}}</small>{{end}}</form>{{end}}
 {{if .Link}}<a href="{{.Link}}"><time>{{.Date}}</time></a>{{else}}<time>{{.Date}}</time>{{end}}{{if .Edited}} <time>(edited)</time>{{end}}
 </article>{{end}}{{else}}<p>Nothing yet. <a href="/following">Follow a feed</a>.</p>{{end}}
 {{template "foot"}}{{end}}
@@ -115,6 +118,25 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label>Markdown <textarea name="markdown" required>{{.Form.Markdown}}</textarea></label>
 <p><button>{{.Button}}</button></p></form>
+<h3>Preview</h3>
+<article id="preview" class="h-entry"><h3 id="preview-title"{{if not .Form.Title}} hidden{{end}}>{{.Form.Title}}</h3><div id="preview-body">{{if .Preview}}{{.Preview}}{{else}}<p class="empty">Nothing to preview yet.</p>{{end}}</div></article>
+<script>
+(function(){
+var md=document.querySelector('textarea[name=markdown]'),ti=document.querySelector('input[name=title]'),
+ body=document.getElementById('preview-body'),head=document.getElementById('preview-title'),timer,seq=0,shown=0;
+if(!md||!body)return;
+function title(){head.textContent=ti.value.trim();head.hidden=!ti.value.trim()}
+function render(){
+ var n=++seq;
+ fetch('/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'markdown='+encodeURIComponent(md.value),credentials:'same-origin'})
+  .then(function(r){return r.ok?r.text():null})
+  .then(function(h){if(h===null||n<shown)return;shown=n;body.innerHTML=h.trim()?h:'<p class="empty">Nothing to preview yet.</p>'})
+  .catch(function(){});
+}
+md.addEventListener('input',function(){clearTimeout(timer);timer=setTimeout(render,200)});
+ti.addEventListener('input',title);
+})();
+</script>
 {{if .Delete}}<form method="post" action="{{.Delete}}" onsubmit="return confirm('Delete this post?')"><button class="linkbtn">Delete post</button></form>{{end}}
 {{template "foot"}}{{end}}`))
 
@@ -123,7 +145,7 @@ type pagePost struct {
 	HTML                  template.HTML
 	Edited                bool
 	InReplyTo             string
-	Tally                 string
+	Tally, TallyTip       string
 	ThreadHref            string
 	HasThread             bool // it replies to something or has approved replies
 }
@@ -143,6 +165,7 @@ type pageData struct {
 	Links                                      []feed.AtomLink // extra <link>s in the page head
 	// forms
 	Error, Action, Heading, Button, Delete, Only string
+	Preview                                      template.HTML // the editor's rendered Markdown
 	ShowLikes                                    bool
 	LikesToggle                                  string
 	Form                                         struct{ Title, Markdown string }
@@ -165,12 +188,13 @@ func (s *Server) show(w http.ResponseWriter, name string, status int, d pageData
 func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, title string, posts []*store.Post) {
 	d := s.data(r, q, title)
 	tallies, _ := s.st.Tallies(q.host.ID)
+	likers, _ := s.st.Likers(q.host.ID)
 	counts, _ := s.st.ApprovedCounts(q.host.ID)
 	for _, p := range posts {
 		d.Posts = append(d.Posts, pagePost{
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
 			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 15:04"),
-			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Tally: likesText(tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
+			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
 			HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 		})
 	}

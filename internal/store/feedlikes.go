@@ -62,3 +62,24 @@ func (s *Store) FeedLikes(userID int64, feedURL string, limit int) ([]FeedLike, 
 	}
 	return out, rows.Err()
 }
+
+// FollowedLikers returns, for each post the people the user follows have liked, their names: the
+// feed's title, or its address when it has none. The oldest like comes first.
+func (s *Store) FollowedLikers(userID int64) (map[string][]string, error) {
+	rows, err := s.db.Query(`SELECT l.target, COALESCE(NULLIF(d.title,''), l.feed_url)
+		FROM feed_likes l JOIN follows f ON f.feed_url=l.feed_url AND f.user_id=?
+		LEFT JOIN feeds d ON d.url=l.feed_url ORDER BY l.published, l.guid`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var target, name string
+		if err := rows.Scan(&target, &name); err != nil {
+			return nil, err
+		}
+		out[target] = append(out[target], name)
+	}
+	return out, rows.Err()
+}

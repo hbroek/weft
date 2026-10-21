@@ -20,7 +20,7 @@ import (
 
 type tlRow struct {
 	Author, AuthorHref, Title, Link, Date, InReplyTo, ReplyHref string
-	Target, FeedURL, Tally, ThreadHref                          string
+	Target, FeedURL, Tally, TallyTip, ThreadHref                string
 	Mine                                                        bool
 	HasThread                                                   bool // it replies to something or has replies
 	HTML                                                        template.HTML
@@ -98,16 +98,22 @@ func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineIt
 	if err != nil {
 		return nil, nil, err
 	}
+	likers, _ := s.st.FollowedLikers(userID)
 	out := make([]tlRow, 0, len(items))
 	for _, it := range items {
+		mine := s.iLike(userID, itemTarget(it))
+		names := likers[itemTarget(it)]
+		if mine {
+			names = append([]string{"You"}, names...)
+		}
 		author := it.FeedTitle
 		if author == "" {
 			author = it.FeedURL
 		}
 		out = append(out, tlRow{Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
 			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil,
-			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(it.Likes),
-			Mine: s.iLike(userID, itemTarget(it)), when: it.Published})
+			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(it.Likes), TallyTip: likedBy(names, it.Likes),
+			Mine: mine, when: it.Published})
 	}
 	return out, items, nil
 }

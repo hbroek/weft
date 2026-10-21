@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"html/template"
 	"net/http"
 	"slices"
 	"strings"
@@ -56,7 +57,28 @@ func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status i
 	d.ReplyTo, d.ReplyFeed = httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed"))
 	d.Heading, d.Action, d.Button, d.Delete, d.Error = heading, action, button, del, errMsg
 	d.Form.Title, d.Form.Markdown = title, markdown
+	if strings.TrimSpace(markdown) != "" {
+		if h, err := md.Render(markdown); err == nil {
+			d.Preview = template.HTML(h) // goldmark safe mode: raw HTML dropped, dangerous URLs removed
+		}
+	}
 	s.show(w, "editor", status, d)
+}
+
+// preview renders Markdown from the editor as the published post will look. It is read-only and
+// uses the same renderer as publishing.
+func (s *Server) preview(w http.ResponseWriter, r *http.Request, q *req) {
+	if !s.requireOwner(w, r, q) {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	h, err := md.Render(r.FormValue("markdown"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(h))
 }
 
 func (s *Server) composeForm(w http.ResponseWriter, r *http.Request, q *req) {

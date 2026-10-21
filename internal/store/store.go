@@ -253,7 +253,9 @@ func migrateLikes(db *sql.DB) error {
 			`DELETE FROM reactions_in WHERE polarity='-'`,
 			`ALTER TABLE reactions_in DROP COLUMN polarity`,
 			`ALTER TABLE reactions_in DROP COLUMN emoji`,
-			`ALTER TABLE reactions_in RENAME TO likes_in`)
+			`ALTER TABLE reactions_in RENAME TO likes_in`,
+			// the sender's name was once taken from its reactions feed, whose title ends in " reactions"
+			`UPDATE likes_in SET author=substr(author,1,length(author)-10) WHERE author LIKE '% reactions'`)
 	}
 	if hasColumn(db, "items", "plus") {
 		steps = append(steps,

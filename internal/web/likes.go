@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/hbroek/weft/internal/feed"
@@ -51,7 +52,8 @@ func (s *Server) likesFeed(w http.ResponseWriter, r *http.Request, q *req) {
 	for _, x := range xs {
 		u := s.likeURL(r, x.ID)
 		it := feed.Item{GUID: feed.GUID{IsPermaLink: true, Value: u}, Link: u, PubDate: feed.RFC822(x.Created),
-			LikeOf: &feed.LikeRef{Href: x.Target}}
+			LikeOf: &feed.LikeRef{Href: x.Target},
+			Feed:   &feed.FeedRef{Href: s.base(r) + "/feed.xml", Name: q.host.Display}} // who liked: the channel title says "<name> likes"
 		if x.Created.After(last) {
 			last = x.Created
 		}
@@ -230,4 +232,36 @@ func likesText(n int) string {
 		return "1 like"
 	}
 	return fmt.Sprintf("%d likes", n)
+}
+
+// likedBy is the tooltip of a like count: the names this reader knows, then how many more there are.
+// total is the count the post publishes.
+func likedBy(names []string, total int) string {
+	seen := map[string]bool{}
+	var list []string
+	for _, n := range names {
+		if n = strings.TrimSpace(n); n != "" && !seen[n] && len(list) < 10 {
+			seen[n] = true
+			list = append(list, n)
+		}
+	}
+	others := max(total-len(list), 0)
+	if len(list) == 0 {
+		return "Likes from people the author follows"
+	}
+	text := list[0]
+	if len(list) > 1 {
+		if others > 0 {
+			text = strings.Join(list, ", ")
+		} else {
+			text = strings.Join(list[:len(list)-1], ", ") + " and " + list[len(list)-1]
+		}
+	}
+	switch {
+	case others == 1:
+		text += " and 1 other"
+	case others > 1:
+		text += fmt.Sprintf(" and %d others", others)
+	}
+	return "Liked by " + text
 }

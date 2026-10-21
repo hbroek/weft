@@ -56,8 +56,8 @@ func TestLikeRoundTripAcrossInstances(t *testing.T) {
 	if f := alice.get("/feed.xml"); !strings.Contains(f, `<weft:likes count="1">`) {
 		t.Errorf("count after following:\n%s", f)
 	}
-	if !strings.Contains(alice.get(pathOf(ua)), "1 like") {
-		t.Errorf("permalink page does not show the count")
+	if pg := alice.get(pathOf(ua)); !strings.Contains(pg, "1 like") || !strings.Contains(pg, `title="Liked by Bob"`) {
+		t.Errorf("permalink page does not show the count with who liked:\n%s", pg)
 	}
 
 	// Bob's timeline shows Alice's count once he refreshes, and his own like.
@@ -73,6 +73,9 @@ func TestLikeRoundTripAcrossInstances(t *testing.T) {
 	ck := cookieOf(lw)
 	if ck == "" {
 		t.Fatalf("bob could not log in: %d", lw.Code)
+	}
+	if tl := do4(bob, "/timeline", ck); !strings.Contains(tl, `title="Liked by You"`) {
+		t.Errorf("hovering the count should name who liked:\n%s", tl)
 	}
 	if tl := do4(bob, "/timeline", ck); !strings.Contains(tl, `aria-pressed="true"`) || !strings.Contains(tl, `action="/unlike"`) {
 		t.Errorf("own like not shown as pressed in timeline")
@@ -175,5 +178,27 @@ func TestTimelineShowsLikesOfFollowed(t *testing.T) {
 	alice.s.RefreshAll(ctx)
 	if strings.Contains(do4(alice, "/timeline?likes=1", ck), "liked") {
 		t.Errorf("withdrawn like still shown")
+	}
+}
+
+func TestLikedByText(t *testing.T) {
+	cases := []struct {
+		names []string
+		total int
+		want  string
+	}{
+		{nil, 3, "Likes from people the author follows"},
+		{[]string{"Bob"}, 1, "Liked by Bob"},
+		{[]string{"Bob", "Carol"}, 2, "Liked by Bob and Carol"},
+		{[]string{"Bob", "Carol", "Dan"}, 3, "Liked by Bob, Carol and Dan"},
+		{[]string{"Bob", "Carol"}, 5, "Liked by Bob, Carol and 3 others"},
+		{[]string{"Bob"}, 2, "Liked by Bob and 1 other"},
+		{[]string{"Bob", "Bob", " "}, 1, "Liked by Bob"},
+		{[]string{"You"}, 0, "Liked by You"},
+	}
+	for _, c := range cases {
+		if got := likedBy(c.names, c.total); got != c.want {
+			t.Errorf("likedBy(%v, %d) = %q, want %q", c.names, c.total, got, c.want)
+		}
 	}
 }

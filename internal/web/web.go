@@ -54,6 +54,7 @@ func New(cfg Config, st *store.Store) *Server {
 	s.mux.HandleFunc("POST /logout", s.user(s.logout))
 	s.mux.HandleFunc("GET /compose", s.user(s.composeForm))
 	s.mux.HandleFunc("POST /compose", s.user(s.compose))
+	s.mux.HandleFunc("POST /preview", s.user(s.preview))
 	s.mux.HandleFunc("GET /posts/{slug}/edit", s.user(s.editForm))
 	s.mux.HandleFunc("POST /posts/{slug}/edit", s.user(s.edit))
 	s.mux.HandleFunc("POST /posts/{slug}/delete", s.user(s.deleteForm))
