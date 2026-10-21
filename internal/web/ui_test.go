@@ -288,3 +288,54 @@ func TestKeywordsEndToEnd(t *testing.T) {
 		t.Errorf("api keywords:\n%s", f)
 	}
 }
+
+// /compose?title=&body=&keywords= prefills the form; it publishes nothing and escapes what it is given.
+func TestComposePrefill(t *testing.T) {
+	s, _ := setup(t)
+	s.st.SetPassword("alice", "correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+
+	q := url.Values{"title": {"Hello \"world\""}, "body": {"Some *text* <script>x</script>"}, "keywords": {"go, open web"}}
+	w := do3(s, "GET", host, "/compose?"+q.Encode(), ck)
+	page := w.Body.String()
+	for _, want := range []string{`value="Hello &#34;world&#34;"`, "Some *text* &lt;script&gt;x&lt;/script&gt;", `value="go, open web"`, "<em>text</em>"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("prefilled page lacks %q:\n%s", want, page)
+		}
+	}
+	if strings.Contains(page, "<script>x") {
+		t.Errorf("prefill not escaped")
+	}
+	if posts, _ := s.st.RecentPosts(1, 10); len(posts) != 0 {
+		t.Errorf("prefill must not publish: %d posts", len(posts))
+	}
+}
+
+// The owner's home page offers the bookmarklet; visitors do not see it. It must be a real
+// javascript: link (html/template rewrites unsafe ones) that targets this host's compose form.
+func TestBookmarkletOnHome(t *testing.T) {
+	s, _ := setup(t)
+	s.st.SetPassword("alice", "correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+
+	if page := do(s, "GET", host, "/", "", "").Body.String(); strings.Contains(page, "javascript:") {
+		t.Errorf("visitors must not see the bookmarklet")
+	}
+	page := do3(s, "GET", host, "/", ck).Body.String()
+	m := regexp.MustCompile(`href="(javascript:[^"]+)"`).FindStringSubmatch(page)
+	if m == nil {
+		t.Fatalf("no javascript: link on the owner's home page:\n%s", page)
+	}
+	js, err := url.PathUnescape(strings.TrimPrefix(m[1], "javascript:"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"http://` + host + `/compose"`, "og:title", "og:image", "twitter:image", "og:description", "encodeURIComponent"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("bookmarklet lacks %q:\n%s", want, js)
+		}
+	}
+	if strings.Contains(js, "\n") || strings.Contains(js, "COMPOSE") {
+		t.Errorf("bookmarklet should be one line with the address filled in:\n%s", js)
+	}
+}

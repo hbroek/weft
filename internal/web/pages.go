@@ -45,6 +45,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <main>{{end}}
 {{define "foot"}}</main></body></html>{{end}}
 {{define "posts"}}{{template "head" .}}
+{{if .Bookmarklet}}<p class="bm"><small>Bookmark card: drag <a href="{{.Bookmarklet}}">Weft it</a> to your bookmarks bar, then click it on any page to compose a post from that page.</small></p>{{end}}
 {{range .Posts}}<article class="h-entry">
 {{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{end}}
 {{if .InReplyTo}}<p><small>In reply to <a class="u-in-reply-to" href="{{.InReplyTo}}">{{.InReplyTo}}</a></small></p>{{end}}
@@ -182,6 +183,7 @@ type pageData struct {
 	Preview                                      template.HTML // the editor's rendered Markdown
 	PreviewKeywords                              []string      // the editor's keywords as chips
 	ShowLikes                                    bool
+	Bookmarklet                                  template.URL // javascript: link that sends the current page to /compose; owner's home page only
 	LikesToggle                                  string
 	Form                                         struct{ Title, Markdown, Keywords string }
 }
@@ -200,7 +202,7 @@ func (s *Server) show(w http.ResponseWriter, name string, status int, d pageData
 	}
 }
 
-func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, title string, posts []*store.Post) {
+func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, title string, posts []*store.Post, tweak ...func(*pageData)) {
 	d := s.data(r, q, title)
 	tallies, _ := s.st.Tallies(q.host.ID)
 	likers, _ := s.st.Likers(q.host.ID)
@@ -224,6 +226,9 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 		}
 		d.Links = append(d.Links, feed.AtomLink{Rel: "replies", Type: "application/rss+xml", Href: u + "/replies.xml"})
 	}
+	for _, f := range tweak {
+		f(&d)
+	}
 	s.show(w, "posts", http.StatusOK, d)
 }
 
@@ -233,7 +238,11 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.renderPosts(w, r, q, q.host.Display, posts)
+	s.renderPosts(w, r, q, q.host.Display, posts, func(d *pageData) {
+		if q.owner {
+			d.Bookmarklet = bookmarklet(s.base(r) + "/compose")
+		}
+	})
 }
 
 func postID(r *http.Request) (int64, bool) {

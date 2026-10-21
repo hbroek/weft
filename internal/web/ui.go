@@ -85,7 +85,9 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request, q *req) {
 
 func (s *Server) composeForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if s.requireOwner(w, r, q) {
-		s.editor(w, r, q, http.StatusOK, "New post", "/compose", "Publish", "", "", "", nil, "")
+		// title, body and keywords prefill the form (e.g. from a bookmarklet); nothing is published until the owner submits
+		v := r.URL.Query()
+		s.editor(w, r, q, http.StatusOK, "New post", "/compose", "Publish", "", strings.TrimSpace(v.Get("title")), v.Get("body"), feed.SplitKeywords(v.Get("keywords")), "")
 	}
 }
 
