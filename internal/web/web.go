@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hbroek/weft/internal/fetch"
@@ -37,6 +38,9 @@ type Server struct {
 	web *fetch.Client
 	// wake nudges the background worker after a Webmention job is queued.
 	wake chan struct{}
+	// adj holds the user's own likes and unlikes not yet in the authors' published counts.
+	adjMu sync.Mutex
+	adj   map[adjKey]likeAdj
 }
 
 func New(cfg Config, st *store.Store) *Server {
@@ -79,6 +83,7 @@ func New(cfg Config, st *store.Store) *Server {
 	s.mux.HandleFunc("POST /api/replies/{id}/status", s.user(s.apiModerate))
 	s.mux.HandleFunc("GET /following.opml", s.user(s.opml))
 	s.mux.HandleFunc("GET /timeline", s.user(s.timeline))
+	s.mux.HandleFunc("GET /liked-by", s.user(s.likedByPage))
 	s.mux.HandleFunc("GET /following", s.user(s.followingPage))
 	s.mux.HandleFunc("POST /following", s.user(s.followForm))
 	s.mux.HandleFunc("POST /following/remove", s.user(s.unfollowForm))

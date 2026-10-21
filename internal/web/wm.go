@@ -269,7 +269,7 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 		return "reply " + status, false
 	case item != nil && item.LikeOf == it.Target:
 		s.dropReply(host.ID, postID, it.Target, it.Source)
-		if err := s.st.UpsertLikeIn(store.LikeIn{PostID: postID, Source: it.Source, FeedURL: fr.URL,
+		if err := s.st.UpsertLikeIn(store.LikeIn{PostID: postID, Source: it.Source, FeedURL: orStr(httpURL(item.FeedHref), fr.URL), // the liker's own feed, so the owner can follow it
 			Author: orStr(item.FeedName, parsed.Title), Trusted: trusted}); err != nil {
 			return err.Error(), true
 		}

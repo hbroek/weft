@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
@@ -288,5 +289,122 @@ func TestKeywordFilters(t *testing.T) {
 	}
 	if o := do4(bob, "/timeline?keyword=pickleball&feed="+url.QueryEscape(alice.base+"/feed.xml"), ck); !strings.Contains(o, "First game") || strings.Contains(o, "gophers") {
 		t.Errorf("timeline filter with feed:\n%s", o)
+	}
+}
+
+func formAs(i *instance, path, cookie, referer string, vals url.Values) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("POST", "http://"+i.host+path, strings.NewReader(vals.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: cookie})
+	if referer != "" {
+		r.Header.Set("Referer", referer)
+	}
+	w := httptest.NewRecorder()
+	i.s.ServeHTTP(w, r)
+	return w
+}
+
+// Clicking like or unlike in the timeline changes the count at once, before the author has
+// counted it, stays right once the author has, and returns to the page it was clicked on.
+func TestLikeButtonUpdatesCount(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	ctx := t.Context()
+	ua := alice.post(t, `{"markdown":"count me","keywords":["go"]}`)
+	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
+	bob.s.st.SetPassword("bob", "correct horse")
+	lr := httptest.NewRequest("POST", bob.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
+	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	lw := httptest.NewRecorder()
+	bob.s.ServeHTTP(lw, lr)
+	ck := cookieOf(lw)
+	vals := url.Values{"target": {ua}, "feed": {alice.base + "/feed.xml"}}
+
+	if tl := do4(bob, "/timeline", ck); strings.Contains(tl, `class="tally"`) {
+		t.Fatalf("no likes yet:\n%s", tl)
+	}
+	w := formAs(bob, "/like", ck, "http://"+bob.host+"/timeline?keyword=go", vals)
+	if w.Code != 303 || w.Header().Get("Location") != "/timeline?keyword=go" {
+		t.Errorf("like should return to the page it came from: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := formAs(bob, "/like", ck, "http://evil.example/x", vals); w.Code != 403 {
+		t.Errorf("a like sent from another site must be refused: %d", w.Code)
+	}
+	formAs(bob, "/like", ck, "", vals) // liking again changes nothing
+	if tl := do4(bob, "/timeline", ck); !strings.Contains(tl, "1 like") {
+		t.Errorf("count after like (liking twice counts once):\n%s", tl)
+	}
+
+	// the author counts it: no double count
+	settle(ctx, alice, bob)
+	bob.s.RefreshAll(ctx)
+	if tl := do4(bob, "/timeline", ck); !strings.Contains(tl, "1 like") || strings.Contains(tl, "2 likes") {
+		t.Errorf("count once the author has counted:\n%s", tl)
+	}
+
+	formAs(bob, "/unlike", ck, "", vals)
+	if tl := do4(bob, "/timeline", ck); strings.Contains(tl, "1 like") {
+		t.Errorf("count after unlike:\n%s", tl)
+	}
+	settle(ctx, alice, bob)
+	bob.s.RefreshAll(ctx)
+	if tl := do4(bob, "/timeline", ck); strings.Contains(tl, `class="tally"`) {
+		t.Errorf("count once the author has dropped it:\n%s", tl)
+	}
+}
+
+// Clicking a like count lists who liked, with Follow and Unfollow behind each name.
+func TestWhoLikedPage(t *testing.T) {
+	alice, bob, carol := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol")
+	ctx := t.Context()
+	ua := alice.post(t, `{"markdown":"Heading out for pickleball"}`)
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	bob.call(t, "POST", "/api/likes", `{"target":"`+ua+`"}`, 200)
+	carol.call(t, "POST", "/api/likes", `{"target":"`+ua+`"}`, 200)
+	settle(ctx, alice, bob, carol)
+	ack := loginCookie(t, alice)
+	page := "/liked-by?target=" + url.QueryEscape(ua)
+
+	// the count links to the list
+	if home := do4(alice, "/", ""); !strings.Contains(home, `<a href="/liked-by?target=`) || !strings.Contains(home, "1 like") {
+		t.Errorf("count is not a link to the likers:\n%s", home)
+	}
+
+	// the owner sees everyone, counted or not, and can follow or unfollow each
+	own := do4(alice, page, ack)
+	for _, want := range []string{">Bob<", ">Carol<", "not counted", `action="/following/remove"`, `action="/following"`, `value="` + bob.base + `/feed.xml"`, `value="` + carol.base + `/feed.xml"`} {
+		if !strings.Contains(own, want) {
+			t.Errorf("owner's list lacks %q:\n%s", want, own)
+		}
+	}
+	// visitors see only the likes that count, with no buttons
+	vis := do4(alice, page, "")
+	if !strings.Contains(vis, ">Bob<") || strings.Contains(vis, "Carol") || strings.Contains(vis, "<button") {
+		t.Errorf("visitor's list:\n%s", vis)
+	}
+
+	// following Carol from the list returns to the list, where she now has Unfollow
+	w := formAs(alice, "/following", ack, "http://"+alice.host+page, url.Values{"url": {carol.base + "/feed.xml"}})
+	if w.Code != 303 || w.Header().Get("Location") != page {
+		t.Fatalf("follow from the list: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if own := do4(alice, page, ack); strings.Count(own, `action="/following/remove"`) != 2 {
+		t.Errorf("both likers should now offer Unfollow:\n%s", own)
+	}
+
+	// on a post in a feed Bob follows: himself, and the followed who liked it
+	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
+	bob.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
+	bob.s.RefreshAll(ctx)
+	bck := loginCookie(t, bob)
+	bl := do4(bob, page, bck)
+	if !strings.Contains(bl, ">You<") || !strings.Contains(bl, ">Carol<") || !strings.Contains(bl, `action="/following/remove"`) {
+		t.Errorf("bob's list:\n%s", bl)
+	}
+	formAs(bob, "/following/remove", bck, "http://"+bob.host+page, url.Values{"url": {carol.base + "/feed.xml"}})
+	if bl := do4(bob, page, bck); !strings.Contains(bl, ">Carol<") || !strings.Contains(bl, `action="/following"`) || !strings.Contains(bl, "not followed") || strings.Contains(bl, "not counted") {
+		t.Errorf("an unfollowed liker should offer Follow again:\n%s", bl)
+	}
+	if c := do(bob.s, "GET", bob.host, page, "", "").Code; c == 200 {
+		t.Errorf("a list for a remote post is for the owner only")
 	}
 }

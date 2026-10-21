@@ -21,9 +21,13 @@ func (s *Server) setLike(r *http.Request, u *store.User, target, feedHint string
 	if target == "" {
 		return nil, "target must be an http(s) URL"
 	}
+	was := s.iLike(u.ID, target)
 	x, err := s.st.SetLike(u.ID, target, feedHint)
 	if err != nil {
 		return nil, err.Error()
+	}
+	if !was {
+		s.nudgeTally(u.ID, target, 1)
 	}
 	s.notify(s.likeURL(r, x.ID), target)
 	return x, ""
@@ -34,6 +38,7 @@ func (s *Server) removeLike(r *http.Request, u *store.User, target string) error
 	if err != nil {
 		return err
 	}
+	s.nudgeTally(u.ID, x.Target, -1)
 	s.notify(s.likeURL(r, x.ID), x.Target)
 	return nil
 }
@@ -111,7 +116,7 @@ func (s *Server) likeForm(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
-	http.Redirect(w, r, "/timeline", http.StatusSeeOther)
+	back(w, r, "/timeline")
 }
 
 func (s *Server) unlikeForm(w http.ResponseWriter, r *http.Request, q *req) {
@@ -122,7 +127,7 @@ func (s *Server) unlikeForm(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	http.Redirect(w, r, "/timeline", http.StatusSeeOther)
+	back(w, r, "/timeline")
 }
 
 type likeReq struct {

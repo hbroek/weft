@@ -103,6 +103,7 @@ func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineIt
 	out := make([]tlRow, 0, len(items))
 	for _, it := range items {
 		mine := s.iLike(userID, itemTarget(it))
+		n := s.tally(userID, itemTarget(it), it.Likes)
 		names := likers[itemTarget(it)]
 		if mine {
 			names = append([]string{"You"}, names...)
@@ -113,7 +114,7 @@ func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineIt
 		}
 		out = append(out, tlRow{Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
 			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil, Keywords: it.Keywords,
-			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(it.Likes), TallyTip: likedBy(names, it.Likes),
+			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(n), TallyTip: likedBy(names, n),
 			Mine: mine, when: it.Published})
 	}
 	return out, items, nil
@@ -260,7 +261,7 @@ func (s *Server) followForm(w http.ResponseWriter, r *http.Request, q *req) {
 		s.renderFollowing(w, r, q, http.StatusBadRequest, err.Error())
 		return
 	}
-	http.Redirect(w, r, "/following", http.StatusSeeOther)
+	back(w, r, "/following")
 }
 
 func (s *Server) unfollowForm(w http.ResponseWriter, r *http.Request, q *req) {
@@ -271,7 +272,7 @@ func (s *Server) unfollowForm(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	http.Redirect(w, r, "/following", http.StatusSeeOther)
+	back(w, r, "/following")
 }
 
 func (s *Server) refreshForm(w http.ResponseWriter, r *http.Request, q *req) {

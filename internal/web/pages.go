@@ -35,7 +35,7 @@ article,.node{overflow-wrap:anywhere}.note{display:block;color:#a60}.focus{scrol
 .likebtn[aria-pressed=true]{color:#1a6fe0}.likebtn[aria-pressed=true] svg{fill:currentColor}
 article.likeevent{color:GrayText;font-size:.9rem;background:none;border:0;box-shadow:none;padding:0 1.1rem;margin:.6rem 0}
 .kw{display:flex;flex-wrap:wrap;gap:.35rem;margin:.5rem 0 0}.kw span,.kw a{text-decoration:none;background:#0000000a;border-radius:999px;padding:.05rem .65rem;font-size:.85em;color:#444}.kw a:hover{background:#0000001a}.kwhead small{color:#555}
-.tally{cursor:help;text-decoration:underline dotted;text-underline-offset:3px}
+.tally{cursor:help;text-decoration:underline dotted;text-underline-offset:3px}.tally a{color:inherit;text-decoration:none}.tally a:hover{text-decoration:underline}
 #preview .empty{color:GrayText}
 .sr{position:absolute;left:-9999px}
 textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}label{display:block;margin-top:1rem}</style>
@@ -56,7 +56,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}">{{.Date}}</time></a>
 {{if .Edited}} <time>(edited)</time>{{end}}
 {{if $.Owner}} <a href="{{.URL}}/edit">Edit</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}{{end}}
-{{if .Tally}}<p class="tally" title="{{.TallyTip}}">{{.Tally}}</p>{{end}}
+{{if .Tally}}<p class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.URL}}">{{.Tally}}</a></p>{{end}}
 </article>{{else}}<p>No posts yet.</p>{{end}}
 {{if .Replies}}<section><h3>Replies</h3>{{range .Replies}}<div class="reply">
 <p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} <a href="{{.Source}}"><time>{{.Date}}</time></a></p>{{if .Title}}<h4>{{.Title}}</h4>{{end}}{{.HTML}}</div>{{end}}</section>{{end}}
@@ -81,9 +81,17 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 {{if .Keywords}}<p class="kw">{{range .Keywords}}{{if $.Only}}<a href="/timeline?feed={{$.Only}}&amp;keyword={{.}}" title="Posts with this keyword in this feed">{{.}}</a>{{else}}<a href="/timeline?keyword={{.}}" title="Posts with this keyword from everyone you follow">{{.}}</a>{{end}}{{end}}</p>{{end}}
 <p><a href="{{.ReplyHref}}">Reply</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}</p>
 {{if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
-<button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}">{{.Tally}}</small>{{end}}</form>{{end}}
+<button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Target}}">{{.Tally}}</a></small>{{end}}</form>{{end}}
 {{if .Link}}<a href="{{.Link}}"><time>{{.Date}}</time></a>{{else}}<time>{{.Date}}</time>{{end}}{{if .Edited}} <time>(edited)</time>{{end}}
 </article>{{end}}{{else}}<p>Nothing yet. <a href="/following">Follow a feed</a>.</p>{{end}}
+{{template "foot"}}{{end}}
+{{define "likers"}}{{template "head" .}}<h2>Likes</h2>
+<p><small>of <a href="{{.LikeTarget}}">{{.LikeTitle}}</a></small></p>
+{{if .Likers}}<ul>{{range .Likers}}<li>{{if .FeedURL}}<a href="/timeline?feed={{.FeedURL | urlquery}}">{{.Name}}</a>{{else}}<strong>{{.Name}}</strong>{{end}}{{if .FeedURL}} <small>{{.FeedURL}}</small>{{end}}{{if .Tag}} <small>{{.Tag}}</small>{{end}}
+{{if eq .State "unfollow"}}<form method="post" action="/following/remove" style="display:inline"><input type="hidden" name="url" value="{{.FeedURL}}"><button class="linkbtn">Unfollow</button></form>
+{{else if eq .State "follow"}}<form method="post" action="/following" style="display:inline"><input type="hidden" name="url" value="{{.FeedURL}}"><button class="linkbtn">Follow</button></form>
+{{else if eq .State "following"}}<small>Following</small>{{end}}</li>{{end}}</ul>{{else}}<p>No likes to show.</p>{{end}}
+{{if .LikeNote}}<p><small>{{.LikeNote}}</small></p>{{end}}
 {{template "foot"}}{{end}}
 {{define "following"}}{{template "head" .}}<h2>Following</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <form method="post" action="/following"><label>Feed or site URL <input type="text" name="url" placeholder="http://bob.localhost:8080/" required></label>
@@ -185,6 +193,8 @@ type pageData struct {
 	Preview                                      template.HTML // the editor's rendered Markdown
 	PreviewKeywords                              []string      // the editor's keywords as chips
 	ShowLikes                                    bool
+	Likers                                       []likerRow
+	LikeTarget, LikeTitle, LikeNote              string
 	ClearKeyword                                 string
 	Keyword, TopicFeed                           string       // a keyword filter on the home page, and the feed of just those posts
 	Bookmarklet                                  template.URL // javascript: link that sends the current page to /compose; owner's home page only

@@ -37,6 +37,8 @@ You can reject an approved reply later.
 
 Keywords: an optional comma-separated box under the Markdown editor (`pickleball, open web`, phrases allowed, up to 10 of 50 characters). They are published as the item's `<category>` elements and shown as chips; the API takes `"keywords": ["a", "b c"]`.
 
+The like count is a link to a list of who liked the post, with Follow and Unfollow behind each name (`/liked-by?target=<post URL>`): on your own posts it lists everyone whose like arrived, marking the ones that are not counted because you don't follow them; on a post in a feed you follow it lists the people you follow who liked it.
+
 Chips are links. On a site, `/?keyword=pickleball` lists that author's posts with the keyword, and `/feed.xml?category=pickleball` is a topic feed of just those posts (paged like the main feed), so someone can follow one topic from one person; following the `?keyword=` page address finds that feed. A chip filters the view it is in: in your timeline it filters everything you follow (`/timeline?keyword=pickleball`), and when you are looking at one person's feed (`/timeline?feed=…`) it filters just that feed. Matching is on the whole keyword, ignoring case.
 
 Liking: under each timeline post, "Like" publishes a like in your likes feed, and "undo" withdraws it.
