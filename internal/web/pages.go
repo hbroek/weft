@@ -25,44 +25,33 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <meta name="theme-color" content="#26337a">
 <link rel="webmention" href="{{.WebmentionURL}}">
 {{range .Links}}<link rel="{{.Rel}}"{{if .Type}} type="{{.Type}}"{{end}} href="{{.Href}}">
-{{end}}<style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;background:#f3f4f6;color:#1c1c1e}
-article,.node{background:#fff;border:1px solid #0000000f;border-radius:12px;box-shadow:0 1px 2px #0000001a,0 4px 14px #0000000d;padding:.9rem 1.1rem}
-article{margin:1rem 0}time{color:#888;font-size:.85em}
-nav a,nav button{margin-right:1rem}nav form{display:inline}
-nav button,.linkbtn{background:none;border:0;padding:0;font:inherit;color:LinkText;cursor:pointer;text-decoration:underline}
-input[type=text],input[type=password],textarea{width:100%;box-sizing:border-box;font:inherit;padding:.4rem}
-ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #0002}.node{margin:.75rem 0}
-footer{margin:2rem 0 1rem;text-align:center}footer a{color:#555;text-decoration:none}footer img{vertical-align:-4px;border-radius:4px}
-article img,.node img,#preview img{max-width:100%;max-height:28rem;height:auto;object-fit:contain;border-radius:8px}
-article,.node{overflow-wrap:anywhere}.note{display:block;color:#a60}.focus{scroll-margin-top:4rem;background:#f4f8ff;box-shadow:0 0 0 2px #1a6fe055,0 4px 14px #0000000d}
-.react{display:flex;align-items:center;gap:.25rem;margin:.25rem 0}
-.likebtn{display:inline-flex;align-items:center;background:none;border:0;padding:.15rem .25rem;color:inherit;cursor:pointer}
-.likebtn svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
-.likebtn[aria-pressed=true]{color:#1a6fe0}.likebtn[aria-pressed=true] svg{fill:currentColor}
-article.likeevent{color:GrayText;font-size:.9rem;background:none;border:0;box-shadow:none;padding:0 1.1rem;margin:.6rem 0}
-.kw{display:flex;flex-wrap:wrap;gap:.35rem;margin:.5rem 0 0}.kw span,.kw a{text-decoration:none;background:#0000000a;border-radius:999px;padding:.05rem .65rem;font-size:.85em;color:#444}.kw a:hover{background:#0000001a}.kwhead small{color:#555}
-.tally{cursor:help;text-decoration:underline dotted;text-underline-offset:3px}.tally a{color:inherit;text-decoration:none}.tally a:hover{text-decoration:underline}
-#preview .empty{color:GrayText}
-.sr{position:absolute;left:-9999px}
-textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}label{display:block;margin-top:1rem}</style>
+{{end}}<link rel="stylesheet" href="/static/weft.css">
+<script>try{var t=localStorage.getItem('weft-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head><body>
-<header><h1><a href="/">{{.Author}}</a></h1><p>{{.Bio}}</p>
-<nav>{{if .Owner}}<a href="/compose">Compose</a><a href="/timeline">Timeline</a><a href="/following">Following</a><a href="/replies">Replies</a>
-<form method="post" action="/logout"><button>Log out</button></form>{{else}}<a href="/login">Log in</a>{{end}}</nav></header>
+<header class="top"><div class="top-in">
+<a class="brand" href="/" title="{{.Author}}"><img src="/static/weft-icon.svg" alt="" width="36" height="36"><span>Weft</span></a>
+<div class="top-r"><a class="site" href="/">{{.Author}}</a>
+<button type="button" class="th" id="theme" title="Theme: auto" aria-label="Theme: auto"><svg class="t-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg><svg class="t-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="t-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+{{if .Owner}}<form method="post" action="/logout"><button class="btn">Log out</button></form>{{else}}<a class="btn" href="/login">Log in</a>{{end}}</div></div></header>
+<script>(function(){var b=document.getElementById('theme'),r=document.documentElement,o=['auto','light','dark'];function cur(){return r.getAttribute('data-theme')||'auto'}function label(){b.title='Theme: '+cur()+' (click to change)';b.setAttribute('aria-label',b.title)}label();b.addEventListener('click',function(){var n=o[(o.indexOf(cur())+1)%3];if(n==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',n);try{if(n==='auto')localStorage.removeItem('weft-theme');else localStorage.setItem('weft-theme',n)}catch(e){}label()})})()</script>
+<div class="wrap">
+{{if .Owner}}<nav class="sub"><a href="/compose">Compose</a><a href="/timeline">Timeline</a><a href="/following">Following</a><a href="/replies">Replies</a></nav>{{end}}
+{{if .Bio}}<p class="bio">{{.Bio}}</p>{{end}}
 <main>{{end}}
-{{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></body></html>{{end}}
+{{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div></body></html>{{end}}
+{{define "ic-reply"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v3"/></svg>{{end}}
+{{define "ic-thread"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{{end}}
+{{define "ic-edit"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>{{end}}
 {{define "posts"}}{{template "head" .}}
 {{if .Keyword}}<p class="kwhead">Posts tagged <strong>{{.Keyword}}</strong> <small>· <a href="/">All posts</a> · <a href="{{.TopicFeed}}">Feed for this topic</a></small></p>{{end}}
 {{if .Bookmarklet}}<p class="bm"><small>Bookmark card: drag <a href="{{.Bookmarklet}}">Weft it</a> to your bookmarks bar, then click it on any page to compose a post from that page.</small></p>{{end}}
 {{range .Posts}}<article class="h-entry">
-{{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{end}}
+<div class="card-top">{{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{else}}<span></span>{{end}}<span class="when"><a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{if .Edited}} · edited{{end}}</span></div>
 {{if .InReplyTo}}<p><small>In reply to <a class="u-in-reply-to" href="{{.InReplyTo}}">{{.InReplyTo}}</a></small></p>{{end}}
 <div class="e-content">{{.HTML}}</div>
 {{if .Keywords}}<p class="kw">{{range .Keywords}}<a class="p-category" href="/?keyword={{.}}">{{.}}</a>{{end}}</p>{{end}}
-<a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}">{{.Date}}</time></a>
-{{if .Edited}} <time>(edited)</time>{{end}}
-{{if $.Owner}} <a href="{{.URL}}/edit">Edit</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}{{end}}
-{{if .Tally}}<p class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.URL}}">{{.Tally}}</a></p>{{end}}
+<div class="meta"><div class="m-l">{{if .Tally}}<small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.URL}}">{{.Tally}}</a></small>{{end}}</div>
+<div class="m-r">{{if $.Owner}}{{if .HasThread}}<a class="ico" href="{{.ThreadHref}}" title="Thread" aria-label="Thread">{{template "ic-thread"}}</a>{{end}}<a class="ico" href="{{.URL}}/edit" title="Edit" aria-label="Edit">{{template "ic-edit"}}</a>{{end}}</div></div>
 </article>{{else}}<p>No posts yet.</p>{{end}}
 {{if .Replies}}<section><h3>Replies</h3>{{range .Replies}}<div class="reply">
 <p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} <a href="{{.Source}}"><time>{{.Date}}</time></a></p>{{if .Title}}<h4>{{.Title}}</h4>{{end}}{{.HTML}}</div>{{end}}</section>{{end}}
@@ -81,15 +70,14 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <p><small>{{if not .Keyword}}<a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a>{{end}}{{if not .Only}}{{if not .Keyword}} · {{end}}<a href="{{.MineToggle}}">{{if .ShowMine}}Hide my posts{{else}}Show my posts{{end}}</a>{{end}}</small></p>
 {{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small></p></article>
 {{else}}<article>
-<p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
+<div class="card-top"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
+<span class="when">{{if .Link}}<a href="{{.Link}}"><time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{else}}<time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time>{{end}}{{if .Edited}} · edited{{end}}</span></div>
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div>{{.HTML}}</div>
 {{if .Keywords}}<p class="kw">{{range .Keywords}}{{if $.Only}}<a href="/timeline?feed={{$.Only}}&amp;keyword={{.}}" title="Posts with this keyword in this feed">{{.}}</a>{{else}}<a href="/timeline?keyword={{.}}" title="Posts with this keyword from everyone you follow">{{.}}</a>{{end}}{{end}}</p>{{end}}
-<p><a href="{{.ReplyHref}}">Reply</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}{{if .Own}} <a href="{{.EditHref}}">Edit</a>{{end}}</p>
-{{if and .Own .Tally}}<p class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Link}}">{{.Tally}}</a></p>{{end}}
-{{if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
-<button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Target}}">{{.Tally}}</a></small>{{end}}</form>{{end}}
-{{if .Link}}<a href="{{.Link}}"><time>{{.Date}}</time></a>{{else}}<time>{{.Date}}</time>{{end}}{{if .Edited}} <time>(edited)</time>{{end}}
+<div class="meta"><div class="m-l">{{if .Own}}{{if .Tally}}<small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Link}}">{{.Tally}}</a></small>{{end}}{{else if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
+<button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Target}}">{{.Tally}}</a></small>{{end}}</form>{{end}}</div>
+<div class="m-r"><a class="ico" href="{{.ReplyHref}}" title="Reply" aria-label="Reply">{{template "ic-reply"}}</a>{{if .HasThread}}<a class="ico" href="{{.ThreadHref}}" title="Thread" aria-label="Thread">{{template "ic-thread"}}</a>{{end}}{{if .Own}}<a class="ico" href="{{.EditHref}}" title="Edit" aria-label="Edit">{{template "ic-edit"}}</a>{{end}}</div></div>
 </article>{{end}}{{else}}<p>Nothing yet. <a href="/following">Follow a feed</a>.</p>{{end}}
 {{template "foot"}}{{end}}
 {{define "likers"}}{{template "head" .}}<h2>Likes</h2>
@@ -172,14 +160,14 @@ if(kw&&kwbox)kw.addEventListener('input',chips);
 {{template "foot"}}{{end}}`))
 
 type pagePost struct {
-	Title, URL, ISO, Date string
-	HTML                  template.HTML
-	Edited                bool
-	InReplyTo             string
-	Keywords              []string
-	Tally, TallyTip       string
-	ThreadHref            string
-	HasThread             bool // it replies to something or has approved replies
+	Title, URL, ISO, Date, Ago string
+	HTML                       template.HTML
+	Edited                     bool
+	InReplyTo                  string
+	Keywords                   []string
+	Tally, TallyTip            string
+	ThreadHref                 string
+	HasThread                  bool // it replies to something or has approved replies
 }
 
 type pageData struct {
@@ -232,7 +220,7 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 	for _, p := range posts {
 		d.Posts = append(d.Posts, pagePost{
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
-			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 15:04"),
+			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 at 15:04"), Ago: ago(p.Created),
 			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Keywords: p.Keywords, Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
 			HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 		})

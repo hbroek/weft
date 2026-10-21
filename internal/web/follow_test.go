@@ -74,7 +74,7 @@ func TestFollowAndTimeline(t *testing.T) {
 	s.st.SetPassword("alice", "correct horse")
 	ck := cookieOf(form(s, "POST", "/login", "", map[string][]string{"password": {"correct horse"}}, ""))
 	page := do3(s, "GET", alice, "/timeline", ck).Body.String()
-	for _, bad := range []string{"<img src=x", "onerror", "javascript:", "<script"} {
+	for _, bad := range []string{"<img src=x", "onerror", "javascript:", "<script>alert"} {
 		if strings.Contains(page, bad) {
 			t.Errorf("timeline page contains %q:\n%s", bad, page)
 		}

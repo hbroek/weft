@@ -365,3 +365,35 @@ func TestSiteIcons(t *testing.T) {
 		}
 	}
 }
+
+// Every page has the header: logo on the left; site name, theme button and Log in or Log out on the
+// right. The styles carry the palette with light, dark and auto modes.
+func TestHeaderAndThemes(t *testing.T) {
+	s, _ := setup(t)
+	s.st.SetPassword("alice", "correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+
+	vis := do(s, "GET", host, "/", "", "").Body.String()
+	for _, want := range []string{`<header class="top">`, `class="brand" href="/"`, `<span>Weft</span>`, `<a class="site" href="/">Alice</a>`, `id="theme"`, `<a class="btn" href="/login">Log in</a>`, `href="/static/weft.css"`, `localStorage.getItem('weft-theme')`} {
+		if !strings.Contains(vis, want) {
+			t.Errorf("visitor's header lacks %q", want)
+		}
+	}
+	if strings.Contains(vis, "Log out") || strings.Contains(vis, `class="sub"`) {
+		t.Errorf("visitor must not see Log out or the owner's menu")
+	}
+	own := do3(s, "GET", host, "/", ck).Body.String()
+	if !strings.Contains(own, `action="/logout"><button class="btn">Log out</button>`) || !strings.Contains(own, `<nav class="sub"><a href="/compose">Compose</a>`) || strings.Contains(own, ">Log in<") {
+		t.Errorf("owner's header:\n%s", own)
+	}
+
+	css := do(s, "GET", host, "/static/weft.css", "", "")
+	if css.Code != 200 || !strings.HasPrefix(css.Header().Get("Content-Type"), "text/css") {
+		t.Fatalf("stylesheet: %d %q", css.Code, css.Header().Get("Content-Type"))
+	}
+	for _, want := range []string{"#26337a", "#f08a4b", "#eef0fa", "prefers-color-scheme: dark", `:root[data-theme="dark"]`, `:root:not([data-theme="light"])`} {
+		if !strings.Contains(css.Body.String(), want) {
+			t.Errorf("stylesheet lacks %q", want)
+		}
+	}
+}

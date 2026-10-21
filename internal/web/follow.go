@@ -26,6 +26,7 @@ type tlRow struct {
 	HTML                                                        template.HTML
 	Edited                                                      bool
 	Keywords                                                    []string
+	ISO, Ago                                                    string
 	Own                                                         bool // one of your own posts, shown in the timeline
 	EditHref                                                    string
 	// a like by someone you follow, shown only when likes are switched on
@@ -115,7 +116,7 @@ func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineIt
 			author = it.FeedURL
 		}
 		out = append(out, tlRow{Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
-			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil, Keywords: it.Keywords,
+			Date: it.Published.Format("2 Jan 2006 at 15:04"), ISO: it.Published.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(it.Published), HTML: remoteHTML(it), Edited: it.Updated != nil, Keywords: it.Keywords,
 			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(n), TallyTip: likedBy(names, n),
 			Mine: mine, when: it.Published})
 	}
@@ -187,7 +188,7 @@ func (s *Server) ownRows(r *http.Request, q *req) ([]tlRow, error) {
 	for _, p := range posts {
 		pu := s.postURL(r, p.ID)
 		out = append(out, tlRow{Own: true, Author: "You", AuthorHref: "/", Title: p.Title, Link: pu, InReplyTo: httpURL(p.InReplyTo),
-			Date: p.Created.Format("2 Jan 2006 15:04"), HTML: template.HTML(p.HTML), // goldmark safe mode
+			Date: p.Created.Format("2 Jan 2006 at 15:04"), ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(p.Created), HTML: template.HTML(p.HTML), // goldmark safe mode
 			Edited: p.Updated != nil, Keywords: p.Keywords, EditHref: "/posts/" + p.Slug + "/edit",
 			ReplyHref: "/compose?reply_to=" + url.QueryEscape(pu), ThreadHref: threadHref(pu, ""), HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 			Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), when: p.Created})

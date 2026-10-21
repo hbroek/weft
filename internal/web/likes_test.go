@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLikeRoundTripAcrossInstances(t *testing.T) {
@@ -378,7 +379,7 @@ func TestWhoLikedPage(t *testing.T) {
 	}
 	// visitors see only the likes that count, with no buttons
 	vis := do4(alice, page, "")
-	if !strings.Contains(vis, ">Bob<") || strings.Contains(vis, "Carol") || strings.Contains(vis, "<button") {
+	if !strings.Contains(vis, ">Bob<") || strings.Contains(vis, "Carol") || strings.Contains(vis, `action="/following`) {
 		t.Errorf("visitor's list:\n%s", vis)
 	}
 
@@ -487,5 +488,49 @@ func TestFollowingRecountsLikes(t *testing.T) {
 	alice.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
 	if !strings.Contains(alice.get("/"), "1 like") {
 		t.Errorf("a like recorded from the likes feed should count once the sender is followed")
+	}
+}
+
+// A card's footer is one line, likes on the left and icon actions on the right, and its age
+// ("3 hrs ago", exact time in the tooltip) is at the top right.
+func TestCardFooterOneLine(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	alice.post(t, `{"markdown":"mine"}`)
+	bob.post(t, `{"markdown":"theirs"}`)
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	ck := loginCookie(t, alice)
+	foot := regexp.MustCompile(`class="meta"><div class="m-l">.*?</div>\s*<div class="m-r">`)
+	top := regexp.MustCompile(`(?s)<div class="card-top">.*?<span class="when">.*?<time[^>]*title="\d{1,2} \w{3} \d{4} at \d\d:\d\d"[^>]*>just now</time>`)
+	for name, page := range map[string]string{"timeline": do4(alice, "/timeline", ck), "home": do4(alice, "/", ck)} {
+		if !foot.MatchString(page) || strings.Contains(page, `class="m-c"`) {
+			t.Errorf("%s: footer should be likes left, actions right:\n%s", name, page)
+		}
+		if !top.MatchString(page) {
+			t.Errorf("%s: age should be at the top right with the exact time as a tooltip:\n%s", name, page)
+		}
+		if !strings.Contains(page, `aria-label="Edit"`) || strings.Contains(page, ">Edit</a>") {
+			t.Errorf("%s: actions should be icons with labels", name)
+		}
+	}
+	tl := do4(alice, "/timeline", ck)
+	if !strings.Contains(tl, `aria-label="Reply"`) || !strings.Contains(tl, `class="likebtn"`) {
+		t.Errorf("timeline lacks the reply icon or like button")
+	}
+}
+
+func TestAgo(t *testing.T) {
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	for d, want := range map[time.Duration]string{
+		-time.Hour: "just now", 0: "just now", 59 * time.Second: "just now",
+		time.Minute: "1 min ago", 5 * time.Minute: "5 mins ago", 59 * time.Minute: "59 mins ago",
+		time.Hour: "1 hr ago", 3*time.Hour + 20*time.Minute: "3 hrs ago", 23 * time.Hour: "23 hrs ago",
+		24 * time.Hour: "1 day ago", 2*24*time.Hour + time.Hour: "2 days ago", 6 * 24 * time.Hour: "6 days ago",
+		7 * 24 * time.Hour: "1 wk ago", 15 * 24 * time.Hour: "2 wks ago",
+		30 * 24 * time.Hour: "1 mo ago", 100 * 24 * time.Hour: "3 mos ago",
+		365 * 24 * time.Hour: "1 yr ago", 800 * 24 * time.Hour: "2 yrs ago",
+	} {
+		if got := agoAt(now, now.Add(-d)); got != want {
+			t.Errorf("%v ago: %q, want %q", d, got, want)
+		}
 	}
 }

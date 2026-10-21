@@ -120,3 +120,7 @@ A post's permalink answers to its `Accept` header: `text/markdown` returns the s
 ## Icons
 
 `img/` holds the logo at every size (16 to 1024 px, the 500 px avatar, and the square SVG). The ones the site uses are compiled into the binary from `internal/web/static/` and served at `/static/` and `/favicon.ico` on every host: the favicon (`.ico` and SVG), the Apple touch icon, the 192 and 512 px icons for `site.webmanifest`, and the SVG logo in the page footer.
+
+## Look
+
+Every page has a header with the logo on the left and the site name, a theme button and Log in or Log out on the right. The styles are in `internal/web/static/weft.css` (compiled in), built on indigo `#26337A`, thread orange `#F08A4B` and off-white `#EEF0FA`. The theme button cycles auto (follows the system), light and dark, and the choice is remembered in the browser.
