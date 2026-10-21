@@ -193,8 +193,11 @@ CREATE INDEX IF NOT EXISTS items_pub ON items(published DESC);
 CREATE INDEX IF NOT EXISTS posts_user ON posts(user_id, created DESC);
 `
 
+// Open opens (creating if needed) the database at path in WAL mode. journal_size_limit keeps the
+// write-ahead log from staying at the largest size it ever grew to: after a checkpoint the file is cut
+// back to 1 MiB.
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)")
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=journal_size_limit(1048576)")
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +289,15 @@ func migrateLikes(db *sql.DB) error {
 	return nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+// Close writes the write-ahead log back into the database and closes it. When this is the last
+// connection to the file, SQLite then also deletes the -wal and -shm files, so a database that was
+// closed properly is a single file (a crash leaves them; the next open recovers). Close it only after
+// everything that uses the store has stopped.
+func (s *Store) Close() error {
+	s.db.Exec(`PRAGMA optimize`)
+	s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+	return s.db.Close()
+}
 
 func hashToken(t string) string {
 	h := sha256.Sum256([]byte(t))

@@ -3,14 +3,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/hbroek/weft/internal/store"
@@ -68,15 +71,9 @@ func main() {
 		poll := fs.Duration("poll", 5*time.Minute, "how often to refresh followed feeds (0 turns the background refresh off)")
 		fs.Parse(os.Args[2:])
 		legacyDB(*db)
-		st, err := store.Open(*db)
-		if err != nil {
+		if err := serve(*addr, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose}, *poll); err != nil {
 			log.Fatal(err)
 		}
-		defer st.Close()
-		srv := web.New(web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose}, st)
-		srv.StartPoller(context.Background(), *poll)
-		log.Printf("listening on %s, users at <name>.%s (dev=%v)", *addr, *domain, *dev)
-		log.Fatal(http.ListenAndServe(*addr, srv))
 	case "user":
 		if len(os.Args) < 3 || (os.Args[2] != "add" && os.Args[2] != "passwd" && os.Args[2] != "token" && os.Args[2] != "list" && os.Args[2] != "follow" && os.Args[2] != "set") {
 			usage()
@@ -209,4 +206,57 @@ func main() {
 	default:
 		usage()
 	}
+}
+
+// serve runs the server until it is told to stop (Ctrl-C or SIGTERM) or cannot listen. It then shuts
+// down in order: stop taking requests and let those in progress finish, stop the background refresh
+// and wait for it, and only then close the database, which writes out the write-ahead log and removes
+// the -wal and -shm files.
+func serve(addr, dbPath string, cfg web.Config, poll time.Duration) error {
+	st, err := store.Open(dbPath)
+	if err != nil {
+		return err
+	}
+	srv := web.New(cfg, st)
+
+	stopSignals, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	bg, cancelBackground := context.WithCancel(context.Background())
+	pollDone := srv.StartPoller(bg, poll)
+
+	hs := &http.Server{Addr: addr, Handler: srv}
+	listenErr := make(chan error, 1)
+	go func() { listenErr <- hs.ListenAndServe() }()
+	log.Printf("listening on %s, users at <name>.%s (dev=%v)", addr, cfg.BaseDomain, cfg.AllowPrivate)
+
+	var result error
+	select {
+	case err := <-listenErr:
+		result = err // could not listen, or the server stopped by itself
+	case <-stopSignals.Done():
+		log.Printf("shutting down: finishing requests in progress")
+	}
+	stop() // a second Ctrl-C now ends the program at once
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := hs.Shutdown(ctx); err != nil {
+		log.Printf("requests did not finish in time: %v", err)
+		hs.Close()
+	}
+	cancelBackground()
+	select {
+	case <-pollDone:
+	case <-time.After(15 * time.Second):
+		log.Printf("background work did not stop in time")
+	}
+	if err := st.Close(); err != nil {
+		log.Printf("closing the database: %v", err)
+	} else {
+		log.Printf("database closed")
+	}
+	if errors.Is(result, http.ErrServerClosed) {
+		result = nil
+	}
+	return result
 }

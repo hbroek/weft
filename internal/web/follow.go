@@ -497,8 +497,13 @@ func (s *Server) RefreshAll(ctx context.Context) {
 
 // StartPoller runs the background work until ctx is done: refreshing followed feeds every
 // interval, and processing the Webmention queues now and then and whenever one is kicked.
-func (s *Server) StartPoller(ctx context.Context, every time.Duration) {
+//
+// It returns a channel that is closed once the loop has stopped (after ctx is cancelled), so a
+// shutdown can wait for a refresh in progress before it closes the database.
+func (s *Server) StartPoller(ctx context.Context, every time.Duration) <-chan struct{} {
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		// An interval of zero or less switches the background refresh off; followed feeds then
 		// refresh only on "Refresh now". A nil channel never fires.
 		var refresh <-chan time.Time
@@ -522,6 +527,7 @@ func (s *Server) StartPoller(ctx context.Context, every time.Duration) {
 			}
 		}
 	}()
+	return done
 }
 
 // opml publishes the follow list (the public follow graph).
