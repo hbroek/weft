@@ -63,7 +63,7 @@ func TestHumanFlow(t *testing.T) {
 	// compose
 	w = form(s, "POST", "/compose", ck, url.Values{"markdown": {"first *post*"}}, "")
 	loc := w.Header().Get("Location")
-	if w.Code != 303 || !regexp.MustCompile(`^/posts/first-post-[a-z0-9]{4}$`).MatchString(loc) {
+	if w.Code != 303 || !regexp.MustCompile(`^/posts/first-post\.[a-z0-9]{4}$`).MatchString(loc) {
 		t.Fatalf("compose: %d %s", w.Code, loc)
 	}
 	if w := form(s, "POST", "/compose", ck, url.Values{"markdown": {" "}}, ""); w.Code != 400 {

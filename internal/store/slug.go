@@ -26,6 +26,9 @@ const (
 	// No vowels or look-alikes, so a random suffix never spells a word or confuses l/1, o/0.
 	suffixAlphabet = "bcdfghjkmnpqrstvwxz23456789"
 	suffixLen      = 4
+	// slugSep joins the words to the suffix, like a full stop ending the sentence. A dot is never
+	// percent-encoded, and a suffix without vowels cannot pass for a file extension.
+	slugSep = "."
 )
 
 var (
@@ -86,5 +89,5 @@ func Slug(title, markdown string) string {
 	for i := range suf {
 		suf[i] = suffixAlphabet[int(suf[i])%len(suffixAlphabet)]
 	}
-	return base + "-" + string(suf[:])
+	return base + slugSep + string(suf[:])
 }

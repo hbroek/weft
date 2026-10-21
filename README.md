@@ -73,7 +73,7 @@ The build is a single static binary (`CGO_ENABLED=0`). Dependencies: `goldmark`,
 ## Post addresses and identity
 
 A post has one address and one identity, kept apart so a post can move between instances.
-- **Address:** `<link>` is `https://<user host>/posts/<slug>`, for example `/posts/the-reader-half-k3x9`. The slug comes from the title (or the first sentence of an untitled note) plus a random 4-character suffix. It is unique per user, never changes (even when the post is edited), and stays reserved after the post is deleted. It is the only URL that serves the post.
+- **Address:** `<link>` is `https://<user host>/posts/<slug>`, for example `/posts/the-reader-half.k3x9`. The slug comes from the title (or the first sentence of an untitled note) plus a random 4-character suffix after a `.`, such as `.k3x9`. Posts made before this keep their `-k3x9` addresses. It is unique per user, never changes (even when the post is edited), and stays reserved after the post is deleted. It is the only URL that serves the post.
 - **Identity:** `<guid isPermaLink="false">urn:uuid:…</guid>` is a UUIDv7 made when the post is created. It is not a URL and travels with the post.
 - Likes still have instance-local addresses (`/likes/<n>`); they will get the same treatment later.
 

@@ -58,7 +58,7 @@ func TestPublishAndFeed(t *testing.T) {
 		t.Fatalf("untitled: got %d %s", w.Code, w.Body)
 	}
 	w := do(s, "POST", host, "/api/posts", tok, `{"title":"Essay","markdown":"# hi\n\nbody"}`)
-	if w.Code != 201 || !regexp.MustCompile(`http://alice\.localhost:8080/posts/essay-[a-z0-9]{4}"`).MatchString(w.Body.String()) {
+	if w.Code != 201 || !regexp.MustCompile(`http://alice\.localhost:8080/posts/essay\.[a-z0-9]{4}"`).MatchString(w.Body.String()) {
 		t.Fatalf("titled: %d %s", w.Code, w.Body)
 	}
 
@@ -101,7 +101,7 @@ func TestPublishAndFeed(t *testing.T) {
 
 	// identity and address are separate: the guid is a UUID, the link a readable slug
 	if !regexp.MustCompile(`^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(note.GUID) ||
-		!regexp.MustCompile(`^http://alice\.localhost:8080/posts/a-short-note-[a-z0-9]{4}$`).MatchString(note.Link) {
+		!regexp.MustCompile(`^http://alice\.localhost:8080/posts/a-short-note\.[a-z0-9]{4}$`).MatchString(note.Link) {
 		t.Errorf("guid %q link %q", note.GUID, note.Link)
 	}
 	pw := do(s, "GET", host, pathOf(note.Link), "", "")

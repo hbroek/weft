@@ -62,7 +62,7 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 | Element | Status | Rule |
 | --- | --- | --- |
 | `<guid isPermaLink="false">` | Required | The post's identity: `urn:uuid:` plus a UUID (version 7 recommended) made once when the post is created. It is not a URL and never changes, so the post stays the same post if its author moves to another host. |
-| `<link>` | Required | The post's HTML permalink: the author's host plus a slug, such as `https://alice.example/posts/the-reader-half-k3x9`. This URL is the post's address in replies (`weft:inReplyTo`, `weft:root`), likes and Webmentions. It is the only URL that serves the post. The slug is built from the title or the first sentence of a note plus a short random suffix, is unique in the author's namespace, and never changes after publishing, even if the post is edited. A deleted post keeps its slug reserved. |
+| `<link>` | Required | The post's HTML permalink: the author's host plus a slug, such as `https://alice.example/posts/the-reader-half.k3x9`. This URL is the post's address in replies (`weft:inReplyTo`, `weft:root`), likes and Webmentions. It is the only URL that serves the post. The slug is built from the title or the first sentence of a note plus a short random suffix, is unique in the author's namespace, and never changes after publishing, even if the post is edited. A deleted post keeps its slug reserved. |
 | `<description>` | Required | Rendered HTML of the post. |
 | `<title>` | Optional | Include only if the author gave one. Apps must not invent titles from the first line. |
 | `<source:markdown>` | Recommended | The original Markdown, unaltered. |
@@ -76,7 +76,7 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 `<weft:inReplyTo>` marks the item as a reply. It is the child's upward link, and it survives even if the parent rejects or deletes the reply.
 
 ```xml
-<weft:inReplyTo href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
+<weft:inReplyTo href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp"
               feed="https://alice.example/feed.xml"/>
 ```
 
@@ -86,7 +86,7 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 `<weft:root>` names the post that started the thread, like email's `References` header. Any reply can be placed in its conversation even if middle posts disappear.
 
 ```xml
-<weft:root href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
+<weft:root href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp"
          feed="https://alice.example/feed.xml"/>
 ```
 
@@ -96,7 +96,7 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 `<weft:context>` carries a short snippet of the parent, so the reply still makes sense if the parent goes offline.
 
 ```xml
-<weft:context href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
+<weft:context href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp"
             retrieved="Mon, 12 Oct 2026 22:30:00 -0400">
   RSS plus links already gives you a social web.
 </weft:context>
@@ -258,12 +258,12 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
   <item>
     <!-- No <title>: a short note -->
     <guid isPermaLink="false">urn:uuid:0194f3a0-5c1e-7a52-9d0b-3c7a5e2f1b44</guid>
-    <link>https://alice.example/posts/rss-plus-links-already-gives-you-w3kp</link>
+    <link>https://alice.example/posts/rss-plus-links-already-gives-you.w3kp</link>
     <description>&lt;p&gt;RSS plus links already gives you a social web. Who's building the &lt;em&gt;reader&lt;/em&gt; half?&lt;/p&gt;</description>
     <source:markdown>RSS plus links already gives you a social web. Who's building the *reader* half?</source:markdown>
     <pubDate>Mon, 12 Oct 2026 21:00:00 -0400</pubDate>
     <category>textcasting</category>
-    <weft:replies href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp/replies.xml" count="1"/>
+    <weft:replies href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp/replies.xml" count="1"/>
     <weft:likes count="1"/>
   </item>
 </channel>
@@ -281,11 +281,11 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
   <source:markdown>Search and threads are what's missing. Here's a sketch…</source:markdown>
   <pubDate>Mon, 12 Oct 2026 22:15:00 -0400</pubDate>
   <weft:updated>Mon, 12 Oct 2026 22:40:00 -0400</weft:updated>
-  <weft:inReplyTo href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
+  <weft:inReplyTo href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp"
                 feed="https://alice.example/feed.xml"/>
-  <weft:root href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
+  <weft:root href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp"
            feed="https://alice.example/feed.xml"/>
-  <weft:context href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"
+  <weft:context href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp"
               retrieved="Mon, 12 Oct 2026 22:10:00 -0400">RSS plus links already gives you a social web.</weft:context>
 </item>
 ```
@@ -298,7 +298,7 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
   <link>https://carol.example/likes/2026-10-12-1</link>
   <description/>
   <pubDate>Mon, 12 Oct 2026 22:20:00 -0400</pubDate>
-  <weft:likeOf href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"/>
+  <weft:likeOf href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp"/>
 </item>
 ```
 
@@ -308,10 +308,10 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 <rss version="2.0" xmlns:weft="https://weftseed.com/ns/weft/0.1">
 <channel>
   <title>Replies to: RSS plus links already gives you a social web</title>
-  <link>https://alice.example/posts/rss-plus-links-already-gives-you-w3kp</link>
+  <link>https://alice.example/posts/rss-plus-links-already-gives-you.w3kp</link>
   <description>Approved replies</description>
   <lastBuildDate>Mon, 12 Oct 2026 22:45:00 -0400</lastBuildDate>
-  <weft:repliesTo href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"/>
+  <weft:repliesTo href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp"/>
   <weft:depth>2</weft:depth>
 
   <item>
@@ -320,7 +320,7 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
     <link>https://bob.example/posts/reader-half</link>
     <description>Search and threads are what's missing.</description>
     <weft:feed href="https://bob.example/feed.xml"/>
-    <weft:inReplyTo href="https://alice.example/posts/rss-plus-links-already-gives-you-w3kp"/>
+    <weft:inReplyTo href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp"/>
     <weft:likes count="3"/>
   </item>
 
