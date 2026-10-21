@@ -186,6 +186,7 @@ if(kw&&kwbox)kw.addEventListener('input',chips);
 
 type pagePost struct {
 	Title, URL, ISO, Date, Ago string
+	Markdown                   string // the post as its author wrote it, for the Markdown form of the page
 	HTML                       template.HTML
 	Edited                     bool
 	InReplyTo                  string
@@ -216,6 +217,7 @@ type pageData struct {
 	ShowLikes, ShowMine                          bool
 	MineToggle                                   string
 	Nav                                          string          // which menu entry the page belongs to
+	WantMD                                       bool            // the request asked for the page as Markdown
 	Home                                         bool            // the site's home page: it shows the bio
 	SiteURL                                      string          // this site's home address, for the author's h-card
 	PInfo                                        feed.ParentInfo // the snapshot of the page being replied to, kept in hidden fields
@@ -234,7 +236,7 @@ type pageData struct {
 
 func (s *Server) data(r *http.Request, q *req, title string) pageData {
 	return pageData{Title: title, FeedURL: s.base(r) + "/feed.xml", WebmentionURL: s.base(r) + "/webmention",
-		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name))}
+		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", WantMD: negotiate(r.Header.Get("Accept")) == "markdown", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name))}
 }
 
 // navOf names the header menu entry a path belongs to, or "".
@@ -248,6 +250,16 @@ func navOf(path string) string {
 }
 
 func (s *Server) show(w http.ResponseWriter, name string, status int, d pageData) {
+	w.Header().Add("Vary", "Accept")
+	if d.WantMD {
+		if doc, ok := d.markdown(name); ok {
+			w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.WriteHeader(status)
+			io.WriteString(w, doc)
+			return
+		}
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := layout.ExecuteTemplate(w, name, d); err != nil {
@@ -264,7 +276,7 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 	for _, p := range posts {
 		d.Posts = append(d.Posts, pagePost{
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
-			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 at 15:04"), Ago: ago(p.Created),
+			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 at 15:04"), Ago: ago(p.Created), Markdown: p.Markdown,
 			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Parent: newParentCard(p.InReplyTo, p.Parent), Keywords: p.Keywords, Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
 			HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 		})

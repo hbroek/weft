@@ -136,3 +136,8 @@ Your home page shows a "Weft it" link to drag to the bookmarks bar. Clicking it 
 Post and like pages mark up their author as an `h-card` (`p-author` with the display name, the site address and, if set, the avatar as `u-photo`) next to the `h-entry`, so Webmention receivers that read microformats can show who wrote a reply.
 
 **Liking a page that is not on Weft:** in the compose form the bookmarklet opens, the **Bookmark · Reply · Like** links at the top choose what to do with the page. **Like** asks for one click, publishes the like in your likes feed together with the page's title, description and image (as optional attributes of `weft:likeOf`), and tells the page with a Webmention if it can take one. Your likes, and those of people you follow, then read "liked “The web of links” (blog.example)" under "Show likes", and your own likes there have an Unlike button. The API takes `"context": {"title": "", "description": "", "image": ""}` next to `target` on `POST /api/likes`.
+
+## Pages as Markdown
+
+Send `Accept: text/markdown` to any page a person navigates and it answers with the content the page shows as one Markdown document, with absolute links to the other pages: `/` (including `?keyword=`), `/timeline`, `/thread?url=`, `/following`, `/replies`, `/liked-by?target=`, `/likes/<id>` and a removed post's 410. It is the content, not the interface: no menus, forms or buttons. A post's own address (`/posts/<slug>`) still returns just that post's source. Pages without content of their own (the login and edit forms) stay HTML, and the pages for the owner still need the owner's session. Posts from other people's feeds are passed through as their authors wrote them, so a reader of the document should treat them as untrusted.
+

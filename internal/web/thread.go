@@ -41,6 +41,7 @@ type tnode struct {
 	Parent    *parentCard // for a post the reader cannot read: what a reply says about it
 
 	pinfo                                     feed.ParentInfo // what this post says about the page it replies to
+	md                                        string          // the post as written, for the Markdown form of the page
 	parent, parentFeed, feedHint, repliesHref string
 	repliesCount                              int // -1 unknown
 	published                                 time.Time
@@ -175,20 +176,20 @@ func (b *threadBuilder) reply(u string) string {
 func (b *threadBuilder) localNode(p *store.Post) *tnode {
 	u := b.s.postURL(b.r, p.ID)
 	return &tnode{URL: u, Author: b.q.host.Display, Title: p.Title, Date: p.Created.Format("2 Jan 2006 15:04"), Local: true,
-		HTML: template.HTML(p.HTML), parent: p.InReplyTo, published: p.Created, feedHint: b.own, repliesHref: u + "/replies.xml",
+		HTML: template.HTML(p.HTML), md: p.Markdown, parent: p.InReplyTo, published: p.Created, feedHint: b.own, repliesHref: u + "/replies.xml",
 		repliesCount: -1, pinfo: p.Parent, ReplyHref: b.reply(u) + "&reply_feed=" + url.QueryEscape(b.own)}
 }
 
 func (b *threadBuilder) itemNode(it store.TimelineItem) *tnode {
 	u := itemTarget(it)
 	return &tnode{URL: u, Author: orStr(it.FeedTitle, it.FeedURL), Title: it.Title, Date: it.Published.Format("2 Jan 2006 15:04"),
-		HTML: renderRemote(it.Markdown, it.Text), parent: it.InReplyTo, published: it.Published, feedHint: it.FeedURL,
+		HTML: renderRemote(it.Markdown, it.Text), md: orStr(it.Markdown, it.Text), parent: it.InReplyTo, published: it.Published, feedHint: it.FeedURL,
 		repliesHref: it.RepliesHref, repliesCount: -1, pinfo: it.Parent, ReplyHref: b.reply(u) + "&reply_feed=" + url.QueryEscape(it.FeedURL)}
 }
 
 func (b *threadBuilder) receivedNode(rp store.Reply, parent string) *tnode {
 	n := &tnode{URL: rp.Source, Author: orStr(rp.Author, rp.FeedURL), Title: rp.Title, Date: rp.Published.Format("2 Jan 2006 15:04"),
-		HTML: renderRemote(rp.Markdown, rp.Text), parent: parent, published: rp.Published, feedHint: rp.FeedURL,
+		HTML: renderRemote(rp.Markdown, rp.Text), md: orStr(rp.Markdown, rp.Text), parent: parent, published: rp.Published, feedHint: rp.FeedURL,
 		repliesHref: rp.RepliesHref, repliesCount: -1, ReplyHref: b.reply(rp.Source) + "&reply_feed=" + url.QueryEscape(rp.FeedURL)}
 	if rp.Status != store.StatusApproved {
 		n.Unapproved = true
@@ -199,7 +200,7 @@ func (b *threadBuilder) receivedNode(rp store.Reply, parent string) *tnode {
 
 func (b *threadBuilder) subNode(sr store.Subreply) *tnode {
 	return &tnode{URL: sr.Source, Author: orStr(sr.Author, sr.FeedURL), Title: sr.Title, Date: sr.Published.Format("2 Jan 2006 15:04"),
-		HTML: renderRemote("", sr.Text), parent: sr.Parent, published: sr.Published, feedHint: sr.FeedURL, repliesCount: -1,
+		HTML: renderRemote("", sr.Text), md: sr.Text, parent: sr.Parent, published: sr.Published, feedHint: sr.FeedURL, repliesCount: -1,
 		ReplyHref: b.reply(sr.Source) + "&reply_feed=" + url.QueryEscape(sr.FeedURL)}
 }
 

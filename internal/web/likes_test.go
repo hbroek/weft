@@ -724,3 +724,95 @@ func TestLikeANonWeftPage(t *testing.T) {
 		t.Errorf("unliked page still shown")
 	}
 }
+
+func getMD(i *instance, path, cookie string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("GET", "http://"+i.host+path, nil)
+	r.Header.Set("Accept", "text/markdown")
+	if cookie != "" {
+		r.AddCookie(&http.Cookie{Name: cookieName, Value: cookie})
+	}
+	w := httptest.NewRecorder()
+	i.s.ServeHTTP(w, r)
+	return w
+}
+
+// The pages a person navigates answer Accept: text/markdown with the content they show, as one
+// Markdown document with absolute links, and nothing of the interface (menus, forms, buttons).
+func TestPagesAsMarkdown(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	ctx := t.Context()
+	bob.post(t, `{"title":"Bob essay","markdown":"Bob wrote **this**","keywords":["essays"]}`)
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	un := alice.post(t, `{"title":"Alice note","markdown":"Alice says *hi*","keywords":["go","open web"]}`)
+	ur := alice.post(t, `{"markdown":"A reply with `+"`code`"+`","in_reply_to":"https://blog.example/x","context":{"title":"The web","description":"About links."}}`)
+	bob.s.RefreshAll(ctx)
+	ack := loginCookie(t, alice)
+	bob.call(t, "POST", "/api/likes", `{"target":"`+un+`"}`, 200)
+	alice.call(t, "POST", "/api/likes", `{"target":"https://blog.example/x","context":{"title":"The web","description":"About links."}}`, 200)
+	settle(ctx, alice, bob)
+
+	check := func(name string, w *httptest.ResponseRecorder, want ...string) string {
+		t.Helper()
+		body := w.Body.String()
+		if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/markdown") || w.Header().Get("Vary") != "Accept" {
+			t.Errorf("%s: %d %q vary=%q\n%s", name, w.Code, w.Header().Get("Content-Type"), w.Header().Get("Vary"), body)
+		}
+		for _, x := range want {
+			if !strings.Contains(body, x) {
+				t.Errorf("%s lacks %q:\n%s", name, x, body)
+			}
+		}
+		for _, bad := range []string{"<nav", "<form", "<button", "<div", "<header", "Log out", "Published with Weft"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("%s contains interface markup %q:\n%s", name, bad, body)
+			}
+		}
+		return body
+	}
+
+	// the home page, for a visitor
+	home := check("home", getMD(alice, "/", ""), "# Alice", "## [Alice note]("+alice.base+"/posts/", "Alice says *hi*",
+		"Keywords: ["+"go]("+alice.base+"/?keyword=go), [open web]("+alice.base+"/?keyword=open%20web)",
+		"In reply to [blog.example](https://blog.example/x)", "> **[The web](https://blog.example/x)**: About links.", "A reply with `code`")
+	if strings.Contains(home, "Bob wrote") {
+		t.Errorf("home page holds only this user's posts")
+	}
+	check("filtered home", getMD(alice, "/?keyword=go", ""), "Posts tagged **go**", "Alice says *hi*")
+	// the HTML stays the default, and a browser's Accept gets it
+	if h := do(alice.s, "GET", alice.host, "/", "", "").Body.String(); !strings.Contains(h, "<article") {
+		t.Errorf("html page changed")
+	}
+
+	// the owner's pages
+	tl := check("timeline", getMD(alice, "/timeline", ack), "# Timeline", "## Bob essay", "Bob wrote **this**", "Keywords: [essays]("+alice.base+"/timeline?keyword=essays)",
+		"**[You]("+alice.base+"/)**", "Alice says *hi*")
+	if !strings.Contains(tl, "---") {
+		t.Errorf("posts should be separated:\n%s", tl)
+	}
+	check("filtered timeline", getMD(alice, "/timeline?keyword=essays", ack), "Tagged **essays**", "Clear filter", "Bob wrote **this**")
+	check("following", getMD(alice, "/following", ack), "# Following", "- ["+"Bob]("+alice.base+"/timeline?feed=", bob.base+"/feed.xml")
+	check("replies", getMD(alice, "/replies", ack), "# Replies to your posts")
+	th := check("thread", getMD(alice, "/thread?url="+url.QueryEscape(ur), ack), "# Thread", "This branch (2 posts)", "Views: ", "[Whole thread]("+alice.base+"/thread?url=",
+		"**[The web](https://blog.example/x)**: About links. (blog.example)")
+	if !strings.Contains(th, "> **You**") && !strings.Contains(th, "> **Alice**") {
+		t.Errorf("the reply should be quoted under its parent:\n%s", th)
+	}
+	// who liked, a like, and a removed post
+	check("likers", getMD(alice, "/liked-by?target="+url.QueryEscape(un), ack), "# Likes", "of ["+"Alice note]("+un+")", "- ["+"Bob](")
+	check("like", getMD(alice, "/likes/1", ""), "# Alice liked", "[https://blog.example/x](https://blog.example/x)", "> **[The web](https://blog.example/x)**: About links.")
+	alice.call(t, "DELETE", "/api/posts/1", ``, 204)
+	if still := getMD(alice, pathOf(ur), ""); still.Code != 200 {
+		t.Errorf("the other post should still answer 200: %d", still.Code)
+	}
+	slug := strings.TrimPrefix(un, alice.base)
+	if gone := getMD(alice, slug, ""); gone.Code != 410 || !strings.HasPrefix(gone.Header().Get("Content-Type"), "text/markdown") || !strings.Contains(gone.Body.String(), "This post was removed by its author.") {
+		t.Errorf("removed post: %d %q %s", gone.Code, gone.Header().Get("Content-Type"), gone.Body)
+	}
+	// pages with no content of their own fall back to HTML, and owner pages still need the login
+	if lg := getMD(alice, "/login", ""); !strings.HasPrefix(lg.Header().Get("Content-Type"), "text/html") {
+		t.Errorf("login form has no Markdown form: %q", lg.Header().Get("Content-Type"))
+	}
+	if w := getMD(alice, "/timeline", ""); w.Code != 303 {
+		t.Errorf("a visitor must not read the timeline as Markdown: %d", w.Code)
+	}
+}

@@ -20,6 +20,7 @@ type modRow struct {
 	ID, PostID                             int64
 	Author, Source, Title, Status, PostURL string
 	HTML                                   template.HTML
+	MD                                     string // the reply as written, for the Markdown form of the page
 }
 
 // repliesFor returns a post's approved replies for display, and how many await approval.
@@ -132,7 +133,7 @@ func (s *Server) moderation(w http.ResponseWriter, r *http.Request, q *req) {
 		}
 		for _, x := range rs {
 			rows = append(rows, modRow{ID: x.ID, PostID: x.PostID, Author: orStr(x.Author, x.FeedURL), Source: httpURL(x.Source),
-				Title: x.Title, Status: x.Status, PostURL: s.postURL(r, x.PostID), HTML: renderRemote(x.Markdown, x.Text)})
+				Title: x.Title, Status: x.Status, PostURL: s.postURL(r, x.PostID), HTML: renderRemote(x.Markdown, x.Text), MD: orStr(x.Markdown, x.Text)})
 		}
 	}
 	d := s.data(r, q, "Replies")
