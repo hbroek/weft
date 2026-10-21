@@ -416,3 +416,42 @@ func TestWhoLikedPage(t *testing.T) {
 		t.Errorf("a list for a remote post is for the owner only")
 	}
 }
+
+// Your own posts are in your timeline, marked as yours, and "Hide my posts" takes them out.
+func TestOwnPostsInTimeline(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	alice.post(t, `{"markdown":"Alice says hello","keywords":["go"]}`)
+	bob.post(t, `{"markdown":"Bob's *note*"}`)
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	ck := loginCookie(t, alice)
+
+	tl := do4(alice, "/timeline", ck)
+	if !strings.Contains(tl, "Alice says hello") || !strings.Contains(tl, "<strong>You</strong>") || !strings.Contains(tl, "Bob") {
+		t.Fatalf("own post missing from the timeline:\n%s", tl)
+	}
+	if !strings.Contains(tl, `Hide my posts`) || !strings.Contains(tl, `href="/timeline?mine=0"`) {
+		t.Errorf("toggle missing:\n%s", tl)
+	}
+	// your own post has Edit, and no like button
+	if !strings.Contains(tl, "/edit") || strings.Count(tl, `class="likebtn"`) != 1 {
+		t.Errorf("own post should have Edit and only Bob's post a like button:\n%s", tl)
+	}
+
+	hidden := do4(alice, "/timeline?mine=0", ck)
+	if strings.Contains(hidden, "Alice says hello") || !strings.Contains(hidden, "Bob") || !strings.Contains(hidden, "Show my posts") {
+		t.Errorf("hidden:\n%s", hidden)
+	}
+	// the choice carries through the likes toggle
+	if !strings.Contains(hidden, `href="/timeline?likes=1&amp;mine=0"`) {
+		t.Errorf("likes toggle should keep mine=0:\n%s", hidden)
+	}
+
+	// keyword filter applies to them too; one person's page has none
+	if f := do4(alice, "/timeline?keyword=go", ck); !strings.Contains(f, "Alice says hello") || strings.Contains(f, "Bob's") {
+		t.Errorf("keyword filter:\n%s", f)
+	}
+	one := do4(alice, "/timeline?feed="+url.QueryEscape(bob.base+"/feed.xml"), ck)
+	if strings.Contains(one, "Alice says hello") || strings.Contains(one, "my posts") {
+		t.Errorf("one person's page should hold no own posts or toggle:\n%s", one)
+	}
+}

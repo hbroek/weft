@@ -26,6 +26,8 @@ type tlRow struct {
 	HTML                                                        template.HTML
 	Edited                                                      bool
 	Keywords                                                    []string
+	Own                                                         bool // one of your own posts, shown in the timeline
+	EditHref                                                    string
 	// a like by someone you follow, shown only when likes are switched on
 	IsLike             bool
 	LikedHref, LikedAs string
@@ -171,6 +173,28 @@ func (s *Server) withLikes(r *http.Request, q *req, only string, rows []tlRow) (
 	return rows, nil
 }
 
+// ownRows are the user's own posts as timeline rows, so a post (or a reply to someone) shows up
+// where its conversation is read. They carry the like tally of the post's page, not a like button.
+func (s *Server) ownRows(r *http.Request, q *req) ([]tlRow, error) {
+	posts, err := s.st.RecentPosts(q.host.ID, 200)
+	if err != nil {
+		return nil, err
+	}
+	tallies, _ := s.st.Tallies(q.host.ID)
+	likers, _ := s.st.Likers(q.host.ID)
+	counts, _ := s.st.ApprovedCounts(q.host.ID)
+	out := make([]tlRow, 0, len(posts))
+	for _, p := range posts {
+		pu := s.postURL(r, p.ID)
+		out = append(out, tlRow{Own: true, Author: "You", AuthorHref: "/", Title: p.Title, Link: pu, InReplyTo: httpURL(p.InReplyTo),
+			Date: p.Created.Format("2 Jan 2006 15:04"), HTML: template.HTML(p.HTML), // goldmark safe mode
+			Edited: p.Updated != nil, Keywords: p.Keywords, EditHref: "/posts/" + p.Slug + "/edit",
+			ReplyHref: "/compose?reply_to=" + url.QueryEscape(pu), ThreadHref: threadHref(pu, ""), HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
+			Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), when: p.Created})
+	}
+	return out, nil
+}
+
 func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.requireOwner(w, r, q) {
 		return
@@ -180,6 +204,17 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
+	}
+	// your own posts join the full timeline; on one person's page they would not belong
+	showMine := only == "" && r.FormValue("mine") != "0"
+	if showMine {
+		own, err := s.ownRows(r, q)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		rows = append(rows, own...)
+		sort.SliceStable(rows, func(i, j int) bool { return rows[i].when.After(rows[j].when) })
 	}
 	kw := feed.Keyword(r.FormValue("keyword"))
 	if kw != "" {
@@ -201,23 +236,28 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	d := s.data(r, q, "Timeline")
 	d.ShowLikes = showLikes
-	if kw != "" {
-		d.Keyword, d.ClearKeyword = kw, "/timeline"
+	d.ShowMine = showMine
+	// link builds a timeline address that keeps the feed, likes and own-posts choices except the one flipped
+	link := func(flipLikes, flipMine bool) string {
+		v := url.Values{}
 		if only != "" {
-			d.ClearKeyword += "?feed=" + url.QueryEscape(only)
+			v.Set("feed", only)
 		}
+		if showLikes != flipLikes && kw == "" {
+			v.Set("likes", "1")
+		}
+		if showMine == flipMine && only == "" {
+			v.Set("mine", "0")
+		}
+		if len(v) == 0 {
+			return "/timeline"
+		}
+		return "/timeline?" + v.Encode()
 	}
-	toggle := url.Values{}
-	if only != "" {
-		toggle.Set("feed", only)
+	if kw != "" {
+		d.Keyword, d.ClearKeyword = kw, link(false, false)
 	}
-	if !showLikes {
-		toggle.Set("likes", "1")
-	}
-	d.LikesToggle = "/timeline"
-	if len(toggle) > 0 {
-		d.LikesToggle += "?" + toggle.Encode()
-	}
+	d.LikesToggle, d.MineToggle = link(true, false), link(false, true)
 	if only != "" {
 		d.Only = only
 		d.Heading = only

@@ -35,7 +35,9 @@ sent to the parent's site. Replies you receive from people you follow are approv
 others wait on the Replies page (or `GET /api/replies?status=pending`) until you approve them.
 You can reject an approved reply later.
 
-Keywords: an optional comma-separated box under the Markdown editor (`pickleball, open web`, phrases allowed, up to 10 of 50 characters). They are published as the item's `<category>` elements and shown as chips; the API takes `"keywords": ["a", "b c"]`.
+Keywords: an optional comma-separated box under the Markdown editor (`travel, weekend project`, phrases allowed, up to 10 of 50 characters). They are published as the item's `<category>` elements and shown as chips; the API takes `"keywords": ["a", "b c"]`.
+
+Your own posts appear in your timeline, marked "You" with an Edit link; "Hide my posts" (`/timeline?mine=0`) takes them out. One person's page (`?feed=`) never has them.
 
 The like count is a link to a list of who liked the post, with Follow and Unfollow behind each name (`/liked-by?target=<post URL>`): on your own posts it lists everyone whose like arrived, marking the ones that are not counted because you don't follow them; on a post in a feed you follow it lists the people you follow who liked it.
 

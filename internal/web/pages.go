@@ -72,14 +72,15 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <label>Password <input type="password" name="password" autofocus required></label>
 <p><button>Log in</button></p></form>{{template "foot"}}{{end}}
 {{define "timeline"}}{{template "head" .}}{{if .Keyword}}<p class="kwhead">Tagged <strong>{{.Keyword}}</strong>{{if .Only}} from <strong>{{.Heading}}</strong>{{end}} <small>· <a href="{{.ClearKeyword}}">Clear filter</a></small></p>{{end}}<h2>{{if .Only}}{{.Heading}}</h2><p><small>{{.Only}} · <a href="/timeline">All feeds</a> · <a href="/following">Following</a></small></p>{{else}}Timeline</h2>{{end}}
-{{if not .Keyword}}<p><small><a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a></small></p>{{end}}
+<p><small>{{if not .Keyword}}<a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a>{{end}}{{if not .Only}}{{if not .Keyword}} · {{end}}<a href="{{.MineToggle}}">{{if .ShowMine}}Hide my posts{{else}}Show my posts{{end}}</a>{{end}}</small></p>
 {{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small></p></article>
 {{else}}<article>
 <p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div>{{.HTML}}</div>
 {{if .Keywords}}<p class="kw">{{range .Keywords}}{{if $.Only}}<a href="/timeline?feed={{$.Only}}&amp;keyword={{.}}" title="Posts with this keyword in this feed">{{.}}</a>{{else}}<a href="/timeline?keyword={{.}}" title="Posts with this keyword from everyone you follow">{{.}}</a>{{end}}{{end}}</p>{{end}}
-<p><a href="{{.ReplyHref}}">Reply</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}</p>
+<p><a href="{{.ReplyHref}}">Reply</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}{{if .Own}} <a href="{{.EditHref}}">Edit</a>{{end}}</p>
+{{if and .Own .Tally}}<p class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Link}}">{{.Tally}}</a></p>{{end}}
 {{if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
 <button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Target}}">{{.Tally}}</a></small>{{end}}</form>{{end}}
 {{if .Link}}<a href="{{.Link}}"><time>{{.Date}}</time></a>{{else}}<time>{{.Date}}</time>{{end}}{{if .Edited}} <time>(edited)</time>{{end}}
@@ -133,7 +134,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label>Markdown <textarea name="markdown" required>{{.Form.Markdown}}</textarea></label>
-<label>Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" placeholder="pickleball, open web, Dave Winer"></label>
+<label>Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" placeholder="travel, open source, weekend project"></label>
 <p><button>{{.Button}}</button></p></form>
 <h3>Preview</h3>
 <article id="preview" class="h-entry"><h3 id="preview-title"{{if not .Form.Title}} hidden{{end}}>{{.Form.Title}}</h3><div id="preview-body">{{if .Preview}}{{.Preview}}{{else}}<p class="empty">Nothing to preview yet.</p>{{end}}</div>
@@ -192,7 +193,8 @@ type pageData struct {
 	Error, Action, Heading, Button, Delete, Only string
 	Preview                                      template.HTML // the editor's rendered Markdown
 	PreviewKeywords                              []string      // the editor's keywords as chips
-	ShowLikes                                    bool
+	ShowLikes, ShowMine                          bool
+	MineToggle                                   string
 	Likers                                       []likerRow
 	LikeTarget, LikeTitle, LikeNote              string
 	ClearKeyword                                 string
