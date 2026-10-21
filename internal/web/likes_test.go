@@ -134,3 +134,46 @@ func TestOldReactionRoutes(t *testing.T) {
 func do4(i *instance, path, cookie string) string {
 	return do3(i.s, "GET", i.host, path, cookie).Body.String()
 }
+
+// Likes by people you follow show up in the timeline when "Show likes" is on, and only then.
+func TestTimelineShowsLikesOfFollowed(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	ctx := t.Context()
+	ua := alice.post(t, `{"title":"Hello weft","markdown":"RSS plus links already gives you a social web."}`)
+	bob.call(t, "POST", "/api/likes", `{"target":"`+ua+`"}`, 200)
+	settle(ctx, alice, bob)
+
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	alice.s.st.SetPassword("alice", "correct horse")
+	lr := httptest.NewRequest("POST", alice.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
+	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	lw := httptest.NewRecorder()
+	alice.s.ServeHTTP(lw, lr)
+	ck := cookieOf(lw)
+	if ck == "" {
+		t.Fatalf("alice could not log in: %d", lw.Code)
+	}
+
+	off := do4(alice, "/timeline", ck)
+	if strings.Contains(off, "liked") || !strings.Contains(off, `href="/timeline?likes=1">Show likes<`) {
+		t.Errorf("likes must be off by default, with a way to switch them on:\n%s", off)
+	}
+	on := do4(alice, "/timeline?likes=1", ck)
+	if !strings.Contains(on, "liked") || !strings.Contains(on, "your post “Hello weft”") || !strings.Contains(on, `href="`+ua+`"`) || !strings.Contains(on, ">Hide likes<") {
+		t.Errorf("likes missing from the timeline:\n%s", on)
+	}
+
+	// Your own likes show too, as "You liked …".
+	alice.call(t, "POST", "/api/likes", `{"target":"`+ua+`"}`, 200)
+	if mine := do4(alice, "/timeline?likes=1", ck); !strings.Contains(mine, "<strong>You</strong> liked") {
+		t.Errorf("own like missing from the timeline:\n%s", mine)
+	}
+	alice.call(t, "DELETE", "/api/likes", `{"target":"`+ua+`"}`, 204)
+
+	// Withdrawn likes disappear after the next refresh.
+	bob.call(t, "DELETE", "/api/likes", `{"target":"`+ua+`"}`, 204)
+	alice.s.RefreshAll(ctx)
+	if strings.Contains(do4(alice, "/timeline?likes=1", ck), "liked") {
+		t.Errorf("withdrawn like still shown")
+	}
+}

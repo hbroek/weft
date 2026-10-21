@@ -29,6 +29,7 @@ ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #
 .likebtn{display:inline-flex;align-items:center;background:none;border:0;padding:.15rem .25rem;color:inherit;cursor:pointer}
 .likebtn svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
 .likebtn[aria-pressed=true]{color:#1a6fe0}.likebtn[aria-pressed=true] svg{fill:currentColor}
+.likeevent{color:GrayText;font-size:.9rem}
 .sr{position:absolute;left:-9999px}
 textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}label{display:block;margin-top:1rem}</style>
 </head><body>
@@ -61,7 +62,9 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <label>Password <input type="password" name="password" autofocus required></label>
 <p><button>Log in</button></p></form>{{template "foot"}}{{end}}
 {{define "timeline"}}{{template "head" .}}<h2>{{if .Only}}{{.Heading}}</h2><p><small>{{.Only}} · <a href="/timeline">All feeds</a> · <a href="/following">Following</a></small></p>{{else}}Timeline</h2>{{end}}
-{{range .Timeline}}<article>
+<p><small><a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a></small></p>
+{{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small></p></article>
+{{else}}<article>
 <p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div>{{.HTML}}</div>
@@ -69,7 +72,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 {{if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
 <button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small>{{.Tally}}</small>{{end}}</form>{{end}}
 {{if .Link}}<a href="{{.Link}}"><time>{{.Date}}</time></a>{{else}}<time>{{.Date}}</time>{{end}}{{if .Edited}} <time>(edited)</time>{{end}}
-</article>{{else}}<p>Nothing yet. <a href="/following">Follow a feed</a>.</p>{{end}}
+</article>{{end}}{{else}}<p>Nothing yet. <a href="/following">Follow a feed</a>.</p>{{end}}
 {{template "foot"}}{{end}}
 {{define "following"}}{{template "head" .}}<h2>Following</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <form method="post" action="/following"><label>Feed or site URL <input type="text" name="url" placeholder="http://bob.localhost:8080/" required></label>
@@ -140,6 +143,8 @@ type pageData struct {
 	Links                                      []feed.AtomLink // extra <link>s in the page head
 	// forms
 	Error, Action, Heading, Button, Delete, Only string
+	ShowLikes                                    bool
+	LikesToggle                                  string
 	Form                                         struct{ Title, Markdown string }
 }
 

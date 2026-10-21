@@ -175,6 +175,13 @@ CREATE TABLE IF NOT EXISTS items (
   replies_href TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (feed_url, guid)
 );
+CREATE TABLE IF NOT EXISTS feed_likes (
+  feed_url TEXT NOT NULL,
+  guid TEXT NOT NULL,
+  target TEXT NOT NULL,
+  published INTEGER NOT NULL,
+  PRIMARY KEY (feed_url, guid)
+);
 CREATE INDEX IF NOT EXISTS items_pub ON items(published DESC);
 CREATE INDEX IF NOT EXISTS posts_user ON posts(user_id, created DESC);
 `

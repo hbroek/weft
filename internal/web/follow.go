@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,6 +25,10 @@ type tlRow struct {
 	HasThread                                                   bool // it replies to something or has replies
 	HTML                                                        template.HTML
 	Edited                                                      bool
+	// a like by someone you follow, shown only when likes are switched on
+	IsLike             bool
+	LikedHref, LikedAs string
+	when               time.Time
 }
 
 type followRow struct{ URL, Title, Err string }
@@ -102,9 +107,60 @@ func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineIt
 		out = append(out, tlRow{Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
 			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil,
 			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(it.Likes),
-			Mine: s.iLike(userID, itemTarget(it))})
+			Mine: s.iLike(userID, itemTarget(it)), when: it.Published})
 	}
 	return out, items, nil
+}
+
+// oneLine shortens text to about n runes on one line.
+func oneLine(text string, n int) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if r := []rune(text); len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return text
+}
+
+// likedAs describes the post at target for a "liked …" line: one of the user's own posts, a post in a
+// followed feed, or just its address.
+func (s *Server) likedAs(r *http.Request, q *req, target string) string {
+	if id, ok := s.localPostID(q.host.ID, s.base(r), target); ok {
+		if p, err := s.st.Post(q.host.ID, id); err == nil {
+			return "your post “" + oneLine(orStr(p.Title, p.Markdown), 90) + "”"
+		}
+	}
+	if it, err := s.st.ItemByTarget(q.host.ID, target); err == nil {
+		who := orStr(it.FeedTitle, it.FeedURL)
+		return who + "’s post “" + oneLine(orStr(it.Title, it.Text), 90) + "”"
+	}
+	return target
+}
+
+// withLikes adds the likes of followed people, and the user's own, to the timeline rows, in date order.
+func (s *Server) withLikes(r *http.Request, q *req, only string, rows []tlRow) ([]tlRow, error) {
+	ls, err := s.st.FeedLikes(q.host.ID, only, 200)
+	if err != nil {
+		return rows, err
+	}
+	for _, l := range ls {
+		rows = append(rows, tlRow{IsLike: true, Author: orStr(l.FeedTitle, l.FeedURL), AuthorHref: "/timeline?feed=" + url.QueryEscape(l.FeedURL),
+			Date: l.Published.Format("2 Jan 2006 15:04"), LikedHref: httpURL(l.Target), LikedAs: s.likedAs(r, q, l.Target), when: l.Published})
+	}
+	mine, err := s.st.ActiveLikes(q.host.ID, 200)
+	if err != nil {
+		return rows, err
+	}
+	for _, l := range mine {
+		if only != "" { // on one person's page, only likes of their posts
+			if it, err := s.st.ItemByTarget(q.host.ID, l.Target); err != nil || it.FeedURL != only {
+				continue
+			}
+		}
+		rows = append(rows, tlRow{IsLike: true, Author: "You", Date: l.Created.Format("2 Jan 2006 15:04"),
+			LikedHref: httpURL(l.Target), LikedAs: s.likedAs(r, q, l.Target), when: l.Created})
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].when.After(rows[j].when) })
+	return rows, nil
 }
 
 func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
@@ -117,7 +173,26 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	showLikes := r.FormValue("likes") == "1"
+	if showLikes {
+		if rows, err = s.withLikes(r, q, only, rows); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	}
 	d := s.data(r, q, "Timeline")
+	d.ShowLikes = showLikes
+	toggle := url.Values{}
+	if only != "" {
+		toggle.Set("feed", only)
+	}
+	if !showLikes {
+		toggle.Set("likes", "1")
+	}
+	d.LikesToggle = "/timeline"
+	if len(toggle) > 0 {
+		d.LikesToggle += "?" + toggle.Encode()
+	}
 	if only != "" {
 		d.Only = only
 		d.Heading = only
@@ -215,6 +290,7 @@ func (s *Server) follow(ctx context.Context, userID int64, raw string) (string, 
 	if err := s.st.SaveFeed(res.URL, p); err != nil {
 		return "", err
 	}
+	s.refreshLikes(ctx, res.URL, p)
 	return res.URL, s.st.Follow(userID, res.URL)
 }
 
@@ -233,11 +309,39 @@ func (s *Server) Refresh(ctx context.Context, feedURL string) {
 				s.readArchive(ctx, feedURL, p)
 			}
 			err = s.st.SaveFeed(feedURL, p)
+			if err == nil {
+				s.refreshLikes(ctx, feedURL, p)
+			}
 		}
 	}
 	if err != nil {
 		s.st.SaveFeedError(feedURL, err.Error())
 	}
+}
+
+// refreshLikes caches the likes of the person who publishes feedURL, from the likes feed their main feed
+// advertises. A missing or broken likes feed leaves what is cached alone.
+func (s *Server) refreshLikes(ctx context.Context, feedURL string, p *feed.Parsed) {
+	if p.LikesFeed == "" {
+		return
+	}
+	base, err := url.Parse(feedURL)
+	if err != nil {
+		return
+	}
+	u, err := base.Parse(p.LikesFeed)
+	if err != nil || httpURL(u.String()) == "" {
+		return
+	}
+	res, err := s.web.Get(ctx, u.String())
+	if err != nil {
+		return
+	}
+	lp, err := feed.Parse(res.Body, time.Now())
+	if err != nil {
+		return
+	}
+	s.st.SaveFeedLikes(feedURL, lp.Items)
 }
 
 // maxArchivePages bounds how many older pages of a paged feed (RFC 5005) are read when a feed is
