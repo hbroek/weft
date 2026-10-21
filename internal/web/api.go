@@ -20,6 +20,13 @@ type postReq struct {
 	// optional hint: the parent's feed URL.
 	InReplyTo     string `json:"in_reply_to"`
 	InReplyToFeed string `json:"in_reply_to_feed"`
+	// Context is optional: what the parent page looked like (title, description, image), for a reply
+	// to a page that publishes no feed. It is published as attributes of weft:context.
+	Context *struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Image       string `json:"image"`
+	} `json:"context"`
 }
 
 type postResp struct {
@@ -56,7 +63,11 @@ func (s *Server) apiCreate(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "in_reply_to must be an http(s) URL", http.StatusBadRequest)
 		return
 	}
-	p, msg := s.create(r, q.host, in.Title, in.Markdown, feed.Keywords(in.Keywords), httpURL(in.InReplyTo), httpURL(in.InReplyToFeed))
+	var parent feed.ParentInfo
+	if in.Context != nil {
+		parent = feed.ParentInfo{Title: in.Context.Title, Description: in.Context.Description, Image: in.Context.Image}
+	}
+	p, msg := s.create(r, q.host, in.Title, in.Markdown, feed.Keywords(in.Keywords), httpURL(in.InReplyTo), httpURL(in.InReplyToFeed), parent)
 	if msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return

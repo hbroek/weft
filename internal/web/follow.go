@@ -28,6 +28,7 @@ type tlRow struct {
 	Keywords                                                    []string
 	ISO, Ago                                                    string
 	Avatar, Initial                                             string
+	Parent                                                      *parentCard
 	Own                                                         bool // one of your own posts, shown in the timeline
 	EditHref                                                    string
 	// a like by someone you follow, shown only when likes are switched on
@@ -116,7 +117,7 @@ func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineIt
 		if author == "" {
 			author = it.FeedURL
 		}
-		out = append(out, tlRow{Avatar: httpURL(it.FeedImage), Initial: initial(author), Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
+		out = append(out, tlRow{Parent: newParentCard(it.InReplyTo, it.Parent), Avatar: httpURL(it.FeedImage), Initial: initial(author), Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
 			Date: it.Published.Format("2 Jan 2006 at 15:04"), ISO: it.Published.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(it.Published), HTML: remoteHTML(it), Edited: it.Updated != nil, Keywords: it.Keywords,
 			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(n), TallyTip: likedBy(names, n),
 			Mine: mine, when: it.Published})
@@ -188,7 +189,7 @@ func (s *Server) ownRows(r *http.Request, q *req) ([]tlRow, error) {
 	out := make([]tlRow, 0, len(posts))
 	for _, p := range posts {
 		pu := s.postURL(r, p.ID)
-		out = append(out, tlRow{Own: true, Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), Author: "You", AuthorHref: "/", Title: p.Title, Link: pu, InReplyTo: httpURL(p.InReplyTo),
+		out = append(out, tlRow{Own: true, Parent: newParentCard(p.InReplyTo, p.Parent), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), Author: "You", AuthorHref: "/", Title: p.Title, Link: pu, InReplyTo: httpURL(p.InReplyTo),
 			Date: p.Created.Format("2 Jan 2006 at 15:04"), ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(p.Created), HTML: template.HTML(p.HTML), // goldmark safe mode
 			Edited: p.Updated != nil, Keywords: p.Keywords, EditHref: "/posts/" + p.Slug + "/edit",
 			ReplyHref: "/compose?reply_to=" + url.QueryEscape(pu), ThreadHref: threadHref(pu, ""), HasThread: p.InReplyTo != "" || counts[p.ID] > 0,

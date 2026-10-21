@@ -35,10 +35,15 @@ type Ref struct {
 	Feed string `xml:"feed,attr,omitempty"`
 }
 
-// Context is weft:context. In this version it carries only the parent's URL.
+// Context is weft:context: the parent's URL, when it was retrieved, and optionally what the parent
+// looked like then (its title, a short description and an image address). The description is for
+// replies to pages that publish no feed, which a reader cannot look up.
 type Context struct {
-	Href      string `xml:"href,attr"`
-	Retrieved string `xml:"retrieved,attr,omitempty"`
+	Href        string `xml:"href,attr"`
+	Retrieved   string `xml:"retrieved,attr,omitempty"`
+	Title       string `xml:"title,attr,omitempty"`
+	Description string `xml:"description,attr,omitempty"`
+	Image       string `xml:"image,attr,omitempty"`
 }
 
 // FeedRef is weft:feed: who wrote an item, by feed URL, with an optional display name as text.

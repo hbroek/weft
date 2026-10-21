@@ -39,6 +39,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{if .Home}}{{if or .Bio .Owner}}<p class="bio">{{.Bio}}{{if .Owner}} <small><a href="/profile">Edit profile</a></small>{{end}}</p>{{end}}{{end}}
 <main>{{end}}
 {{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div></body></html>{{end}}
+{{define "parentcard"}}<a class="pcard" href="{{.Href}}">{{if .Image}}<img src="{{.Image}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">{{end}}<span class="pc-t"><strong>{{.Title}}</strong>{{if .Description}}<span class="pc-d">{{.Description}}</span>{{end}}<small>{{.Host}}</small></span></a>{{end}}
 {{define "avatar"}}<span class="av">{{if .Avatar}}<img src="{{.Avatar}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>{{.Initial}}</span>{{else}}<span>{{.Initial}}</span>{{end}}</span>{{end}}
 {{define "profile"}}{{template "head" .}}<h2>Profile</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <form method="post" action="/profile">
@@ -56,7 +57,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{if .Bookmarklet}}<p class="bm"><small>Bookmark card: drag <a href="{{.Bookmarklet}}">Weft it</a> to your bookmarks bar, then click it on any page to compose a post from that page.</small></p>{{end}}
 {{range .Posts}}<article class="h-entry">
 <div class="card-top">{{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{else}}<span></span>{{end}}<span class="when"><a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{if .Edited}} · edited{{end}}</span></div>
-{{if .InReplyTo}}<p><small>In reply to <a class="u-in-reply-to" href="{{.InReplyTo}}">{{.InReplyTo}}</a></small></p>{{end}}
+{{if .InReplyTo}}{{if .Parent}}<p><small>In reply to</small></p>{{template "parentcard" .Parent}}<a class="u-in-reply-to" href="{{.InReplyTo}}" hidden></a>{{else}}<p><small>In reply to <a class="u-in-reply-to" href="{{.InReplyTo}}">{{.InReplyTo}}</a></small></p>{{end}}{{end}}
 <div class="e-content">{{.HTML}}</div>
 {{if .Keywords}}<p class="kw">{{range .Keywords}}<a class="p-category" href="/?keyword={{.}}">{{.}}</a>{{end}}</p>{{end}}
 <div class="meta"><div class="m-l">{{if .Tally}}<small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.URL}}">{{.Tally}}</a></small>{{end}}</div>
@@ -79,8 +80,9 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <p><small>{{if not .Keyword}}<a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a>{{end}}{{if not .Only}}{{if not .Keyword}} · {{end}}<a href="{{.MineToggle}}">{{if .ShowMine}}Hide my posts{{else}}Show my posts{{end}}</a>{{end}}</small></p>
 {{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small></p></article>
 {{else}}<article>
-<div class="card-top"><p class="who">{{template "avatar" .}}{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
+<div class="card-top"><p class="who">{{template "avatar" .}}{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">{{if .Parent}}{{.Parent.Host}}{{else}}a post{{end}}</a>{{end}}</p>
 <span class="when">{{if .Link}}<a href="{{.Link}}"><time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{else}}<time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time>{{end}}{{if .Edited}} · edited{{end}}</span></div>
+{{if .Parent}}{{template "parentcard" .Parent}}{{end}}
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div>{{.HTML}}</div>
 {{if .Keywords}}<p class="kw">{{range .Keywords}}{{if $.Only}}<a href="/timeline?feed={{$.Only}}&amp;keyword={{.}}" title="Posts with this keyword in this feed">{{.}}</a>{{else}}<a href="/timeline?keyword={{.}}" title="Posts with this keyword from everyone you follow">{{.}}</a>{{end}}{{end}}</p>{{end}}
@@ -117,7 +119,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{define "ic-replies"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>{{end}}
 {{define "node"}}<li><div{{if .Focus}} id="focus"{{end}} class="node{{if .Focus}} focus{{end}}">
 {{if .Tombstone}}<em>original post removed</em> <small>{{.URL}}</small>
-{{else if .Missing}}<em>{{.Note}}</em> <a href="{{.URL}}">{{.URL}}</a>
+{{else if .Missing}}{{if .Parent}}{{template "parentcard" .Parent}}{{else}}<em>{{.Note}}</em> <a href="{{.URL}}">{{.URL}}</a>{{end}}
 {{else}}{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} <a href="{{.URL}}"><time>{{.Date}}</time></a>{{if .Title}} <em>{{.Title}}</em>{{end}}
 {{.HTML}}{{if .Note}}<small class="note">{{.Note}}</small>{{end}}{{end}}
 {{if or .ReplyHref .DrillHref}}<div class="node-actions">{{if .DrillHref}}<a class="ico" href="{{.DrillHref}}" title="{{template "drilltext" .}}" aria-label="{{template "drilltext" .}}">{{template "ic-replies"}}{{if gt .Replies 0}}<span class="cnt">{{.Replies}}</span>{{end}}</a>{{end}}{{if .ReplyHref}}<a class="ico" href="{{.ReplyHref}}" title="Reply" aria-label="Reply">{{template "ic-reply"}}</a>{{end}}</div>{{end}}</div>
@@ -134,7 +136,8 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{template "foot"}}{{end}}
 {{define "editor"}}{{template "head" .}}<form method="post" action="{{.Action}}">
 <h2>{{.Heading}}</h2>
-{{if .ReplyTo}}<p>Replying to <a href="{{.ReplyTo}}">{{.ReplyTo}}</a></p><input type="hidden" name="reply_to" value="{{.ReplyTo}}"><input type="hidden" name="reply_feed" value="{{.ReplyFeed}}">{{end}}
+{{if .ReplyTo}}{{if .Parent}}<p>Replying to</p>{{template "parentcard" .Parent}}{{else}}<p>Replying to <a href="{{.ReplyTo}}">{{.ReplyTo}}</a></p>{{end}}<input type="hidden" name="reply_to" value="{{.ReplyTo}}"><input type="hidden" name="reply_feed" value="{{.ReplyFeed}}">{{if not .PInfo.Empty}}<input type="hidden" name="ptitle" value="{{.PInfo.Title}}"><input type="hidden" name="pdesc" value="{{.PInfo.Description}}"><input type="hidden" name="pimg" value="{{.PInfo.Image}}">{{end}}{{end}}
+{{if .ModeHref}}<p><small><a href="{{.ModeHref}}">{{.ModeLabel}}</a></small></p>{{end}}
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label>Markdown <textarea name="markdown" required>{{.Form.Markdown}}</textarea></label>
@@ -176,6 +179,7 @@ type pagePost struct {
 	InReplyTo                  string
 	Keywords                   []string
 	Tally, TallyTip            string
+	Parent                     *parentCard // the page this post replies to, when the reply carries a snapshot of it
 	ThreadHref                 string
 	HasThread                  bool // it replies to something or has approved replies
 }
@@ -199,8 +203,11 @@ type pageData struct {
 	PreviewKeywords                              []string      // the editor's keywords as chips
 	ShowLikes, ShowMine                          bool
 	MineToggle                                   string
-	Nav                                          string // which menu entry the page belongs to
-	Home                                         bool   // the site's home page: it shows the bio
+	Nav                                          string          // which menu entry the page belongs to
+	Home                                         bool            // the site's home page: it shows the bio
+	PInfo                                        feed.ParentInfo // the snapshot of the page being replied to, kept in hidden fields
+	Parent                                       *parentCard
+	ModeHref, ModeLabel                          string // the link that switches a bookmark to a reply and back
 	Avatar, Initial                              string // the site owner's avatar address and fallback letter, for the header
 	Profile                                      struct{ Display, Bio, Avatar string }
 	Likers                                       []likerRow
@@ -245,7 +252,7 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 		d.Posts = append(d.Posts, pagePost{
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
 			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 at 15:04"), Ago: ago(p.Created),
-			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Keywords: p.Keywords, Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
+			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Parent: newParentCard(p.InReplyTo, p.Parent), Keywords: p.Keywords, Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
 			HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 		})
 	}
@@ -456,7 +463,7 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 		if p.InReplyTo != "" {
 			it.InReplyTo = &feed.Ref{Href: p.InReplyTo, Feed: p.InReplyToFeed}
 			it.Root = &feed.Ref{Href: p.Root, Feed: p.RootFeed}
-			it.Context = &feed.Context{Href: p.InReplyTo, Retrieved: feed.RFC822(p.Created)}
+			it.Context = &feed.Context{Href: p.InReplyTo, Retrieved: feed.RFC822(p.Created), Title: p.Parent.Title, Description: p.Parent.Description, Image: p.Parent.Image}
 		}
 		if p.Updated != nil {
 			it.Updated = feed.RFC822(*p.Updated)

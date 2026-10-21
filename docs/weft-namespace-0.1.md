@@ -103,6 +103,11 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 ```
 
 - Recommended. In its minimal form it is an empty element carrying only `href` (and `retrieved`): the URL of the parent. A text snippet is optional: plain text, kept brief, no more than about 300 characters.
+- Optional attributes `title` (up to 200 characters), `description` (up to 500) and `image` (an absolute http or https address) say what the parent page looked like when it was `retrieved`: single-line plain text, so a reader can show a link card for a page that publishes no feed and cannot be looked up. Readers apply the same limits and ignore an `image` that is not an http(s) address. Weft writes these when a reply is started from the bookmarklet and shows them as a card. Readers that do not know them still have the `href`.
+```xml
+<weft:context href="https://blog.example/posts/web-of-links" retrieved="Mon, 12 Oct 2026 22:30:00 -0400"
+              title="The web of links" description="Why links still beat feeds." image="https://blog.example/cover.jpg"/>
+```
 - It is a quote for context, not a copy. Apps must not display it as the parent post when the parent is reachable.
 - Optional `signature` attribute: the parent's signature over its own text, verifiable with the parent's `weft:key`.
 - A reply to a plain RSS 2.0 item or any other page treats the parent as if it were already deleted: the link (and the snippet, when present) are all a reader can rely on. The parent may be any URL, textcast or not.

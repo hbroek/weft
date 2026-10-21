@@ -87,3 +87,24 @@ func TestChannelImageIsTheAvatar(t *testing.T) {
 		}
 	}
 }
+
+func TestContextSnapshotRoundTrip(t *testing.T) {
+	ch := Channel{Title: "A", Link: "http://a.example/", Items: []Item{{GUID: GUID{Value: "urn:uuid:1"}, Link: "http://a.example/p", PubDate: RFC822(time.Now()),
+		InReplyTo: &Ref{Href: "https://blog.example/x"}, Root: &Ref{Href: "https://blog.example/x"},
+		Context: &Context{Href: "https://blog.example/x", Title: "  The   web\nof links ", Description: strings.Repeat("d", 600), Image: "javascript:alert(1)"}}}}
+	b, err := New(ch).Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Parse(b, time.Now())
+	if err != nil || len(p.Items) != 1 {
+		t.Fatalf("%v %v", err, p)
+	}
+	got := p.Items[0].Parent
+	if got.Title != "The web of links" || len([]rune(got.Description)) != MaxParentDesc || got.Image != "" {
+		t.Errorf("snapshot not cleaned on the way in: %+v", got)
+	}
+	if !(ParentInfo{}).Empty() || got.Empty() {
+		t.Errorf("Empty()")
+	}
+}

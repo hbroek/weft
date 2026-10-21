@@ -1,6 +1,7 @@
 package web
 
 import (
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -326,11 +327,11 @@ func TestBookmarkletOnHome(t *testing.T) {
 	if m == nil {
 		t.Fatalf("no javascript: link on the owner's home page:\n%s", page)
 	}
-	js, err := url.PathUnescape(strings.TrimPrefix(m[1], "javascript:"))
+	js, err := url.PathUnescape(html.UnescapeString(strings.TrimPrefix(m[1], "javascript:")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"http://` + host + `/compose"`, "og:title", "og:image", "twitter:image", "og:description", "encodeURIComponent"} {
+	for _, want := range []string{`"http://` + host + `/compose"`, "og:title", "og:image", "twitter:image", "og:description", "encodeURIComponent", "webmention", "ptitle", "&wm="} {
 		if !strings.Contains(js, want) {
 			t.Errorf("bookmarklet lacks %q:\n%s", want, js)
 		}

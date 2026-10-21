@@ -27,8 +27,9 @@ type ParsedItem struct {
 	// otherwise its guid. UID is the item's own guid, its identity if its URL changes (a Weft
 	// post's is urn:uuid:…).
 	GUID, UID, Link, Title string
-	Text                   string // description with markup removed; safe to show once escaped
-	Markdown               string // source:markdown, if the feed has it
+	Parent                 ParentInfo // weft:context title, description and image
+	Text                   string     // description with markup removed; safe to show once escaped
+	Markdown               string     // source:markdown, if the feed has it
 	Published              time.Time
 	Updated                time.Time // zero if never edited
 	InReplyTo              string    // weft:inReplyTo href, if any
@@ -109,6 +110,11 @@ type xmlParsed struct {
 				Href string `xml:"href,attr"`
 				Name string `xml:",chardata"`
 			} `xml:"https://weftseed.com/ns/weft/0.1 feed"`
+			Context struct {
+				Title       string `xml:"title,attr"`
+				Description string `xml:"description,attr"`
+				Image       string `xml:"image,attr"`
+			} `xml:"https://weftseed.com/ns/weft/0.1 context"`
 			Likes struct {
 				Count int `xml:"count,attr"`
 			} `xml:"https://weftseed.com/ns/weft/0.1 likes"`
@@ -175,6 +181,7 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 			UID: strings.TrimSpace(it.GUID), Link: it.Link.first(), Title: strings.TrimSpace(it.Title),
 			Text: StripHTML(it.Description), Markdown: strings.TrimSpace(it.Markdown),
 			Published: parseDate(it.PubDate), Updated: parseDate(it.Updated),
+			Parent:    ParentInfo{Title: it.Context.Title, Description: it.Context.Description, Image: it.Context.Image}.Clean(),
 			InReplyTo: strings.TrimSpace(it.InReplyTo.Href), InReplyToFeed: strings.TrimSpace(it.InReplyTo.Feed),
 			Root: strings.TrimSpace(it.Root.Href), RootFeed: strings.TrimSpace(it.Root.Feed),
 			LikeOf: strings.TrimSpace(it.LikeOf.Href), RepliesHref: strings.TrimSpace(it.Replies.Href),

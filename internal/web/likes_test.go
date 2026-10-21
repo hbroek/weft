@@ -557,3 +557,95 @@ func TestTimelineAvatars(t *testing.T) {
 		}
 	}
 }
+
+// A reply to an ordinary web page carries a snapshot of the page (weft:context title, description and
+// image), so followers and the thread view can show a card for a parent they cannot look up.
+func TestReplyToPageCarriesSnapshot(t *testing.T) {
+	alice, bob, carol := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol")
+	ctx := t.Context()
+	page := carol.base + "/about-the-web" // not a Weft post: nothing to look up
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
+	ack := loginCookie(t, alice)
+
+	// compose as a reply, as the bookmarklet opens it
+	q := url.Values{"page": {page}, "ptitle": {"About <the> web"}, "pdesc": {"A page about the web."}, "pimg": {"https://img.example/p.png"}, "wm": {"1"}}
+	form1 := do4(alice, "/compose?"+q.Encode(), ack)
+	for _, want := range []string{`name="reply_to" value="` + page + `"`, `name="ptitle" value="About &lt;the&gt; web"`, `class="pcard"`, `src="https://img.example/p.png"`, "Bookmark this page instead", "mode=bookmark"} {
+		if !strings.Contains(form1, want) {
+			t.Errorf("reply form lacks %q:\n%s", want, form1)
+		}
+	}
+	w := formAs(alice, "/compose", ack, "", url.Values{"markdown": {"I disagree with the *premise*"}, "reply_to": {page},
+		"ptitle": {"About <the> web"}, "pdesc": {"A page about the web."}, "pimg": {"https://img.example/p.png"}})
+	if w.Code != 303 {
+		t.Fatalf("publish reply: %d %s", w.Code, w.Body)
+	}
+	postURL := alice.base + w.Header().Get("Location")
+
+	// the feed says what the parent looked like, as optional attributes
+	fx := alice.get("/feed.xml")
+	if !regexp.MustCompile(`<weft:context href="` + regexp.QuoteMeta(page) + `"[^>]*title="About &lt;the&gt; web"[^>]*description="A page about the web\."[^>]*image="https://img\.example/p\.png"`).MatchString(fx) {
+		t.Errorf("weft:context lacks the snapshot:\n%s", fx)
+	}
+	// own site and a follower's timeline show the card
+	if home := alice.get("/"); !strings.Contains(home, `class="pcard"`) || !strings.Contains(home, "A page about the web.") {
+		t.Errorf("own post lacks the parent card:\n%s", home)
+	}
+	bob.s.RefreshAll(ctx)
+	bck := loginCookie(t, bob)
+	if tl := do4(bob, "/timeline", bck); !strings.Contains(tl, `class="pcard"`) || !strings.Contains(tl, "About &lt;the&gt; web") || strings.Contains(tl, "About <the>") {
+		t.Errorf("follower's timeline lacks the parent card:\n%s", tl)
+	}
+	// the thread view shows the unreadable root as a card, not a bare address
+	if th := threadPageOf(bob, bck, postURL, ""); !strings.Contains(th, `class="pcard"`) || !strings.Contains(th, "A page about the web.") || strings.Contains(th, "not known to your reader") {
+		t.Errorf("thread root should be a card:\n%s", th)
+	}
+
+	// unsafe images and long text are cleaned; the API takes the same snapshot
+	out := alice.call(t, "POST", "/api/posts", `{"markdown":"api reply","in_reply_to":"`+page+`","context":{"title":"`+strings.Repeat("t", 300)+`","description":"d","image":"javascript:alert(1)"}}`, 201)
+	_ = out
+	fx = alice.get("/feed.xml")
+	if strings.Contains(fx, "javascript:") || !regexp.MustCompile(`title="t{150,199}…"`).MatchString(fx) {
+		t.Errorf("snapshot not cleaned:\n%s", fx)
+	}
+}
+
+// The bookmarklet's page opens the compose form as a reply when the page takes a Webmention, as a
+// bookmark card when it does not, and either can be switched to the other.
+func TestComposeBookmarkOrReply(t *testing.T) {
+	alice := newInstance(t, "alice")
+	ck := loginCookie(t, alice)
+	q := func(extra ...string) string {
+		v := url.Values{"page": {"https://blog.example/post?id=7"}, "ptitle": {"A [fine] post"}, "pdesc": {"Something worth reading."},
+			"pimg": {"https://blog.example/i.jpg"}, "keywords": {"web, reading"}}
+		for i := 0; i+1 < len(extra); i += 2 {
+			v.Set(extra[i], extra[i+1])
+		}
+		return "/compose?" + v.Encode()
+	}
+	bm := do4(alice, q("wm", "0"), ck)
+	for _, want := range []string{`value="A [fine] post"`, "![A fine post](https://blog.example/i.jpg)", "&gt; Something worth reading.", "[blog.example](https://blog.example/post?id=7)", `value="web, reading"`, "Reply to this page instead", "mode=reply"} {
+		if !strings.Contains(bm, want) {
+			t.Errorf("bookmark mode lacks %q:\n%s", want, bm)
+		}
+	}
+	if strings.Contains(bm, `name="reply_to"`) {
+		t.Errorf("a bookmark is not a reply")
+	}
+	rp := do4(alice, q("wm", "1"), ck)
+	if !strings.Contains(rp, `name="reply_to" value="https://blog.example/post?id=7"`) || !strings.Contains(rp, "Bookmark this page instead") || strings.Contains(rp, "![A fine post]") {
+		t.Errorf("reply mode:\n%s", rp)
+	}
+	// the user's choice wins over the guess
+	if sw := do4(alice, q("wm", "0", "mode", "reply"), ck); !strings.Contains(sw, `name="reply_to"`) {
+		t.Errorf("mode=reply should override wm=0")
+	}
+	if sw := do4(alice, q("wm", "1", "mode", "bookmark"), ck); strings.Contains(sw, `name="reply_to"`) {
+		t.Errorf("mode=bookmark should override wm=1")
+	}
+	// an unsafe image address is dropped
+	if bad := do4(alice, q("wm", "1", "pimg", "javascript:alert(1)"), ck); strings.Contains(bad, "javascript:") {
+		t.Errorf("unsafe image kept:\n%s", bad)
+	}
+}

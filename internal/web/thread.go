@@ -38,7 +38,9 @@ type tnode struct {
 	Other     bool // Replies counts only the replies not already shown (a post on the path)
 	DrillHref string
 	Children  []*tnode
+	Parent    *parentCard // for a post the reader cannot read: what a reply says about it
 
+	pinfo                                     feed.ParentInfo // what this post says about the page it replies to
 	parent, parentFeed, feedHint, repliesHref string
 	repliesCount                              int // -1 unknown
 	published                                 time.Time
@@ -108,13 +110,29 @@ func (s *Server) buildThread(r *http.Request, q *req, target, view string) (*tno
 	b := &threadBuilder{s: s, r: r, q: q, ctx: ctx, base: s.base(r), own: s.base(r) + "/feed.xml", feeds: map[string]*feed.Parsed{}}
 	if view == "focus" {
 		root, _ := b.focus(target)
+		attachParentCards(root)
 		return root, root.URL
 	}
 	root, rootFeed := b.resolveRoot(target)
+	var tree *tnode
 	if view == "raw" {
-		return b.raw(root, rootFeed), root
+		tree = b.raw(root, rootFeed)
+	} else {
+		tree = b.curated(root, rootFeed)
 	}
-	return b.curated(root, rootFeed), root
+	attachParentCards(tree)
+	return tree, root
+}
+
+// attachParentCards gives each post the reader cannot read (an ordinary web page, say) the card its
+// first reply with a snapshot says about it.
+func attachParentCards(n *tnode) {
+	for _, c := range n.Children {
+		attachParentCards(c)
+		if n.Missing && n.Parent == nil && !c.pinfo.Empty() {
+			n.Parent = newParentCard(n.URL, c.pinfo)
+		}
+	}
 }
 
 func countNodes(n *tnode) int {
@@ -156,14 +174,14 @@ func (b *threadBuilder) localNode(p *store.Post) *tnode {
 	u := b.s.postURL(b.r, p.ID)
 	return &tnode{URL: u, Author: b.q.host.Display, Title: p.Title, Date: p.Created.Format("2 Jan 2006 15:04"), Local: true,
 		HTML: template.HTML(p.HTML), parent: p.InReplyTo, published: p.Created, feedHint: b.own, repliesHref: u + "/replies.xml",
-		repliesCount: -1, ReplyHref: b.reply(u) + "&reply_feed=" + url.QueryEscape(b.own)}
+		repliesCount: -1, pinfo: p.Parent, ReplyHref: b.reply(u) + "&reply_feed=" + url.QueryEscape(b.own)}
 }
 
 func (b *threadBuilder) itemNode(it store.TimelineItem) *tnode {
 	u := itemTarget(it)
 	return &tnode{URL: u, Author: orStr(it.FeedTitle, it.FeedURL), Title: it.Title, Date: it.Published.Format("2 Jan 2006 15:04"),
 		HTML: renderRemote(it.Markdown, it.Text), parent: it.InReplyTo, published: it.Published, feedHint: it.FeedURL,
-		repliesHref: it.RepliesHref, repliesCount: -1, ReplyHref: b.reply(u) + "&reply_feed=" + url.QueryEscape(it.FeedURL)}
+		repliesHref: it.RepliesHref, repliesCount: -1, pinfo: it.Parent, ReplyHref: b.reply(u) + "&reply_feed=" + url.QueryEscape(it.FeedURL)}
 }
 
 func (b *threadBuilder) receivedNode(rp store.Reply, parent string) *tnode {

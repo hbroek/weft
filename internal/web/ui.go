@@ -4,6 +4,7 @@ import (
 	"context"
 	"html/template"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -53,15 +54,24 @@ func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request, q *req) bo
 	return q.owner
 }
 
-func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status int, heading, action, button, del, title, markdown string, keywords []string, errMsg string) {
+func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status int, heading, action, button, del, title, markdown string, keywords []string, errMsg string, tweak ...func(*pageData)) {
 	d := s.data(r, q, heading)
 	d.ReplyTo, d.ReplyFeed = httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed"))
+	d.PInfo = parentFromForm(r)
+	if d.ReplyTo != "" {
+		d.Parent = newParentCard(d.ReplyTo, d.PInfo)
+	}
 	d.Heading, d.Action, d.Button, d.Delete, d.Error = heading, action, button, del, errMsg
 	d.Form.Title, d.Form.Markdown, d.Form.Keywords = title, markdown, feed.JoinKeywords(keywords)
 	d.PreviewKeywords = keywords
 	if strings.TrimSpace(markdown) != "" {
 		if h, err := md.Render(markdown); err == nil {
 			d.Preview = template.HTML(h) // goldmark safe mode: raw HTML dropped, dangerous URLs removed
+		}
+	}
+	for _, f := range tweak {
+		if f != nil {
+			f(&d)
 		}
 	}
 	s.show(w, "editor", status, d)
@@ -84,11 +94,55 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request, q *req) {
 }
 
 func (s *Server) composeForm(w http.ResponseWriter, r *http.Request, q *req) {
-	if s.requireOwner(w, r, q) {
-		// title, body and keywords prefill the form (e.g. from a bookmarklet); nothing is published until the owner submits
-		v := r.URL.Query()
-		s.editor(w, r, q, http.StatusOK, "New post", "/compose", "Publish", "", strings.TrimSpace(v.Get("title")), v.Get("body"), feed.SplitKeywords(v.Get("keywords")), "")
+	if !s.requireOwner(w, r, q) {
+		return
 	}
+	// title, body and keywords prefill the form (e.g. from a bookmarklet); nothing is published until the owner submits
+	v := r.URL.Query()
+	title, body, kws := strings.TrimSpace(v.Get("title")), v.Get("body"), feed.SplitKeywords(v.Get("keywords"))
+	var d func(*pageData)
+	if page := httpURL(v.Get("page")); page != "" {
+		// the bookmarklet's page: a bookmark card, or a reply to it when the page can take a Webmention
+		info := feed.ParentInfo{Title: v.Get("ptitle"), Description: v.Get("pdesc"), Image: v.Get("pimg")}.Clean()
+		mode := v.Get("mode")
+		if mode != "reply" && mode != "bookmark" {
+			mode = "bookmark"
+			if v.Get("wm") == "1" {
+				mode = "reply"
+			}
+		}
+		other := url.Values{}
+		for k, vs := range v {
+			other[k] = vs
+		}
+		r.ParseForm()
+		if mode == "reply" {
+			r.Form.Set("reply_to", page) // the editor reads these from the form
+			r.Form.Set("ptitle", info.Title)
+			r.Form.Set("pdesc", info.Description)
+			r.Form.Set("pimg", info.Image)
+			other.Set("mode", "bookmark")
+			d = func(d *pageData) { d.ModeHref, d.ModeLabel = "/compose?"+other.Encode(), "Bookmark this page instead" }
+		} else {
+			title, body = info.Title, bookmarkBody(page, info)
+			other.Set("mode", "reply")
+			d = func(d *pageData) { d.ModeHref, d.ModeLabel = "/compose?"+other.Encode(), "Reply to this page instead" }
+		}
+	}
+	s.editor(w, r, q, http.StatusOK, "New post", "/compose", "Publish", "", title, body, kws, "", d)
+}
+
+// bookmarkBody is the Markdown of a bookmark card: the page's image, a quoted description and a link.
+func bookmarkBody(page string, p feed.ParentInfo) string {
+	var b strings.Builder
+	if p.Image != "" {
+		b.WriteString("![" + strings.NewReplacer("[", "", "]", "").Replace(p.Title) + "](" + p.Image + ")\n\n")
+	}
+	if p.Description != "" {
+		b.WriteString("> " + p.Description + "\n\n")
+	}
+	b.WriteString("[" + siteHost(page) + "](" + strings.ReplaceAll(page, ")", "%29") + ")\n")
+	return b.String()
 }
 
 func (s *Server) compose(w http.ResponseWriter, r *http.Request, q *req) {
@@ -96,7 +150,7 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	title, body, kws := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown"), feed.SplitKeywords(r.FormValue("keywords"))
-	p, msg := s.create(r, q.host, title, body, kws, httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed")))
+	p, msg := s.create(r, q.host, title, body, kws, httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed")), parentFromForm(r))
 	if msg != "" {
 		s.editor(w, r, q, http.StatusBadRequest, "New post", "/compose", "Publish", "", title, body, kws, msg)
 		return
@@ -151,7 +205,7 @@ func (s *Server) deleteForm(w http.ResponseWriter, r *http.Request, q *req) {
 
 // create validates, renders and stores a new post, and for a reply, links it into its thread
 // and queues a Webmention to the parent. msg is a user-facing validation error.
-func (s *Server) create(r *http.Request, u *store.User, title, markdown string, keywords []string, replyTo, replyFeed string) (*store.Post, string) {
+func (s *Server) create(r *http.Request, u *store.User, title, markdown string, keywords []string, replyTo, replyFeed string, parent feed.ParentInfo) (*store.Post, string) {
 	if strings.TrimSpace(markdown) == "" {
 		return nil, "Write something first."
 	}
@@ -161,6 +215,7 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown string, 
 	}
 	n := store.NewPost{UserID: u.ID, Title: title, Markdown: markdown, HTML: html, Keywords: keywords}
 	if replyTo != "" {
+		n.Parent = parent
 		n.InReplyTo = replyTo
 		n.InReplyToFeed, n.Root, n.RootFeed = s.resolveThread(r.Context(), s.base(r), u, replyTo, replyFeed)
 	}

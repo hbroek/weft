@@ -83,6 +83,14 @@ article.likeevent { color: var(--muted); font-size: .9rem; background: none; bor
 .m-r { display: flex; justify-content: flex-end; gap: .15rem; }
 .node-actions { display: flex; justify-content: flex-end; align-items: center; gap: .15rem; margin-top: .4rem; }
 .ico .cnt { margin-left: .3rem; font-size: .85em; align-self: center; }
+.pcard { display: flex; gap: .75rem; align-items: stretch; margin: .6rem 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; color: var(--text); text-decoration: none; background: var(--soft); }
+.pcard:hover { border-color: var(--orange); }
+.pcard img { width: 6rem; flex: none; object-fit: cover; max-width: none; max-height: none; border-radius: 0; }
+.pc-t { display: flex; flex-direction: column; gap: .15rem; padding: .55rem .75rem; min-width: 0; }
+.pcard img + .pc-t { padding-left: 0; }
+.pc-t strong { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.pc-d { color: var(--muted); font-size: .9em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.pc-t small { color: var(--muted); }
 .card-top { display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; }
 .card-top p, .card-top h2, .card-top h3 { margin: 0; }
 .when { white-space: nowrap; color: var(--muted); font-size: .85em; }
