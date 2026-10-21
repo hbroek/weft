@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hbroek/weft/internal/feed"
 	"github.com/hbroek/weft/internal/md"
 	"github.com/hbroek/weft/internal/store"
 )
@@ -52,11 +53,12 @@ func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request, q *req) bo
 	return q.owner
 }
 
-func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status int, heading, action, button, del, title, markdown, errMsg string) {
+func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status int, heading, action, button, del, title, markdown string, keywords []string, errMsg string) {
 	d := s.data(r, q, heading)
 	d.ReplyTo, d.ReplyFeed = httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed"))
 	d.Heading, d.Action, d.Button, d.Delete, d.Error = heading, action, button, del, errMsg
-	d.Form.Title, d.Form.Markdown = title, markdown
+	d.Form.Title, d.Form.Markdown, d.Form.Keywords = title, markdown, feed.JoinKeywords(keywords)
+	d.PreviewKeywords = keywords
 	if strings.TrimSpace(markdown) != "" {
 		if h, err := md.Render(markdown); err == nil {
 			d.Preview = template.HTML(h) // goldmark safe mode: raw HTML dropped, dangerous URLs removed
@@ -83,7 +85,7 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request, q *req) {
 
 func (s *Server) composeForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if s.requireOwner(w, r, q) {
-		s.editor(w, r, q, http.StatusOK, "New post", "/compose", "Publish", "", "", "", "")
+		s.editor(w, r, q, http.StatusOK, "New post", "/compose", "Publish", "", "", "", nil, "")
 	}
 }
 
@@ -91,10 +93,10 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.requireOwner(w, r, q) {
 		return
 	}
-	title, body := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown")
-	p, msg := s.create(r, q.host, title, body, httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed")))
+	title, body, kws := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown"), feed.SplitKeywords(r.FormValue("keywords"))
+	p, msg := s.create(r, q.host, title, body, kws, httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed")))
 	if msg != "" {
-		s.editor(w, r, q, http.StatusBadRequest, "New post", "/compose", "Publish", "", title, body, msg)
+		s.editor(w, r, q, http.StatusBadRequest, "New post", "/compose", "Publish", "", title, body, kws, msg)
 		return
 	}
 	http.Redirect(w, r, "/posts/"+p.Slug, http.StatusSeeOther)
@@ -115,7 +117,7 @@ func (s *Server) ownPost(w http.ResponseWriter, r *http.Request, q *req) *store.
 func (s *Server) editForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if p := s.ownPost(w, r, q); p != nil {
 		path := "/posts/" + p.Slug
-		s.editor(w, r, q, http.StatusOK, "Edit post", path+"/edit", "Save", path+"/delete", p.Title, p.Markdown, "")
+		s.editor(w, r, q, http.StatusOK, "Edit post", path+"/edit", "Save", path+"/delete", p.Title, p.Markdown, p.Keywords, "")
 	}
 }
 
@@ -124,10 +126,10 @@ func (s *Server) edit(w http.ResponseWriter, r *http.Request, q *req) {
 	if p == nil {
 		return
 	}
-	title, body := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown")
+	title, body, kws := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown"), feed.SplitKeywords(r.FormValue("keywords"))
 	path := "/posts/" + p.Slug
-	if _, msg := s.update(r, q.host, p.ID, title, body); msg != "" {
-		s.editor(w, r, q, http.StatusBadRequest, "Edit post", path+"/edit", "Save", path+"/delete", title, body, msg)
+	if _, msg := s.update(r, q.host, p.ID, title, body, kws); msg != "" {
+		s.editor(w, r, q, http.StatusBadRequest, "Edit post", path+"/edit", "Save", path+"/delete", title, body, kws, msg)
 		return
 	}
 	http.Redirect(w, r, "/posts/"+p.Slug, http.StatusSeeOther)
@@ -147,7 +149,7 @@ func (s *Server) deleteForm(w http.ResponseWriter, r *http.Request, q *req) {
 
 // create validates, renders and stores a new post, and for a reply, links it into its thread
 // and queues a Webmention to the parent. msg is a user-facing validation error.
-func (s *Server) create(r *http.Request, u *store.User, title, markdown, replyTo, replyFeed string) (*store.Post, string) {
+func (s *Server) create(r *http.Request, u *store.User, title, markdown string, keywords []string, replyTo, replyFeed string) (*store.Post, string) {
 	if strings.TrimSpace(markdown) == "" {
 		return nil, "Write something first."
 	}
@@ -155,7 +157,7 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown, replyTo
 	if err != nil {
 		return nil, err.Error()
 	}
-	n := store.NewPost{UserID: u.ID, Title: title, Markdown: markdown, HTML: html}
+	n := store.NewPost{UserID: u.ID, Title: title, Markdown: markdown, HTML: html, Keywords: keywords}
 	if replyTo != "" {
 		n.InReplyTo = replyTo
 		n.InReplyToFeed, n.Root, n.RootFeed = s.resolveThread(r.Context(), s.base(r), u, replyTo, replyFeed)
@@ -172,7 +174,7 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown, replyTo
 }
 
 // update replaces a post's content and, for a reply, tells the parent it changed.
-func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdown string) (*store.Post, string) {
+func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdown string, keywords []string) (*store.Post, string) {
 	if strings.TrimSpace(markdown) == "" {
 		return nil, "Write something first."
 	}
@@ -180,7 +182,7 @@ func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdow
 	if err != nil {
 		return nil, err.Error()
 	}
-	p, err := s.st.UpdatePost(u.ID, id, title, markdown, html)
+	p, err := s.st.UpdatePost(u.ID, id, title, markdown, html, keywords)
 	if err != nil {
 		return nil, err.Error()
 	}

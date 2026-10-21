@@ -34,10 +34,11 @@ type ParsedItem struct {
 	Root, RootFeed         string // weft:root
 	// weft:likeOf: set when the item is a like rather than a post.
 	LikeOf             string
-	Likes              int    // weft:likes count
-	RepliesHref        string // weft:replies href: where this item's approved replies are published
-	RepliesCount       int    // weft:replies count; -1 when the item does not say
-	FeedHref, FeedName string // weft:feed: the author's feed and display name (replies feeds)
+	Likes              int      // weft:likes count
+	RepliesHref        string   // weft:replies href: where this item's approved replies are published
+	RepliesCount       int      // weft:replies count; -1 when the item does not say
+	FeedHref, FeedName string   // weft:feed: the author's feed and display name (replies feeds)
+	Keywords           []string // the item's <category> elements, cleaned
 }
 
 // plainLinks collects <link> elements. encoding/xml matches an unqualified name in any
@@ -76,6 +77,7 @@ type xmlParsed struct {
 			Link        plainLinks `xml:"link"`
 			Description string     `xml:"description"`
 			PubDate     string     `xml:"pubDate"`
+			Categories  []string   `xml:"category"`
 			Markdown    string     `xml:"http://source.scripting.com/ markdown"`
 			Updated     string     `xml:"https://weftseed.com/ns/weft/0.1 updated"`
 			InReplyTo   struct {
@@ -172,7 +174,7 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 			Root: strings.TrimSpace(it.Root.Href), RootFeed: strings.TrimSpace(it.Root.Feed),
 			LikeOf: strings.TrimSpace(it.LikeOf.Href), RepliesHref: strings.TrimSpace(it.Replies.Href),
 			FeedHref: strings.TrimSpace(it.Feed.Href), FeedName: strings.TrimSpace(it.Feed.Name),
-			Likes: max(it.Likes.Count, it.OldReactions.Plus, 0),
+			Likes: max(it.Likes.Count, it.OldReactions.Plus, 0), Keywords: Keywords(it.Categories),
 		}
 		if pi.LikeOf == "" && strings.TrimSpace(it.ReactionOf.Polarity) != "-" {
 			pi.LikeOf = strings.TrimSpace(it.ReactionOf.Href)

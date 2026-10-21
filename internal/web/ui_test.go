@@ -241,3 +241,50 @@ func TestEditorPreview(t *testing.T) {
 		t.Errorf("edit page lacks the preview:\n%s", p)
 	}
 }
+
+// Keywords are typed in a box under the Markdown, published as <category> and shown as chips.
+func TestKeywordsEndToEnd(t *testing.T) {
+	s, tok := setup(t)
+	if err := s.st.SetPassword("alice", "correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+
+	page := do3(s, "GET", host, "/compose", ck).Body.String()
+	i, j := strings.Index(page, `name="markdown"`), strings.Index(page, `name="keywords"`)
+	if i < 0 || j < i || !strings.Contains(page, `id="preview-kw"`) {
+		t.Fatalf("the keywords box belongs under the Markdown:\n%s", page)
+	}
+
+	w := form(s, "POST", "/compose", ck, url.Values{"markdown": {"Heading out for pickleball"}, "keywords": {"pickleball, open web, , Pickleball"}}, "")
+	loc := w.Header().Get("Location")
+	if w.Code != 303 {
+		t.Fatalf("compose: %d", w.Code)
+	}
+	feedXML := do(s, "GET", host, "/feed.xml", "", "").Body.String()
+	if !strings.Contains(feedXML, "<category>pickleball</category>") || !strings.Contains(feedXML, "<category>open web</category>") || strings.Count(feedXML, "<category>") != 2 {
+		t.Errorf("feed categories:\n%s", feedXML)
+	}
+	if pg := do(s, "GET", host, loc, "", "").Body.String(); !strings.Contains(pg, `<span class="p-category">open web</span>`) {
+		t.Errorf("chips missing on the post page:\n%s", pg)
+	}
+
+	// editing shows them in the box and replaces them
+	edit := do3(s, "GET", host, loc+"/edit", ck).Body.String()
+	if !strings.Contains(edit, `value="pickleball, open web"`) {
+		t.Errorf("edit form lacks the keywords:\n%s", edit)
+	}
+	form(s, "POST", loc+"/edit", ck, url.Values{"markdown": {"Heading out"}, "keywords": {"tennis"}}, "")
+	if f := do(s, "GET", host, "/feed.xml", "", "").Body.String(); !strings.Contains(f, "<category>tennis</category>") || strings.Contains(f, "<category>pickleball</category>") {
+		t.Errorf("edited keywords:\n%s", f)
+	}
+
+	// the API takes a list
+	out := do(s, "POST", host, "/api/posts", tok, `{"markdown":"api post","keywords":["a b","c","A B"]}`)
+	if out.Code != 201 {
+		t.Fatalf("api: %d %s", out.Code, out.Body)
+	}
+	if f := do(s, "GET", host, "/feed.xml", "", "").Body.String(); strings.Count(f, "<category>a b</category>") != 1 || !strings.Contains(f, "<category>c</category>") {
+		t.Errorf("api keywords:\n%s", f)
+	}
+}

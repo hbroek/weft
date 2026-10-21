@@ -37,7 +37,7 @@ Reused namespaces:
 | --- | --- |
 | `source:` | `source:markdown`, the post's original Markdown (Dave Winer's Source namespace) |
 | `atom:` | `atom:link rel="self"` and `rel="hub"` for WebSub pings |
-| RSS 2.0 core | `<cloud>` for rssCloud pings, `<category>` for tags, `<enclosure>` for media |
+| RSS 2.0 core | `<cloud>` for rssCloud pings, `<category>` for keywords, `<enclosure>` for media |
 
 ## Channel elements
 
@@ -68,7 +68,7 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 | `<source:markdown>` | Recommended | The original Markdown, unaltered. |
 | `<pubDate>` | Required | First publication time. |
 | `<weft:updated>` | Optional | Time of the latest edit, RFC 822 format like `pubDate`. Present only on edited items. |
-| `<category>` | Optional | Tags; one element per tag. |
+| `<category>` | Optional | Keywords: one element per keyword or phrase, as typed by the author (not Markdown, not hashtags). Writers should publish at most 10 of up to 50 characters, with no commas, and readers should apply the same limits to what other hosts publish. A reader decides how to show them; Weft shows them as chips under the post. |
 | `<enclosure>` | Optional | Attached media, as in podcasting. |
 
 ### Reply elements
@@ -263,6 +263,7 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
     <source:markdown>RSS plus links already gives you a social web. Who's building the *reader* half?</source:markdown>
     <pubDate>Mon, 12 Oct 2026 21:00:00 -0400</pubDate>
     <category>textcasting</category>
+    <category>open web</category>
     <weft:replies href="https://alice.example/posts/rss-plus-links-already-gives-you.w3kp/replies.xml" count="1"/>
     <weft:likes count="1"/>
   </item>

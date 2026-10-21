@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hbroek/weft/internal/feed"
 	_ "modernc.org/sqlite"
 )
 
@@ -42,6 +43,7 @@ type Post struct {
 	Deleted  bool
 	// Reply links; empty unless the post is a reply.
 	InReplyTo, InReplyToFeed, Root, RootFeed string
+	Keywords                                 []string
 }
 
 // NewPost is the input for AddPost.
@@ -49,6 +51,7 @@ type NewPost struct {
 	UserID                                   int64
 	Title, Markdown, HTML                    string
 	InReplyTo, InReplyToFeed, Root, RootFeed string
+	Keywords                                 []string
 	// Created is when the post was written; the zero value means now. Importers set it.
 	Created time.Time
 }
@@ -82,7 +85,8 @@ CREATE TABLE IF NOT EXISTS posts (
   in_reply_to TEXT NOT NULL DEFAULT '',
   in_reply_to_feed TEXT NOT NULL DEFAULT '',
   root TEXT NOT NULL DEFAULT '',
-  root_feed TEXT NOT NULL DEFAULT ''
+  root_feed TEXT NOT NULL DEFAULT '',
+  keywords TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS replies (
   id INTEGER PRIMARY KEY,
@@ -226,6 +230,8 @@ func Open(path string) (*Store, error) {
 		db.Exec(`ALTER TABLE replies ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 	}
 	db.Exec(`ALTER TABLE items ADD COLUMN likes INTEGER NOT NULL DEFAULT 0`)
+	db.Exec(`ALTER TABLE items ADD COLUMN keywords TEXT NOT NULL DEFAULT ''`)
+	db.Exec(`ALTER TABLE posts ADD COLUMN keywords TEXT NOT NULL DEFAULT ''`)
 	return &Store{db: db}, nil
 }
 
@@ -368,8 +374,8 @@ func (s *Store) AddPost(n NewPost) (*Post, error) {
 	var err error
 	for try := 0; try < 8; try++ { // a collision in the 4-character suffix is rare; draw again
 		slug = Slug(n.Title, n.Markdown)
-		res, err = s.db.Exec(`INSERT INTO posts(user_id,uid,slug,title,markdown,html,created,in_reply_to,in_reply_to_feed,root,root_feed) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			n.UserID, uid, slug, n.Title, n.Markdown, n.HTML, now.Unix(), n.InReplyTo, n.InReplyToFeed, n.Root, n.RootFeed)
+		res, err = s.db.Exec(`INSERT INTO posts(user_id,uid,slug,title,markdown,html,created,in_reply_to,in_reply_to_feed,root,root_feed,keywords) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			n.UserID, uid, slug, n.Title, n.Markdown, n.HTML, now.Unix(), n.InReplyTo, n.InReplyToFeed, n.Root, n.RootFeed, packKeywords(n.Keywords))
 		if err == nil || !strings.Contains(err.Error(), "UNIQUE") {
 			break
 		}
@@ -379,7 +385,7 @@ func (s *Store) AddPost(n NewPost) (*Post, error) {
 	}
 	id, _ := res.LastInsertId()
 	return &Post{ID: id, UserID: n.UserID, UID: uid, Slug: slug, Title: n.Title, Markdown: n.Markdown, HTML: n.HTML, Created: time.Unix(now.Unix(), 0),
-		InReplyTo: n.InReplyTo, InReplyToFeed: n.InReplyToFeed, Root: n.Root, RootFeed: n.RootFeed}, nil
+		InReplyTo: n.InReplyTo, InReplyToFeed: n.InReplyToFeed, Root: n.Root, RootFeed: n.RootFeed, Keywords: feed.Keywords(n.Keywords)}, nil
 }
 
 // backfillIdentity gives posts made before uid and slug existed an identity.
@@ -440,10 +446,12 @@ func scanPost(r interface{ Scan(...any) error }) (*Post, error) {
 	var created int64
 	var updated sql.NullInt64
 	var del int
+	var kw string
 	if err := r.Scan(&p.ID, &p.UserID, &p.UID, &p.Slug, &p.Title, &p.Markdown, &p.HTML, &created, &updated, &del,
-		&p.InReplyTo, &p.InReplyToFeed, &p.Root, &p.RootFeed); err != nil {
+		&p.InReplyTo, &p.InReplyToFeed, &p.Root, &p.RootFeed, &kw); err != nil {
 		return nil, err
 	}
+	p.Keywords = unpackKeywords(kw)
 	p.Created = time.Unix(created, 0)
 	if updated.Valid {
 		t := time.Unix(updated.Int64, 0)
@@ -453,7 +461,17 @@ func scanPost(r interface{ Scan(...any) error }) (*Post, error) {
 	return p, nil
 }
 
-const postCols = `id,user_id,uid,slug,title,markdown,html,created,updated,deleted,in_reply_to,in_reply_to_feed,root,root_feed`
+const postCols = `id,user_id,uid,slug,title,markdown,html,created,updated,deleted,in_reply_to,in_reply_to_feed,root,root_feed,keywords`
+
+// packKeywords stores keywords one per line; a keyword never holds a newline.
+func packKeywords(k []string) string { return strings.Join(feed.Keywords(k), "\n") }
+
+func unpackKeywords(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\n")
+}
 
 func (s *Store) Post(userID, id int64) (*Post, error) {
 	p, err := scanPost(s.db.QueryRow(`SELECT `+postCols+` FROM posts WHERE user_id=? AND id=?`, userID, id))
@@ -486,10 +504,10 @@ func (s *Store) PostsPage(userID int64, limit, offset int) ([]*Post, error) {
 	return out, rows.Err()
 }
 
-// UpdatePost replaces a post's title and content and stamps its update time.
-func (s *Store) UpdatePost(userID, id int64, title, markdown, html string) (*Post, error) {
-	res, err := s.db.Exec(`UPDATE posts SET title=?,markdown=?,html=?,updated=? WHERE user_id=? AND id=? AND deleted=0`,
-		title, markdown, html, time.Now().Unix(), userID, id)
+// UpdatePost replaces a post's title, content and keywords and stamps its update time.
+func (s *Store) UpdatePost(userID, id int64, title, markdown, html string, keywords []string) (*Post, error) {
+	res, err := s.db.Exec(`UPDATE posts SET title=?,markdown=?,html=?,keywords=?,updated=? WHERE user_id=? AND id=? AND deleted=0`,
+		title, markdown, html, packKeywords(keywords), time.Now().Unix(), userID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -502,7 +520,7 @@ func (s *Store) UpdatePost(userID, id int64, title, markdown, html string) (*Pos
 // DeletePost tombstones a post and discards its content. The id stays reserved so the
 // permalink can answer 410 Gone.
 func (s *Store) DeletePost(userID, id int64) error {
-	res, err := s.db.Exec(`UPDATE posts SET deleted=1,title='',markdown='',html='',updated=? WHERE user_id=? AND id=? AND deleted=0`,
+	res, err := s.db.Exec(`UPDATE posts SET deleted=1,title='',markdown='',html='',keywords='',updated=? WHERE user_id=? AND id=? AND deleted=0`,
 		time.Now().Unix(), userID, id)
 	if err != nil {
 		return err

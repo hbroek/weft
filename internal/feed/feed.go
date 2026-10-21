@@ -89,6 +89,7 @@ type Item struct {
 	Description string   `xml:"description"`
 	Markdown    string   `xml:"source:markdown,omitempty"`
 	PubDate     string   `xml:"pubDate"`
+	Categories  []string `xml:"category"` // the keywords
 	Updated     string   `xml:"weft:updated,omitempty"`
 	InReplyTo   *Ref     `xml:"weft:inReplyTo"`
 	Root        *Ref     `xml:"weft:root"`

@@ -202,3 +202,21 @@ func TestLikedByText(t *testing.T) {
 		}
 	}
 }
+
+// Keywords travel in the feed as <category> and show as chips in a follower's timeline.
+func TestKeywordsReachFollowers(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	alice.post(t, `{"markdown":"Heading out for pickleball","keywords":["pickleball","open web"]}`)
+	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
+	if tl := bob.call(t, "GET", "/api/timeline", "", 200); !strings.Contains(tl, `"keywords":["pickleball","open web"]`) {
+		t.Errorf("keywords missing from the timeline JSON: %s", tl)
+	}
+	bob.s.st.SetPassword("bob", "correct horse")
+	lr := httptest.NewRequest("POST", bob.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
+	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	lw := httptest.NewRecorder()
+	bob.s.ServeHTTP(lw, lr)
+	if tl := do4(bob, "/timeline", cookieOf(lw)); !strings.Contains(tl, `<p class="kw"><span>pickleball</span><span>open web</span></p>`) {
+		t.Errorf("chips missing from the timeline:\n%s", tl)
+	}
+}

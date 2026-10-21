@@ -65,7 +65,7 @@ func TestPostsKeepTheirIdentityAndOldPostsGetOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	// editing keeps uid and slug
-	if _, err := st.UpdatePost(u.ID, p.ID, "A completely different title", "y", "y"); err != nil {
+	if _, err := st.UpdatePost(u.ID, p.ID, "A completely different title", "y", "y", nil); err != nil {
 		t.Fatal(err)
 	}
 	q, _ := st.Post(u.ID, p.ID)

@@ -35,6 +35,8 @@ sent to the parent's site. Replies you receive from people you follow are approv
 others wait on the Replies page (or `GET /api/replies?status=pending`) until you approve them.
 You can reject an approved reply later.
 
+Keywords: an optional comma-separated box under the Markdown editor (`pickleball, open web`, phrases allowed, up to 10 of 50 characters). They are published as the item's `<category>` elements and shown as chips; the API takes `"keywords": ["a", "b c"]`.
+
 Liking: under each timeline post, "Like" publishes a like in your likes feed, and "undo" withdraws it.
 API: `POST /api/likes {"target","target_feed"}`, `DELETE /api/likes {"target"}`. A like is counted at the
 post only when the sender is someone the post's author follows; `GET /api/likes/received?post_id=N` shows

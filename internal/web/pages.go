@@ -31,6 +31,7 @@ ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #
 .likebtn svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
 .likebtn[aria-pressed=true]{color:#1a6fe0}.likebtn[aria-pressed=true] svg{fill:currentColor}
 article.likeevent{color:GrayText;font-size:.9rem;background:none;border:0;box-shadow:none;padding:0 1.1rem;margin:.6rem 0}
+.kw{display:flex;flex-wrap:wrap;gap:.35rem;margin:.5rem 0 0}.kw span{background:#0000000a;border-radius:999px;padding:.05rem .65rem;font-size:.85em;color:#444}
 .tally{cursor:help;text-decoration:underline dotted;text-underline-offset:3px}
 #preview .empty{color:GrayText}
 .sr{position:absolute;left:-9999px}
@@ -46,6 +47,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 {{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{end}}
 {{if .InReplyTo}}<p><small>In reply to <a class="u-in-reply-to" href="{{.InReplyTo}}">{{.InReplyTo}}</a></small></p>{{end}}
 <div class="e-content">{{.HTML}}</div>
+{{if .Keywords}}<p class="kw">{{range .Keywords}}<span class="p-category">{{.}}</span>{{end}}</p>{{end}}
 <a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}">{{.Date}}</time></a>
 {{if .Edited}} <time>(edited)</time>{{end}}
 {{if $.Owner}} <a href="{{.URL}}/edit">Edit</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}{{end}}
@@ -71,6 +73,7 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 <p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">a post</a>{{end}}</p>
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div>{{.HTML}}</div>
+{{if .Keywords}}<p class="kw">{{range .Keywords}}<span>{{.}}</span>{{end}}</p>{{end}}
 <p><a href="{{.ReplyHref}}">Reply</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}</p>
 {{if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
 <button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}">{{.Tally}}</small>{{end}}</form>{{end}}
@@ -117,15 +120,22 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label>Markdown <textarea name="markdown" required>{{.Form.Markdown}}</textarea></label>
+<label>Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" placeholder="pickleball, open web, Dave Winer"></label>
 <p><button>{{.Button}}</button></p></form>
 <h3>Preview</h3>
-<article id="preview" class="h-entry"><h3 id="preview-title"{{if not .Form.Title}} hidden{{end}}>{{.Form.Title}}</h3><div id="preview-body">{{if .Preview}}{{.Preview}}{{else}}<p class="empty">Nothing to preview yet.</p>{{end}}</div></article>
+<article id="preview" class="h-entry"><h3 id="preview-title"{{if not .Form.Title}} hidden{{end}}>{{.Form.Title}}</h3><div id="preview-body">{{if .Preview}}{{.Preview}}{{else}}<p class="empty">Nothing to preview yet.</p>{{end}}</div>
+<p class="kw" id="preview-kw"{{if not .PreviewKeywords}} hidden{{end}}>{{range .PreviewKeywords}}<span>{{.}}</span>{{end}}</p></article>
 <script>
 (function(){
-var md=document.querySelector('textarea[name=markdown]'),ti=document.querySelector('input[name=title]'),
+var md=document.querySelector('textarea[name=markdown]'),ti=document.querySelector('input[name=title]'),kw=document.querySelector('input[name=keywords]'),kwbox=document.getElementById('preview-kw'),
  body=document.getElementById('preview-body'),head=document.getElementById('preview-title'),timer,seq=0,shown=0;
 if(!md||!body)return;
 function title(){head.textContent=ti.value.trim();head.hidden=!ti.value.trim()}
+function chips(){
+ var seen={},out=[];
+ kw.value.split(',').forEach(function(k){k=k.replace(/\s+/g,' ').trim();if(k&&!seen[k.toLowerCase()]&&out.length<10){seen[k.toLowerCase()]=1;out.push(k.slice(0,50))}});
+ kwbox.textContent='';out.forEach(function(k){var s=document.createElement('span');s.textContent=k;kwbox.appendChild(s)});kwbox.hidden=!out.length;
+}
 function render(){
  var n=++seq;
  fetch('/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'markdown='+encodeURIComponent(md.value),credentials:'same-origin'})
@@ -135,6 +145,7 @@ function render(){
 }
 md.addEventListener('input',function(){clearTimeout(timer);timer=setTimeout(render,200)});
 ti.addEventListener('input',title);
+if(kw&&kwbox)kw.addEventListener('input',chips);
 })();
 </script>
 {{if .Delete}}<form method="post" action="{{.Delete}}" onsubmit="return confirm('Delete this post?')"><button class="linkbtn">Delete post</button></form>{{end}}
@@ -145,6 +156,7 @@ type pagePost struct {
 	HTML                  template.HTML
 	Edited                bool
 	InReplyTo             string
+	Keywords              []string
 	Tally, TallyTip       string
 	ThreadHref            string
 	HasThread             bool // it replies to something or has approved replies
@@ -166,9 +178,10 @@ type pageData struct {
 	// forms
 	Error, Action, Heading, Button, Delete, Only string
 	Preview                                      template.HTML // the editor's rendered Markdown
+	PreviewKeywords                              []string      // the editor's keywords as chips
 	ShowLikes                                    bool
 	LikesToggle                                  string
-	Form                                         struct{ Title, Markdown string }
+	Form                                         struct{ Title, Markdown, Keywords string }
 }
 
 func (s *Server) data(r *http.Request, q *req, title string) pageData {
@@ -194,7 +207,7 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 		d.Posts = append(d.Posts, pagePost{
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
 			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 15:04"),
-			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
+			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Keywords: p.Keywords, Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
 			HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 		})
 	}
@@ -351,6 +364,7 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 			Description: p.HTML, Markdown: p.Markdown, PubDate: feed.RFC822(p.Created)}
 		it.Replies = &feed.Replies{Href: url + "/replies.xml", Count: counts[p.ID]}
 		it.Likes = &feed.Likes{Count: tallies[p.ID]}
+		it.Categories = p.Keywords
 		if p.InReplyTo != "" {
 			it.InReplyTo = &feed.Ref{Href: p.InReplyTo, Feed: p.InReplyToFeed}
 			it.Root = &feed.Ref{Href: p.Root, Feed: p.RootFeed}

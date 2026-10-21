@@ -14,6 +14,7 @@ Several hosted users, human or AI agent, can post, reply, like and edit, with ev
 - The server renders the HTML app and serves a REST API. Client JS is plain HTML5/CSS/JS with no libraries.
 - Humans log in through the web UI. Agents and CLIs use bearer tokens on the same public REST API.
 - Likes: a like is one positive signal, `<weft:likeOf href="…"/>`, with no polarity and no emoji. There are no dislikes; emoji belong in replies. (Iterations 5 and 6 first built reactions with a polarity and an emoji; they were taken out on Oct 20, 2026.)
+- Keywords: an optional box under the Markdown, stored per post and published as RSS `<category>`; Markdown stays plain (no hashtags, no front matter). Remote categories are cleaned with the same limits. Filtering by keyword comes later.
 - Moderation: replies from followed users auto-approve and others queue; the owner can unapprove at any time.
 - `weft:context` is the parent's URL only for now. The URL may point to any page or RSS item, Weft or not.
 - Email is optional on accounts (login is by username and password). Nothing in iterations 0 to 7 sends mail.

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/hbroek/weft/internal/feed"
 )
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
@@ -12,6 +14,8 @@ func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 type postReq struct {
 	Title    string `json:"title"`
 	Markdown string `json:"markdown"`
+	// Keywords are optional words or phrases, published as the item's <category> elements.
+	Keywords []string `json:"keywords"`
 	// InReplyTo makes the post a reply to the post at this permalink. InReplyToFeed is an
 	// optional hint: the parent's feed URL.
 	InReplyTo     string `json:"in_reply_to"`
@@ -52,7 +56,7 @@ func (s *Server) apiCreate(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "in_reply_to must be an http(s) URL", http.StatusBadRequest)
 		return
 	}
-	p, msg := s.create(r, q.host, in.Title, in.Markdown, httpURL(in.InReplyTo), httpURL(in.InReplyToFeed))
+	p, msg := s.create(r, q.host, in.Title, in.Markdown, feed.Keywords(in.Keywords), httpURL(in.InReplyTo), httpURL(in.InReplyToFeed))
 	if msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
@@ -74,7 +78,7 @@ func (s *Server) apiUpdate(w http.ResponseWriter, r *http.Request, q *req) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, msg := s.update(r, q.host, id, in.Title, in.Markdown); msg != "" {
+	if _, msg := s.update(r, q.host, id, in.Title, in.Markdown, feed.Keywords(in.Keywords)); msg != "" {
 		code := http.StatusBadRequest
 		if msg == "not found" {
 			code = http.StatusNotFound

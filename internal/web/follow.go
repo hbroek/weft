@@ -25,6 +25,7 @@ type tlRow struct {
 	HasThread                                                   bool // it replies to something or has replies
 	HTML                                                        template.HTML
 	Edited                                                      bool
+	Keywords                                                    []string
 	// a like by someone you follow, shown only when likes are switched on
 	IsLike             bool
 	LikedHref, LikedAs string
@@ -111,7 +112,7 @@ func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineIt
 			author = it.FeedURL
 		}
 		out = append(out, tlRow{Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
-			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil,
+			Date: it.Published.Format("2 Jan 2006 15:04"), HTML: remoteHTML(it), Edited: it.Updated != nil, Keywords: it.Keywords,
 			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(it.Likes), TallyTip: likedBy(names, it.Likes),
 			Mine: mine, when: it.Published})
 	}
