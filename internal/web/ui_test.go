@@ -379,11 +379,11 @@ func TestHeaderAndThemes(t *testing.T) {
 			t.Errorf("visitor's header lacks %q", want)
 		}
 	}
-	if strings.Contains(vis, "Log out") || strings.Contains(vis, `class="sub"`) {
+	if strings.Contains(vis, "Log out") || strings.Contains(vis, `class="menu"`) {
 		t.Errorf("visitor must not see Log out or the owner's menu")
 	}
 	own := do3(s, "GET", host, "/", ck).Body.String()
-	if !strings.Contains(own, `action="/logout"><button class="btn">Log out</button>`) || !strings.Contains(own, `<nav class="sub"><a href="/compose">Compose</a>`) || strings.Contains(own, ">Log in<") {
+	if !strings.Contains(own, `action="/logout"><button class="btn">Log out</button>`) || !strings.Contains(own, `<nav class="menu"><a href="/compose">Compose</a>`) || strings.Contains(own, ">Log in<") {
 		t.Errorf("owner's header:\n%s", own)
 	}
 
@@ -394,6 +394,20 @@ func TestHeaderAndThemes(t *testing.T) {
 	for _, want := range []string{"#26337a", "#f08a4b", "#eef0fa", "prefers-color-scheme: dark", `:root[data-theme="dark"]`, `:root:not([data-theme="light"])`} {
 		if !strings.Contains(css.Body.String(), want) {
 			t.Errorf("stylesheet lacks %q", want)
+		}
+	}
+}
+
+// The header menu marks the view you are on.
+func TestMenuShowsCurrentView(t *testing.T) {
+	s, _ := setup(t)
+	s.st.SetPassword("alice", "correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+	for path, on := range map[string]string{"/compose": "compose", "/timeline": "timeline", "/following": "following", "/replies": "replies", "/": ""} {
+		page := do3(s, "GET", host, path, ck).Body.String()
+		got := regexp.MustCompile(`<a href="/(\w+)" class="on" aria-current="page">`).FindAllStringSubmatch(page, -1)
+		if on == "" && len(got) != 0 || on != "" && (len(got) != 1 || got[0][1] != on) {
+			t.Errorf("%s: marked %v, want %q", path, got, on)
 		}
 	}
 }

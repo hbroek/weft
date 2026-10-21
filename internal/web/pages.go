@@ -29,13 +29,13 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <script>try{var t=localStorage.getItem('weft-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head><body>
 <header class="top"><div class="top-in">
-<a class="brand" href="/" title="{{.Author}}"><img src="/static/weft-icon.svg" alt="" width="36" height="36"><span>Weft</span></a>
+<div class="top-l"><a class="brand" href="/" title="{{.Author}}"><img src="/static/weft-icon.svg" alt="" width="36" height="36"><span>Weft</span></a></div>
+{{if .Owner}}<nav class="menu"><a href="/compose"{{if eq .Nav "compose"}} class="on" aria-current="page"{{end}}>Compose</a><a href="/timeline"{{if eq .Nav "timeline"}} class="on" aria-current="page"{{end}}>Timeline</a><a href="/following"{{if eq .Nav "following"}} class="on" aria-current="page"{{end}}>Following</a><a href="/replies"{{if eq .Nav "replies"}} class="on" aria-current="page"{{end}}>Replies</a></nav>{{end}}
 <div class="top-r"><a class="site" href="/">{{.Author}}</a>
 <button type="button" class="th" id="theme" title="Theme: auto" aria-label="Theme: auto"><svg class="t-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg><svg class="t-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="t-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
 {{if .Owner}}<form method="post" action="/logout"><button class="btn">Log out</button></form>{{else}}<a class="btn" href="/login">Log in</a>{{end}}</div></div></header>
 <script>(function(){var b=document.getElementById('theme'),r=document.documentElement,o=['auto','light','dark'];function cur(){return r.getAttribute('data-theme')||'auto'}function label(){b.title='Theme: '+cur()+' (click to change)';b.setAttribute('aria-label',b.title)}label();b.addEventListener('click',function(){var n=o[(o.indexOf(cur())+1)%3];if(n==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',n);try{if(n==='auto')localStorage.removeItem('weft-theme');else localStorage.setItem('weft-theme',n)}catch(e){}label()})})()</script>
 <div class="wrap">
-{{if .Owner}}<nav class="sub"><a href="/compose">Compose</a><a href="/timeline">Timeline</a><a href="/following">Following</a><a href="/replies">Replies</a></nav>{{end}}
 {{if .Bio}}<p class="bio">{{.Bio}}</p>{{end}}
 <main>{{end}}
 {{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div></body></html>{{end}}
@@ -189,6 +189,7 @@ type pageData struct {
 	PreviewKeywords                              []string      // the editor's keywords as chips
 	ShowLikes, ShowMine                          bool
 	MineToggle                                   string
+	Nav                                          string // which menu entry the page belongs to
 	Likers                                       []likerRow
 	LikeTarget, LikeTitle, LikeNote              string
 	ClearKeyword                                 string
@@ -200,7 +201,17 @@ type pageData struct {
 
 func (s *Server) data(r *http.Request, q *req, title string) pageData {
 	return pageData{Title: title, FeedURL: s.base(r) + "/feed.xml", WebmentionURL: s.base(r) + "/webmention",
-		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner}
+		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, Nav: navOf(r.URL.Path)}
+}
+
+// navOf names the header menu entry a path belongs to, or "".
+func navOf(path string) string {
+	for _, k := range []string{"compose", "timeline", "following", "replies"} {
+		if path == "/"+k || strings.HasPrefix(path, "/"+k+"/") {
+			return k
+		}
+	}
+	return ""
 }
 
 func (s *Server) show(w http.ResponseWriter, name string, status int, d pageData) {
