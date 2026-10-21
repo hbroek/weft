@@ -145,5 +145,4 @@ The feeds do the same: `/feed.xml` (with `?page=` and `?category=`), `/posts/<sl
 
 ## Which feeds Weft can follow
 
-RSS 2.0 (what Weft publishes, and most blogs), and RSS 1.0 (`rdf:RDF`, as Slashdot publishes), in UTF-8, ASCII, ISO-8859-1 / Windows-1252 or ISO-8859-15. Atom feeds and other encodings are not read yet, and the error says so.
-
+RSS 2.0 (what Weft publishes, and most blogs), RSS 1.0 (`rdf:RDF`, as Slashdot publishes) and Atom, in UTF-8, ASCII, ISO-8859-1 / Windows-1252 or ISO-8859-15. Other encodings are not read yet, and the error says so. Following a site's address finds its feed from the page: an RSS feed if it advertises one, otherwise an Atom feed. From an Atom feed Weft reads the title, link, logo (shown as the author's avatar) and `rel="next"` page, and for each entry its address (or id), title, text (content, else summary, as plain text), dates, categories (as keywords) and the post it replies to (`thr:in-reply-to`). Weft itself publishes RSS 2.0 only.

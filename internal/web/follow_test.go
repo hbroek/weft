@@ -186,3 +186,34 @@ func TestFollowLatin1RSS1Feed(t *testing.T) {
 		t.Errorf("timeline: %s", tl)
 	}
 }
+
+// Following an Atom feed works, by its own address and from a page that only advertises it.
+func TestFollowAtomFeed(t *testing.T) {
+	atom := `<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Atom blog</title><link href="https://atom.example/"/>
+<entry><title>First atom post</title><id>tag:atom.example,2026:1</id><link href="https://atom.example/1"/><published>2026-10-21T14:10:00Z</published><content type="html">&lt;p&gt;Hello &lt;b&gt;atom&lt;/b&gt;&lt;/p&gt;</content></entry></feed>`
+	mux := http.NewServeMux()
+	mux.HandleFunc("/atom.xml", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/atom+xml")
+		w.Write([]byte(atom))
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(`<html><head><link rel="alternate" type="application/atom+xml" href="/atom.xml"></head><body>blog</body></html>`))
+	})
+	site := httptest.NewServer(mux)
+	defer site.Close()
+	alice := newInstance(t, "alice")
+	for _, target := range []string{site.URL + "/atom.xml", site.URL + "/"} {
+		out := alice.call(t, "POST", "/api/following", `{"url":"`+target+`"}`, 200)
+		if !strings.Contains(out, site.URL+"/atom.xml") {
+			t.Errorf("following %s: %s", target, out)
+		}
+	}
+	tl := alice.call(t, "GET", "/api/timeline", "", 200)
+	if !strings.Contains(tl, "First atom post") || !strings.Contains(tl, `"feed_title":"Atom blog"`) || !strings.Contains(tl, "Hello atom") {
+		t.Errorf("timeline: %s", tl)
+	}
+	if strings.Count(alice.call(t, "GET", "/api/following", "", 200), "atom.xml") != 1 {
+		t.Errorf("both addresses are the same feed")
+	}
+}

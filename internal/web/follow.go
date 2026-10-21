@@ -348,7 +348,7 @@ func (s *Server) follow(ctx context.Context, userID int64, raw string) (string, 
 	if res.LooksLikeHTML() {
 		link, ok := fetch.FindFeedLink(res.Body, res.URL)
 		if !ok {
-			return "", errors.New("That page does not advertise an RSS feed.")
+			return "", errors.New("That page does not advertise an RSS or Atom feed.")
 		}
 		if res, err = s.web.Get(ctx, link); err != nil {
 			return "", errors.New("Could not fetch the feed: " + err.Error())

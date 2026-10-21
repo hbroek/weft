@@ -9,21 +9,6 @@ import (
 	"time"
 )
 
-// rootElement is the local name of the document's root element, or "" if it cannot be read.
-func rootElement(data []byte) string {
-	dec := xml.NewDecoder(bytes.NewReader(data))
-	dec.CharsetReader = charsetReader
-	for {
-		tok, err := dec.Token()
-		if err != nil {
-			return ""
-		}
-		if se, ok := tok.(xml.StartElement); ok {
-			return se.Name.Local
-		}
-	}
-}
-
 // parseRDF reads an RSS 1.0 document (an rdf:RDF root with the items beside the channel, as Slashdot
 // publishes). Only what a timeline needs is read: the channel's title and link, and each item's
 // address, title, description and dc:date.

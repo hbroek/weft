@@ -53,9 +53,16 @@ func TestParsePlainRSS(t *testing.T) {
 	}
 }
 
-func TestParseRejectsAtom(t *testing.T) {
-	if _, err := Parse([]byte(`<feed xmlns="http://www.w3.org/2005/Atom"></feed>`), now); err == nil {
-		t.Fatal("atom accepted")
+// An empty Atom feed is a feed with nothing in it; anything that is not a feed at all is refused.
+func TestParseEmptyAtomAndNonFeeds(t *testing.T) {
+	p, err := Parse([]byte(`<feed xmlns="http://www.w3.org/2005/Atom"></feed>`), now)
+	if err != nil || len(p.Items) != 0 {
+		t.Fatalf("empty atom: %v %v", err, p)
+	}
+	for _, doc := range []string{`<html><body>x</body></html>`, `{"json":true}`, `<opml version="2.0"></opml>`} {
+		if _, err := Parse([]byte(doc), now); err == nil {
+			t.Errorf("%q accepted as a feed", doc)
+		}
 	}
 }
 
@@ -186,5 +193,75 @@ func TestParseRSS1(t *testing.T) {
 	}
 	if _, err := Parse([]byte("<html><body>not a feed</body></html>"), time.Now()); err == nil {
 		t.Errorf("an HTML page is not a feed")
+	}
+}
+
+const atomSample = `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:thr="http://purl.org/syndication/thread/1.0">
+  <title type="html">Blog &lt;b&gt;of&lt;/b&gt; things</title>
+  <subtitle>Notes</subtitle>
+  <link rel="self" href="https://blog.example/atom.xml"/>
+  <link rel="alternate" type="text/html" href="https://blog.example/"/>
+  <link rel="next" href="https://blog.example/atom.xml?page=2"/>
+  <logo>https://blog.example/me.png</logo>
+  <id>tag:blog.example,2026:feed</id>
+  <updated>2026-10-21T14:10:00Z</updated>
+  <entry>
+    <title>Plain title</title>
+    <id>tag:blog.example,2026:1</id>
+    <link rel="alternate" type="text/html" href="https://blog.example/one"/>
+    <link rel="enclosure" href="https://blog.example/one.mp3"/>
+    <published>2026-10-20T10:00:00.5Z</published>
+    <updated>2026-10-21T11:00:00Z</updated>
+    <summary>Only a summary</summary>
+    <content type="html">&lt;p&gt;Hello &lt;b&gt;html&lt;/b&gt; &amp;amp; more&lt;/p&gt;</content>
+    <category term="go"/><category term="open-web" label="Open web"/>
+    <thr:in-reply-to ref="tag:x" href="https://other.example/post"/>
+  </entry>
+  <entry>
+    <title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">An <em>xhtml</em> title</div></title>
+    <id>tag:blog.example,2026:2</id>
+    <summary type="text">Just text &lt;kept&gt;</summary>
+    <updated>2026-10-19T09:00:00Z</updated>
+  </entry>
+  <entry><title>No link, identified by its id</title><id>urn:uuid:abc</id><content>c</content></entry>
+  <entry><title>Nothing to identify it</title></entry>
+</feed>`
+
+// Atom feeds are read like RSS ones.
+func TestParseAtom(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	p, err := Parse([]byte(atomSample), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Title != "Blog of things" || p.Link != "https://blog.example/" || p.Description != "Notes" || p.Image != "https://blog.example/me.png" || p.Next != "https://blog.example/atom.xml?page=2" {
+		t.Errorf("feed: %+v", p)
+	}
+	if len(p.Items) != 3 {
+		t.Fatalf("items: %d (an entry that cannot be identified is skipped)", len(p.Items))
+	}
+	a, b, c := p.Items[0], p.Items[1], p.Items[2]
+	if a.GUID != "https://blog.example/one" || a.Link != "https://blog.example/one" || a.UID != "tag:blog.example,2026:1" || a.Title != "Plain title" {
+		t.Errorf("entry 1: %+v", a)
+	}
+	if a.Text != "Hello html & more" {
+		t.Errorf("html content is shown as text, and wins over the summary: %q", a.Text)
+	}
+	if a.Published.UTC().Format(time.RFC3339) != "2026-10-20T10:00:00Z" || a.Updated.UTC().Format(time.RFC3339) != "2026-10-21T11:00:00Z" {
+		t.Errorf("dates: %v %v", a.Published, a.Updated)
+	}
+	if len(a.Keywords) != 2 || a.Keywords[0] != "go" || a.Keywords[1] != "Open web" || a.InReplyTo != "https://other.example/post" {
+		t.Errorf("categories and reply: %v %q", a.Keywords, a.InReplyTo)
+	}
+	if b.Title != "An xhtml title" || b.Text != "Just text <kept>" || b.Published.Year() != 2026 || b.GUID != "tag:blog.example,2026:2" {
+		t.Errorf("entry 2: %+v", b)
+	}
+	if c.GUID != "urn:uuid:abc" || c.Text != "c" || !c.Published.Equal(now) || c.RepliesCount != -1 {
+		t.Errorf("entry 3: %+v", c)
+	}
+	// a <feed> that is not in the Atom namespace is not Atom
+	if _, err := Parse([]byte(`<feed><title>x</title></feed>`), now); err == nil {
+		t.Errorf("a feed element outside the Atom namespace should not parse")
 	}
 }

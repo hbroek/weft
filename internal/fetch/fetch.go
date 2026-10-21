@@ -95,7 +95,7 @@ type Result struct {
 	URL         string // final URL after redirects
 }
 
-const defaultAccept = "application/rss+xml, application/xml;q=0.9, text/html;q=0.8, */*;q=0.5"
+const defaultAccept = "application/rss+xml, application/atom+xml;q=0.95, application/xml;q=0.9, text/html;q=0.8, */*;q=0.5"
 
 func (c *Client) Get(ctx context.Context, rawurl string) (*Result, error) {
 	return c.GetAs(ctx, rawurl, defaultAccept)
@@ -136,8 +136,18 @@ var (
 	attrRE  = regexp.MustCompile(`(?is)([a-z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')`)
 )
 
-// FindFeedLink returns the RSS feed URL advertised by an HTML page, resolved against base.
+// FindFeedLink returns the feed URL advertised by an HTML page, resolved against base: an RSS feed if
+// the page offers one, otherwise an Atom feed.
 func FindFeedLink(page []byte, base string) (string, bool) {
+	for _, typ := range []string{"application/rss+xml", "application/atom+xml"} {
+		if h, ok := findLinkOfType(page, base, typ); ok {
+			return h, true
+		}
+	}
+	return "", false
+}
+
+func findLinkOfType(page []byte, base, typ string) (string, bool) {
 	b, err := url.Parse(base)
 	if err != nil {
 		return "", false
@@ -151,7 +161,7 @@ func FindFeedLink(page []byte, base string) (string, bool) {
 			}
 			attrs[strings.ToLower(string(m[1]))] = v
 		}
-		if strings.EqualFold(attrs["type"], "application/rss+xml") && strings.Contains(strings.ToLower(attrs["rel"]), "alternate") && attrs["href"] != "" {
+		if strings.EqualFold(attrs["type"], typ) && strings.Contains(strings.ToLower(attrs["rel"]), "alternate") && attrs["href"] != "" {
 			if h, err := b.Parse(htmlUnescape(attrs["href"])); err == nil {
 				return h.String(), true
 			}

@@ -160,11 +160,14 @@ func StripHTML(s string) string {
 	return s
 }
 
-// Parse reads an RSS 2.0 document. now stamps items that carry no usable date.
+// Parse reads a feed: RSS 2.0, and also RSS 1.0 and Atom. now stamps items that carry no usable date.
 func Parse(data []byte, now time.Time) (*Parsed, error) {
 	var x xmlParsed
-	if rootElement(data) == "RDF" {
+	switch space, local := rootName(data); {
+	case local == "RDF":
 		return parseRDF(data, now) // RSS 1.0, which some big sites still publish
+	case local == "feed" && space == nsAtom:
+		return parseAtom(data, now)
 	}
 	// feeds written before the rename declare the old namespace URI; read them as the new one
 	data = bytes.ReplaceAll(data, []byte(NSLegacy), []byte(NSWeft))
