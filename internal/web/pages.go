@@ -25,6 +25,11 @@ nav a,nav button{margin-right:1rem}nav form{display:inline}
 nav button,.linkbtn{background:none;border:0;padding:0;font:inherit;color:LinkText;cursor:pointer;text-decoration:underline}
 input[type=text],input[type=password],textarea{width:100%;box-sizing:border-box;font:inherit;padding:.4rem}
 ul.thread,ul.thread ul{list-style:none;padding-left:1rem;border-left:2px solid #8883}.node{margin:.75rem 0}.note{display:block;color:#a60}.focus{scroll-margin-top:4rem;background:#8881;padding:.25rem .5rem;border-radius:4px}
+.react{display:flex;align-items:center;gap:.25rem;margin:.25rem 0}
+.likebtn{display:inline-flex;align-items:center;background:none;border:0;padding:.15rem .25rem;color:inherit;cursor:pointer}
+.likebtn svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
+.likebtn[aria-pressed=true]{color:#1a6fe0}.likebtn[aria-pressed=true] svg{fill:currentColor}
+.sr{position:absolute;left:-9999px}
 textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}label{display:block;margin-top:1rem}</style>
 </head><body>
 <header><h1><a href="/">{{.Author}}</a></h1><p>{{.Bio}}</p>
@@ -61,9 +66,8 @@ textarea{min-height:14rem;font-family:ui-monospace,monospace}.err{color:#b00}lab
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div>{{.HTML}}</div>
 <p><a href="{{.ReplyHref}}">Reply</a>{{if .HasThread}} <a href="{{.ThreadHref}}">Thread</a>{{end}}</p>
-{{if .Target}}{{if .Mine}}<form method="post" action="/unlike" class="react"><input type="hidden" name="target" value="{{.Target}}"><small>You like this</small> <button class="linkbtn">undo</button></form>
-{{else}}<form method="post" action="/like" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}"><button title="Like">&#x1F44D; Like</button></form>{{end}}
-{{if .Tally}}<small>{{.Tally}}</small>{{end}}{{end}}
+{{if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
+<button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small>{{.Tally}}</small>{{end}}</form>{{end}}
 {{if .Link}}<a href="{{.Link}}"><time>{{.Date}}</time></a>{{else}}<time>{{.Date}}</time>{{end}}{{if .Edited}} <time>(edited)</time>{{end}}
 </article>{{else}}<p>Nothing yet. <a href="/following">Follow a feed</a>.</p>{{end}}
 {{template "foot"}}{{end}}

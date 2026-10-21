@@ -74,8 +74,8 @@ func TestLikeRoundTripAcrossInstances(t *testing.T) {
 	if ck == "" {
 		t.Fatalf("bob could not log in: %d", lw.Code)
 	}
-	if !strings.Contains(do4(bob, "/timeline", ck), "You like this") {
-		t.Errorf("own like not shown in timeline")
+	if tl := do4(bob, "/timeline", ck); !strings.Contains(tl, `aria-pressed="true"`) || !strings.Contains(tl, `action="/unlike"`) {
+		t.Errorf("own like not shown as pressed in timeline")
 	}
 
 	// Withdrawing the like: permalink answers 410, feed drops it, Alice forgets it.
@@ -86,6 +86,9 @@ func TestLikeRoundTripAcrossInstances(t *testing.T) {
 	}
 	if strings.Contains(bob.get("/likes.xml"), "<item>") {
 		t.Errorf("withdrawn like still in feed")
+	}
+	if tl := do4(bob, "/timeline", ck); !strings.Contains(tl, `aria-pressed="false"`) || !strings.Contains(tl, `action="/like"`) {
+		t.Errorf("withdrawn like still shown as pressed in timeline")
 	}
 	settle(ctx, alice, bob)
 	if got := alice.call(t, "GET", "/api/likes/received?post_id=1", "", 200); strings.TrimSpace(got) != "[]" {
