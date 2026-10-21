@@ -40,6 +40,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <main>{{end}}
 {{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div></body></html>{{end}}
 {{define "parentcard"}}<a class="pcard" href="{{.Href}}">{{if .Image}}<img src="{{.Image}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">{{end}}<span class="pc-t"><strong>{{.Title}}</strong>{{if .Description}}<span class="pc-d">{{.Description}}</span>{{end}}<small>{{.Host}}</small></span></a>{{end}}
+{{define "authorcard"}}<span class="p-author h-card" hidden><a class="u-url p-name" href="{{.SiteURL}}">{{.Author}}</a>{{if .Avatar}}<img class="u-photo" src="{{.Avatar}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}</span>{{end}}
 {{define "avatar"}}<span class="av">{{if .Avatar}}<img src="{{.Avatar}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>{{.Initial}}</span>{{else}}<span>{{.Initial}}</span>{{end}}</span>{{end}}
 {{define "profile"}}{{template "head" .}}<h2>Profile</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <form method="post" action="/profile">
@@ -56,6 +57,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{if .Keyword}}<p class="kwhead">Posts tagged <strong>{{.Keyword}}</strong> <small>· <a href="/">All posts</a> · <a href="{{.TopicFeed}}">Feed for this topic</a></small></p>{{end}}
 {{if .Bookmarklet}}<p class="bm"><small>Bookmark card: drag <a href="{{.Bookmarklet}}">Weft it</a> to your bookmarks bar, then click it on any page to compose a post from that page.</small></p>{{end}}
 {{range .Posts}}<article class="h-entry">
+{{template "authorcard" $}}
 <div class="card-top">{{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{else}}<span></span>{{end}}<span class="when"><a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{if .Edited}} · edited{{end}}</span></div>
 {{if .InReplyTo}}{{if .Parent}}<p><small>In reply to</small></p>{{template "parentcard" .Parent}}<a class="u-in-reply-to" href="{{.InReplyTo}}" hidden></a>{{else}}<p><small>In reply to <a class="u-in-reply-to" href="{{.InReplyTo}}">{{.InReplyTo}}</a></small></p>{{end}}{{end}}
 <div class="e-content">{{.HTML}}</div>
@@ -68,6 +70,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{if and .Owner .Pending}}<p><a href="/replies">{{.Pending}} reply(ies) awaiting your approval</a></p>{{end}}
 {{template "foot"}}{{end}}
 {{define "like"}}{{template "head" .}}<article class="h-entry">
+{{template "authorcard" .}}
 <p class="p-content">{{.Like.Author}} liked
 <a class="u-like-of" href="{{.Like.Target}}">{{.Like.Target}}</a></p></article>
 {{template "foot"}}{{end}}
@@ -205,6 +208,7 @@ type pageData struct {
 	MineToggle                                   string
 	Nav                                          string          // which menu entry the page belongs to
 	Home                                         bool            // the site's home page: it shows the bio
+	SiteURL                                      string          // this site's home address, for the author's h-card
 	PInfo                                        feed.ParentInfo // the snapshot of the page being replied to, kept in hidden fields
 	Parent                                       *parentCard
 	ModeHref, ModeLabel                          string // the link that switches a bookmark to a reply and back
@@ -221,7 +225,7 @@ type pageData struct {
 
 func (s *Server) data(r *http.Request, q *req, title string) pageData {
 	return pageData{Title: title, FeedURL: s.base(r) + "/feed.xml", WebmentionURL: s.base(r) + "/webmention",
-		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name))}
+		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name))}
 }
 
 // navOf names the header menu entry a path belongs to, or "".

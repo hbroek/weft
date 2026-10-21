@@ -457,3 +457,32 @@ func TestAvatarAndInitialFallback(t *testing.T) {
 		t.Errorf("a cleared avatar still shows")
 	}
 }
+
+// Post and like pages name their author with an h-card (name, address and avatar), so a Webmention
+// receiver such as a Ghost blog can show who replied instead of falling back to the domain.
+func TestPostsHaveAuthorHCard(t *testing.T) {
+	s, tok := setup(t)
+	do(s, "POST", host, "/api/posts", tok, `{"markdown":"A reply","in_reply_to":"http://other.example/p"}`)
+	s.st.SetPassword("alice", "correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+	form(s, "POST", "/profile", ck, url.Values{"display": {"Alice <A>"}, "avatar": {"https://img.example/a.png"}}, "")
+	card := regexp.MustCompile(`(?s)<article class="h-entry">\s*<span class="p-author h-card" hidden><a class="u-url p-name" href="http://alice\.localhost:8080/">Alice &lt;A&gt;</a><img class="u-photo" src="https://img\.example/a\.png"`)
+
+	home := do(s, "GET", host, "/", "", "").Body.String()
+	if !card.MatchString(home) {
+		t.Errorf("home page entry lacks the author h-card:\n%s", home)
+	}
+	posts, _ := s.st.RecentPosts(1, 1)
+	if pg := do(s, "GET", host, "/posts/"+posts[0].Slug, "", "").Body.String(); !card.MatchString(pg) || !strings.Contains(pg, `class="u-in-reply-to"`) {
+		t.Errorf("permalink lacks the author h-card or the reply link:\n%s", pg)
+	}
+	s.st.SetLike(1, "http://other.example/p", "")
+	if lk := do(s, "GET", host, "/likes/1", "", "").Body.String(); !card.MatchString(lk) || !strings.Contains(lk, `u-like-of`) {
+		t.Errorf("like page lacks the author h-card:\n%s", lk)
+	}
+	// without an avatar the card still names the author, with no photo
+	form(s, "POST", "/profile", ck, url.Values{"display": {"Alice"}, "avatar": {""}}, "")
+	if pg := do(s, "GET", host, "/", "", "").Body.String(); !strings.Contains(pg, `>Alice</a></span>`) || strings.Contains(pg, "u-photo") {
+		t.Errorf("author card without an avatar:\n%s", pg)
+	}
+}
