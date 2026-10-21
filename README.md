@@ -143,3 +143,7 @@ Send `Accept: text/markdown` to any page a person navigates and it answers with 
 
 The feeds do the same: `/feed.xml` (with `?page=` and `?category=`), `/posts/<slug>/replies.xml`, `/likes.xml` and `/following.opml` return their content as Markdown for `Accept: text/markdown`, with "Older posts" and "Newer posts" links for the pages of a feed. A feed reader that accepts anything (`*/*`, or `application/rss+xml`) keeps getting the XML. Pages without content of their own (the login and edit forms) stay HTML, and the pages for the owner still need the owner's session. Posts from other people's feeds are passed through as their authors wrote them, so a reader of the document should treat them as untrusted.
 
+## Which feeds Weft can follow
+
+RSS 2.0 (what Weft publishes, and most blogs), and RSS 1.0 (`rdf:RDF`, as Slashdot publishes), in UTF-8, ASCII, ISO-8859-1 / Windows-1252 or ISO-8859-15. Atom feeds and other encodings are not read yet, and the error says so.
+

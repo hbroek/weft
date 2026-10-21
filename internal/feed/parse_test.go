@@ -125,3 +125,66 @@ func TestParseOldReactions(t *testing.T) {
 		t.Errorf("old reactions: %+v", p)
 	}
 }
+
+// Feeds that declare an older encoding (Slashdot's says ISO-8859-1) are read, not refused.
+func TestParseLegacyEncodings(t *testing.T) {
+	doc := func(enc string, body []byte) []byte {
+		return append([]byte(`<?xml version="1.0" encoding="`+enc+`"?><rss version="2.0"><channel><title>`), append(body, []byte(`</title><link>http://a.example/</link><item><title>t</title><guid>g1</guid><link>http://a.example/1</link><pubDate>Mon, 12 Oct 2026 22:30:00 -0400</pubDate><description>d</description></item></channel></rss>`)...)...)
+	}
+	// 0xE9 é, 0x93 and 0x94 curly quotes, 0x80 euro, 0x97 em dash
+	latin1 := []byte("Caf\xe9 \x93quoted\x94 \x80 5 \x97 ok")
+	want := "Café “quoted” € 5 — ok"
+	for _, enc := range []string{"ISO-8859-1", "iso-8859-1", "windows-1252", "Latin1"} {
+		p, err := Parse(doc(enc, latin1), time.Now())
+		if err != nil || p.Title != want || len(p.Items) != 1 {
+			t.Errorf("%s: %v %q", enc, err, func() string {
+				if p != nil {
+					return p.Title
+				}
+				return ""
+			}())
+		}
+	}
+	// Latin-9 has the euro where Latin-1 has the currency sign
+	if p, err := Parse(doc("ISO-8859-15", []byte("5\xa4")), time.Now()); err != nil || p.Title != "5€" {
+		t.Errorf("iso-8859-15: %v %v", err, p)
+	}
+	// UTF-8 and ASCII declarations still work, and an encoding we do not read is said so plainly
+	if p, err := Parse(doc("UTF-8", []byte("Café")), time.Now()); err != nil || p.Title != "Café" {
+		t.Errorf("utf-8: %v", err)
+	}
+	if _, err := Parse(doc("us-ascii", []byte("plain")), time.Now()); err != nil {
+		t.Errorf("us-ascii: %v", err)
+	}
+	if _, err := Parse(doc("Shift_JIS", []byte("x")), time.Now()); err == nil || !strings.Contains(err.Error(), `unsupported encoding "Shift_JIS"`) {
+		t.Errorf("shift_jis: %v", err)
+	}
+}
+
+// RSS 1.0 (an rdf:RDF root with the items beside the channel), as Slashdot publishes it, in Latin-1.
+func TestParseRSS1(t *testing.T) {
+	doc := []byte("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n" + `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:slash="http://purl.org/rss/1.0/modules/slash/">
+<channel rdf:about="https://slashdot.org/"><title>Slashdot</title><link>https://slashdot.org/</link><description>News for nerds</description>
+<items><rdf:Seq><rdf:li rdf:resource="https://tech.slashdot.org/story/1"/></rdf:Seq></items></channel>
+<item rdf:about="https://tech.slashdot.org/story/1"><title>Caf` + "\xe9" + ` merger</title><link>https://tech.slashdot.org/story/1</link>
+<description>&lt;p&gt;It says &lt;b&gt;&amp;ldquo;hi&amp;rdquo;&lt;/b&gt;.&lt;/p&gt;</description><dc:date>2026-10-21T14:10:00+00:00</dc:date><slash:department>x</slash:department></item>
+<item rdf:about="https://tech.slashdot.org/story/2"><title>No link element</title><description>d</description></item>
+</rdf:RDF>`)
+	p, err := Parse(doc, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Title != "Slashdot" || p.Link != "https://slashdot.org/" || len(p.Items) != 2 {
+		t.Fatalf("channel: %+v", p)
+	}
+	a, b := p.Items[0], p.Items[1]
+	if a.GUID != "https://tech.slashdot.org/story/1" || a.Title != "Café merger" || a.Published.UTC().Format(time.RFC3339) != "2026-10-21T14:10:00Z" || !strings.Contains(a.Text, "hi") || strings.Contains(a.Text, "<") {
+		t.Errorf("item 1: %+v", a)
+	}
+	if b.GUID != "https://tech.slashdot.org/story/2" || b.Published.Year() != 2026 || b.RepliesCount != -1 {
+		t.Errorf("item 2 (identified by rdf:about, dated by the time it was read): %+v", b)
+	}
+	if _, err := Parse([]byte("<html><body>not a feed</body></html>"), time.Now()); err == nil {
+		t.Errorf("an HTML page is not a feed")
+	}
+}

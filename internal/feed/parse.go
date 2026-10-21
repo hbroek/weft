@@ -163,9 +163,14 @@ func StripHTML(s string) string {
 // Parse reads an RSS 2.0 document. now stamps items that carry no usable date.
 func Parse(data []byte, now time.Time) (*Parsed, error) {
 	var x xmlParsed
+	if rootElement(data) == "RDF" {
+		return parseRDF(data, now) // RSS 1.0, which some big sites still publish
+	}
 	// feeds written before the rename declare the old namespace URI; read them as the new one
 	data = bytes.ReplaceAll(data, []byte(NSLegacy), []byte(NSWeft))
-	if err := xml.Unmarshal(data, &x); err != nil {
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	dec.CharsetReader = charsetReader // feeds that declare ISO-8859-1 and the like
+	if err := dec.Decode(&x); err != nil {
 		return nil, errors.New("not an RSS 2.0 feed: " + err.Error())
 	}
 	p := &Parsed{

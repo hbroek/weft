@@ -168,3 +168,21 @@ func TestPollerWithoutInterval(t *testing.T) {
 		cancel()
 	}
 }
+
+// Following a feed that declares ISO-8859-1 and is RSS 1.0 (Slashdot's) works end to end.
+func TestFollowLatin1RSS1Feed(t *testing.T) {
+	doc := []byte("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n" + `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel rdf:about="https://old.example/"><title>Old news</title><link>https://old.example/</link><description>d</description></channel>
+<item rdf:about="https://old.example/1"><title>Caf` + "\xe9" + ` news</title><link>https://old.example/1</link><description>Body</description><dc:date>2026-10-21T14:10:00+00:00</dc:date></item>
+</rdf:RDF>`)
+	old := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.Write(doc)
+	}))
+	defer old.Close()
+	alice := newInstance(t, "alice")
+	alice.call(t, "POST", "/api/following", `{"url":"`+old.URL+`/rss"}`, 200)
+	if tl := alice.call(t, "GET", "/api/timeline", "", 200); !strings.Contains(tl, "Café news") || !strings.Contains(tl, `"feed_title":"Old news"`) {
+		t.Errorf("timeline: %s", tl)
+	}
+}
