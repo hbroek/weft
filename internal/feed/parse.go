@@ -95,7 +95,10 @@ type xmlParsed struct {
 				Feed string `xml:"feed,attr"`
 			} `xml:"https://weftseed.com/ns/weft/0.1 root"`
 			LikeOf struct {
-				Href string `xml:"href,attr"`
+				Title       string `xml:"title,attr"`
+				Description string `xml:"description,attr"`
+				Image       string `xml:"image,attr"`
+				Href        string `xml:"href,attr"`
 			} `xml:"https://weftseed.com/ns/weft/0.1 likeOf"`
 			// Before there were only likes, an item could be a reaction with a polarity; a "+" is a like.
 			ReactionOf struct {
@@ -187,6 +190,10 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 			LikeOf: strings.TrimSpace(it.LikeOf.Href), RepliesHref: strings.TrimSpace(it.Replies.Href),
 			FeedHref: strings.TrimSpace(it.Feed.Href), FeedName: strings.TrimSpace(it.Feed.Name),
 			Likes: max(it.Likes.Count, it.OldReactions.Plus, 0), Keywords: Keywords(it.Categories),
+		}
+		if pi.LikeOf != "" && pi.Parent.Empty() {
+			// a like carries what the liked page looked like, as the reply's weft:context does
+			pi.Parent = ParentInfo{Title: it.LikeOf.Title, Description: it.LikeOf.Description, Image: it.LikeOf.Image}.Clean()
 		}
 		if pi.LikeOf == "" && strings.TrimSpace(it.ReactionOf.Polarity) != "-" {
 			pi.LikeOf = strings.TrimSpace(it.ReactionOf.Href)

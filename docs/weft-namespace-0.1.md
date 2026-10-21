@@ -117,7 +117,8 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 
 `<weft:likeOf href="…"/>` marks the item as a like of the post at `href`.
 
-- `href` (required): the permalink of the post liked.
+- `href` (required): the permalink of the post liked. It may be any page, Weft or not.
+- `title`, `description`, `image` (optional): what the liked page looked like, with the same limits and cleaning as on `weft:context`. They let a reader name a page that publishes no feed ("Bob liked “The web of links”") instead of showing a bare address.
 
 A like is a single positive signal: no polarity and no emoji. It names who liked with `<weft:feed href="…">Display name</weft:feed>`, the same element a replies feed uses, because the likes feed's own title is something like "Bob likes". There are no dislikes. Anything a person wants to say beyond approval is a reply, and a reply may be nothing but an emoji; readers may show such replies compactly. A like item has no `<title>` and an empty `<description>`. A user has at most one active like per post. Withdrawing it deletes the item (the permalink then returns 410). Likes are published in the likes feed, not the main feed.
 

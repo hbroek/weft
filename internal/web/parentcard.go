@@ -23,3 +23,9 @@ func newParentCard(href string, p feed.ParentInfo) *parentCard {
 func parentFromForm(r *http.Request) feed.ParentInfo {
 	return feed.ParentInfo{Title: r.FormValue("ptitle"), Description: r.FormValue("pdesc"), Image: r.FormValue("pimg")}.Clean()
 }
+
+// modeLink is one of the ways to use the page the bookmarklet sent: Bookmark, Reply or Like.
+type modeLink struct {
+	Label, Href string
+	Current     bool
+}

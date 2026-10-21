@@ -16,13 +16,13 @@ func (s *Server) likeURL(r *http.Request, id int64) string {
 }
 
 // setLike publishes the user's like of target and notifies the target's site. Liking twice changes nothing.
-func (s *Server) setLike(r *http.Request, u *store.User, target, feedHint string) (*store.Like, string) {
+func (s *Server) setLike(r *http.Request, u *store.User, target, feedHint string, info feed.ParentInfo) (*store.Like, string) {
 	target, feedHint = httpURL(target), httpURL(feedHint)
 	if target == "" {
 		return nil, "target must be an http(s) URL"
 	}
 	was := s.iLike(u.ID, target)
-	x, err := s.st.SetLike(u.ID, target, feedHint)
+	x, err := s.st.SetLikeInfo(u.ID, target, feedHint, info)
 	if err != nil {
 		return nil, err.Error()
 	}
@@ -57,7 +57,7 @@ func (s *Server) likesFeed(w http.ResponseWriter, r *http.Request, q *req) {
 	for _, x := range xs {
 		u := s.likeURL(r, x.ID)
 		it := feed.Item{GUID: feed.GUID{IsPermaLink: true, Value: u}, Link: u, PubDate: feed.RFC822(x.Created),
-			LikeOf: &feed.LikeRef{Href: x.Target},
+			LikeOf: &feed.LikeRef{Href: x.Target, Title: x.Parent.Title, Description: x.Parent.Description, Image: x.Parent.Image},
 			Feed:   &feed.FeedRef{Href: s.base(r) + "/feed.xml", Name: q.host.Display}} // who liked: the channel title says "<name> likes"
 		if x.Created.After(last) {
 			last = x.Created
@@ -102,18 +102,26 @@ func (s *Server) likePage(w http.ResponseWriter, r *http.Request, q *req) {
 		s.show(w, "tombstone", http.StatusGone, d)
 		return
 	}
-	d.Like = &likeData{Author: q.host.Display, Target: x.Target}
+	d.Like = &likeData{Author: q.host.Display, Target: x.Target, Card: newParentCard(x.Target, x.Parent)}
 	s.show(w, "like", http.StatusOK, d)
 }
 
-type likeData struct{ Author, Target string }
+type likeData struct {
+	Author, Target string
+	Card           *parentCard // what the liked page looked like, when the like says
+}
 
 func (s *Server) likeForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.requireOwner(w, r, q) {
 		return
 	}
-	if _, msg := s.setLike(r, q.host, r.FormValue("target"), r.FormValue("feed")); msg != "" {
+	if _, msg := s.setLike(r, q.host, r.FormValue("target"), r.FormValue("feed"), parentFromForm(r)); msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	if r.FormValue("from") == "page" {
+		// liked from the bookmarklet's page: show it among the likes
+		http.Redirect(w, r, "/timeline?likes=1", http.StatusSeeOther)
 		return
 	}
 	back(w, r, "/timeline")
@@ -133,7 +141,13 @@ func (s *Server) unlikeForm(w http.ResponseWriter, r *http.Request, q *req) {
 type likeReq struct {
 	Target     string `json:"target"`
 	TargetFeed string `json:"target_feed"`
-	Polarity   string `json:"polarity"` // only read by the old /api/reactions route
+	// Context is optional: what the liked page looked like, for a page that publishes no feed.
+	Context *struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Image       string `json:"image"`
+	} `json:"context"`
+	Polarity string `json:"polarity"` // only read by the old /api/reactions route
 }
 
 func (s *Server) apiLike(w http.ResponseWriter, r *http.Request, q *req) {
@@ -145,7 +159,7 @@ func (s *Server) apiLike(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	x, msg := s.setLike(r, q.host, in.Target, in.TargetFeed)
+	x, msg := s.setLike(r, q.host, in.Target, in.TargetFeed, in.info())
 	if msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
@@ -168,7 +182,7 @@ func (s *Server) apiReact(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "downvotes are gone; there are only likes (POST /api/likes)", http.StatusBadRequest)
 		return
 	}
-	x, msg := s.setLike(r, q.host, in.Target, in.TargetFeed)
+	x, msg := s.setLike(r, q.host, in.Target, in.TargetFeed, in.info())
 	if msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
@@ -269,4 +283,12 @@ func likedBy(names []string, total int) string {
 		text += fmt.Sprintf(" and %d others", others)
 	}
 	return "Liked by " + text
+}
+
+// info is the page snapshot a like request carries, if any.
+func (in likeReq) info() feed.ParentInfo {
+	if in.Context == nil {
+		return feed.ParentInfo{}
+	}
+	return feed.ParentInfo{Title: in.Context.Title, Description: in.Context.Description, Image: in.Context.Image}
 }

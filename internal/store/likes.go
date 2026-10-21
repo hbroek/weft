@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+
+	"github.com/hbroek/weft/internal/feed"
 )
 
 // ---- Likes the user has published ----
@@ -14,16 +16,17 @@ type Like struct {
 	Created            time.Time
 	Updated            *time.Time
 	Deleted            bool
+	Parent             feed.ParentInfo // optional title, description and image of the liked page
 }
 
-const likeCols = `id,user_id,target,target_feed,created,updated,deleted`
+const likeCols = `id,user_id,target,target_feed,created,updated,deleted,parent_title,parent_desc,parent_image`
 
 func scanLike(r interface{ Scan(...any) error }) (*Like, error) {
 	x := &Like{}
 	var created int64
 	var upd *int64
 	var del int
-	if err := r.Scan(&x.ID, &x.UserID, &x.Target, &x.TargetFeed, &created, &upd, &del); err != nil {
+	if err := r.Scan(&x.ID, &x.UserID, &x.Target, &x.TargetFeed, &created, &upd, &del, &x.Parent.Title, &x.Parent.Description, &x.Parent.Image); err != nil {
 		return nil, err
 	}
 	x.Created = time.Unix(created, 0)
@@ -38,9 +41,25 @@ func scanLike(r interface{ Scan(...any) error }) (*Like, error) {
 // SetLike publishes a like of target. Liking again returns the existing like; a feed hint, if given,
 // replaces the stored one.
 func (s *Store) SetLike(userID int64, target, targetFeed string) (*Like, error) {
+	return s.SetLikeInfo(userID, target, targetFeed, feed.ParentInfo{})
+}
+
+// SetLikeInfo is SetLike with what the liked page looked like (title, description, image), for a
+// page that publishes no feed. Liking again with new information replaces the stored one.
+func (s *Store) SetLikeInfo(userID int64, target, targetFeed string, info feed.ParentInfo) (*Like, error) {
+	info = info.Clean()
 	if old, err := s.ActiveLike(userID, target); err == nil {
-		if targetFeed != "" && targetFeed != old.TargetFeed {
-			if _, err := s.db.Exec(`UPDATE likes SET target_feed=?,updated=? WHERE id=?`, targetFeed, time.Now().Unix(), old.ID); err != nil {
+		newFeed := targetFeed != "" && targetFeed != old.TargetFeed
+		newInfo := !info.Empty() && info != old.Parent
+		if newFeed || newInfo {
+			if !newFeed {
+				targetFeed = old.TargetFeed
+			}
+			if !newInfo {
+				info = old.Parent
+			}
+			if _, err := s.db.Exec(`UPDATE likes SET target_feed=?,parent_title=?,parent_desc=?,parent_image=?,updated=? WHERE id=?`,
+				targetFeed, info.Title, info.Description, info.Image, time.Now().Unix(), old.ID); err != nil {
 				return nil, err
 			}
 			return s.likeByID(old.ID)
@@ -49,8 +68,8 @@ func (s *Store) SetLike(userID int64, target, targetFeed string) (*Like, error) 
 	} else if !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
-	res, err := s.db.Exec(`INSERT INTO likes(user_id,target,target_feed,created) VALUES(?,?,?,?)`,
-		userID, target, targetFeed, time.Now().Unix())
+	res, err := s.db.Exec(`INSERT INTO likes(user_id,target,target_feed,created,parent_title,parent_desc,parent_image) VALUES(?,?,?,?,?,?,?)`,
+		userID, target, targetFeed, time.Now().Unix(), info.Title, info.Description, info.Image)
 	if err != nil {
 		return nil, err
 	}

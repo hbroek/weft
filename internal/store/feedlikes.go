@@ -21,8 +21,8 @@ func (s *Store) SaveFeedLikes(feedURL string, items []feed.ParsedItem) error {
 		if it.LikeOf == "" || it.GUID == "" {
 			continue
 		}
-		if _, err := tx.Exec(`INSERT OR REPLACE INTO feed_likes(feed_url,guid,target,published) VALUES(?,?,?,?)`,
-			feedURL, it.GUID, it.LikeOf, it.Published.Unix()); err != nil {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO feed_likes(feed_url,guid,target,published,parent_title,parent_desc,parent_image) VALUES(?,?,?,?,?,?,?)`,
+			feedURL, it.GUID, it.LikeOf, it.Published.Unix(), it.Parent.Title, it.Parent.Description, it.Parent.Image); err != nil {
 			return err
 		}
 	}
@@ -33,11 +33,12 @@ func (s *Store) SaveFeedLikes(feedURL string, items []feed.ParsedItem) error {
 type FeedLike struct {
 	FeedURL, FeedTitle, GUID, Target string
 	Published                        time.Time
+	Parent                           feed.ParentInfo // what the liked page looked like, if the like said
 }
 
 // FeedLikes returns the likes of the feeds the user follows, newest first. A feedURL limits it to one feed.
 func (s *Store) FeedLikes(userID int64, feedURL string, limit int) ([]FeedLike, error) {
-	q := `SELECT l.feed_url, COALESCE(d.title,''), l.guid, l.target, l.published
+	q := `SELECT l.feed_url, COALESCE(d.title,''), l.guid, l.target, l.published, l.parent_title, l.parent_desc, l.parent_image
 		FROM feed_likes l JOIN follows f ON f.feed_url=l.feed_url AND f.user_id=?
 		LEFT JOIN feeds d ON d.url=l.feed_url `
 	args := []any{userID}
@@ -54,7 +55,7 @@ func (s *Store) FeedLikes(userID int64, feedURL string, limit int) ([]FeedLike, 
 	for rows.Next() {
 		var l FeedLike
 		var pub int64
-		if err := rows.Scan(&l.FeedURL, &l.FeedTitle, &l.GUID, &l.Target, &pub); err != nil {
+		if err := rows.Scan(&l.FeedURL, &l.FeedTitle, &l.GUID, &l.Target, &pub, &l.Parent.Title, &l.Parent.Description, &l.Parent.Image); err != nil {
 			return nil, err
 		}
 		l.Published = time.Unix(pub, 0)

@@ -212,7 +212,7 @@ func Open(path string) (*Store, error) {
 	db.Exec(`ALTER TABLE users ADD COLUMN pw_hash BLOB`)
 	db.Exec(`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`)
 	db.Exec(`ALTER TABLE feeds ADD COLUMN image TEXT NOT NULL DEFAULT ''`)
-	for _, t := range []string{"posts", "items"} {
+	for _, t := range []string{"posts", "items", "likes", "feed_likes"} {
 		for _, c := range []string{"parent_title", "parent_desc", "parent_image"} {
 			db.Exec(`ALTER TABLE ` + t + ` ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
 		}

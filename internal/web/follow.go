@@ -136,7 +136,7 @@ func oneLine(text string, n int) string {
 
 // likedAs describes the post at target for a "liked …" line: one of the user's own posts, a post in a
 // followed feed, or just its address.
-func (s *Server) likedAs(r *http.Request, q *req, target string) string {
+func (s *Server) likedAs(r *http.Request, q *req, target string, info feed.ParentInfo) string {
 	if id, ok := s.localPostID(q.host.ID, s.base(r), target); ok {
 		if p, err := s.st.Post(q.host.ID, id); err == nil {
 			return "your post “" + oneLine(orStr(p.Title, p.Markdown), 90) + "”"
@@ -145,6 +145,9 @@ func (s *Server) likedAs(r *http.Request, q *req, target string) string {
 	if it, err := s.st.ItemByTarget(q.host.ID, target); err == nil {
 		who := orStr(it.FeedTitle, it.FeedURL)
 		return who + "’s post “" + oneLine(orStr(it.Title, it.Text), 90) + "”"
+	}
+	if info.Title != "" { // a page that publishes no feed: what the like said it was
+		return "“" + oneLine(info.Title, 90) + "” (" + siteHost(target) + ")"
 	}
 	return target
 }
@@ -157,7 +160,7 @@ func (s *Server) withLikes(r *http.Request, q *req, only string, rows []tlRow) (
 	}
 	for _, l := range ls {
 		rows = append(rows, tlRow{IsLike: true, Author: orStr(l.FeedTitle, l.FeedURL), AuthorHref: "/timeline?feed=" + url.QueryEscape(l.FeedURL),
-			Date: l.Published.Format("2 Jan 2006 15:04"), LikedHref: httpURL(l.Target), LikedAs: s.likedAs(r, q, l.Target), when: l.Published})
+			Date: l.Published.Format("2 Jan 2006 15:04"), LikedHref: httpURL(l.Target), LikedAs: s.likedAs(r, q, l.Target, l.Parent), when: l.Published})
 	}
 	mine, err := s.st.ActiveLikes(q.host.ID, 200)
 	if err != nil {
@@ -170,7 +173,7 @@ func (s *Server) withLikes(r *http.Request, q *req, only string, rows []tlRow) (
 			}
 		}
 		rows = append(rows, tlRow{IsLike: true, Author: "You", Date: l.Created.Format("2 Jan 2006 15:04"),
-			LikedHref: httpURL(l.Target), LikedAs: s.likedAs(r, q, l.Target), when: l.Created})
+			Mine: true, Target: l.Target, LikedHref: httpURL(l.Target), LikedAs: s.likedAs(r, q, l.Target, l.Parent), when: l.Created})
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].when.After(rows[j].when) })
 	return rows, nil

@@ -108,3 +108,20 @@ func TestContextSnapshotRoundTrip(t *testing.T) {
 		t.Errorf("Empty()")
 	}
 }
+
+func TestLikeOfSnapshotRoundTrip(t *testing.T) {
+	ch := Channel{Title: "A likes", Link: "http://a.example/", Items: []Item{{GUID: GUID{IsPermaLink: true, Value: "http://a.example/likes/1"}, Link: "http://a.example/likes/1", PubDate: RFC822(time.Now()),
+		LikeOf: &LikeRef{Href: "https://blog.example/x", Title: " The   web\nof links ", Description: "short", Image: "javascript:alert(1)"}}}}
+	b, err := New(ch).Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Parse(b, time.Now())
+	if err != nil || len(p.Items) != 1 {
+		t.Fatalf("%v %v", err, p)
+	}
+	it := p.Items[0]
+	if it.LikeOf != "https://blog.example/x" || it.Parent.Title != "The web of links" || it.Parent.Description != "short" || it.Parent.Image != "" {
+		t.Errorf("like snapshot: %+v %q", it.Parent, it.LikeOf)
+	}
+}

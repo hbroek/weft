@@ -39,6 +39,14 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{if .Home}}{{if or .Bio .Owner}}<p class="bio">{{.Bio}}{{if .Owner}} <small><a href="/profile">Edit profile</a></small>{{end}}</p>{{end}}{{end}}
 <main>{{end}}
 {{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div></body></html>{{end}}
+{{define "modes"}}{{if .Modes}}<p class="modes">{{range .Modes}}{{if .Current}}<strong>{{.Label}}</strong>{{else}}<a href="{{.Href}}">{{.Label}}</a>{{end}}{{end}}</p>{{end}}{{end}}
+{{define "likepage"}}{{template "head" .}}<h2>Like this page</h2>
+{{template "modes" .}}
+{{if .Parent}}{{template "parentcard" .Parent}}{{else}}<p><a href="{{.ReplyTo}}">{{.ReplyTo}}</a></p>{{end}}
+<form method="post" action="/like"><input type="hidden" name="target" value="{{.ReplyTo}}"><input type="hidden" name="from" value="page">{{if not .PInfo.Empty}}<input type="hidden" name="ptitle" value="{{.PInfo.Title}}"><input type="hidden" name="pdesc" value="{{.PInfo.Description}}"><input type="hidden" name="pimg" value="{{.PInfo.Image}}">{{end}}
+<p><button>Like this page</button></p></form>
+<p><small>Your like goes in your likes feed, and the page is told with a Webmention if it can take one.</small></p>
+{{template "foot"}}{{end}}
 {{define "parentcard"}}<a class="pcard" href="{{.Href}}">{{if .Image}}<img src="{{.Image}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">{{end}}<span class="pc-t"><strong>{{.Title}}</strong>{{if .Description}}<span class="pc-d">{{.Description}}</span>{{end}}<small>{{.Host}}</small></span></a>{{end}}
 {{define "authorcard"}}<span class="p-author h-card" hidden><a class="u-url p-name" href="{{.SiteURL}}">{{.Author}}</a>{{if .Avatar}}<img class="u-photo" src="{{.Avatar}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}</span>{{end}}
 {{define "avatar"}}<span class="av">{{if .Avatar}}<img src="{{.Avatar}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>{{.Initial}}</span>{{else}}<span>{{.Initial}}</span>{{end}}</span>{{end}}
@@ -72,7 +80,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{define "like"}}{{template "head" .}}<article class="h-entry">
 {{template "authorcard" .}}
 <p class="p-content">{{.Like.Author}} liked
-<a class="u-like-of" href="{{.Like.Target}}">{{.Like.Target}}</a></p></article>
+<a class="u-like-of" href="{{.Like.Target}}">{{.Like.Target}}</a></p>{{if .Like.Card}}{{template "parentcard" .Like.Card}}{{end}}</article>
 {{template "foot"}}{{end}}
 {{define "tombstone"}}{{template "head" .}}<p>This post was removed by its author.</p>{{template "foot"}}{{end}}
 {{define "login"}}{{template "head" .}}<form method="post" action="/login">
@@ -81,7 +89,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <p><button>Log in</button></p></form>{{template "foot"}}{{end}}
 {{define "timeline"}}{{template "head" .}}{{if .Keyword}}<p class="kwhead">Tagged <strong>{{.Keyword}}</strong>{{if .Only}} from <strong>{{.Heading}}</strong>{{end}} <small>· <a href="{{.ClearKeyword}}">Clear filter</a></small></p>{{end}}<h2>{{if .Only}}{{.Heading}}</h2><p><small>{{.Only}} · <a href="/timeline">All feeds</a> · <a href="/following">Following</a></small></p>{{else}}Timeline</h2>{{end}}
 <p><small>{{if not .Keyword}}<a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a>{{end}}{{if not .Only}}{{if not .Keyword}} · {{end}}<a href="{{.MineToggle}}">{{if .ShowMine}}Hide my posts{{else}}Show my posts{{end}}</a>{{end}}</small></p>
-{{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small></p></article>
+{{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small></p>{{if .Mine}}<form method="post" action="/unlike"><input type="hidden" name="target" value="{{.Target}}"><button class="linkbtn">Unlike</button></form>{{end}}</article>
 {{else}}<article>
 <div class="card-top"><p class="who">{{template "avatar" .}}{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">{{if .Parent}}{{.Parent.Host}}{{else}}a post{{end}}</a>{{end}}</p>
 <span class="when">{{if .Link}}<a href="{{.Link}}"><time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{else}}<time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time>{{end}}{{if .Edited}} · edited{{end}}</span></div>
@@ -139,8 +147,9 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{template "foot"}}{{end}}
 {{define "editor"}}{{template "head" .}}<form method="post" action="{{.Action}}">
 <h2>{{.Heading}}</h2>
+{{template "modes" .}}
 {{if .ReplyTo}}{{if .Parent}}<p>Replying to</p>{{template "parentcard" .Parent}}{{else}}<p>Replying to <a href="{{.ReplyTo}}">{{.ReplyTo}}</a></p>{{end}}<input type="hidden" name="reply_to" value="{{.ReplyTo}}"><input type="hidden" name="reply_feed" value="{{.ReplyFeed}}">{{if not .PInfo.Empty}}<input type="hidden" name="ptitle" value="{{.PInfo.Title}}"><input type="hidden" name="pdesc" value="{{.PInfo.Description}}"><input type="hidden" name="pimg" value="{{.PInfo.Image}}">{{end}}{{end}}
-{{if .ModeHref}}<p><small><a href="{{.ModeHref}}">{{.ModeLabel}}</a></small></p>{{end}}
+
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label>Markdown <textarea name="markdown" required>{{.Form.Markdown}}</textarea></label>
@@ -211,8 +220,8 @@ type pageData struct {
 	SiteURL                                      string          // this site's home address, for the author's h-card
 	PInfo                                        feed.ParentInfo // the snapshot of the page being replied to, kept in hidden fields
 	Parent                                       *parentCard
-	ModeHref, ModeLabel                          string // the link that switches a bookmark to a reply and back
-	Avatar, Initial                              string // the site owner's avatar address and fallback letter, for the header
+	Modes                                        []modeLink // Bookmark, Reply and Like links for the page the bookmarklet sent
+	Avatar, Initial                              string     // the site owner's avatar address and fallback letter, for the header
 	Profile                                      struct{ Display, Bio, Avatar string }
 	Likers                                       []likerRow
 	LikeTarget, LikeTitle, LikeNote              string

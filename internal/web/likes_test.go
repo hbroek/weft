@@ -571,7 +571,7 @@ func TestReplyToPageCarriesSnapshot(t *testing.T) {
 	// compose as a reply, as the bookmarklet opens it
 	q := url.Values{"page": {page}, "ptitle": {"About <the> web"}, "pdesc": {"A page about the web."}, "pimg": {"https://img.example/p.png"}, "wm": {"1"}}
 	form1 := do4(alice, "/compose?"+q.Encode(), ack)
-	for _, want := range []string{`name="reply_to" value="` + page + `"`, `name="ptitle" value="About &lt;the&gt; web"`, `class="pcard"`, `src="https://img.example/p.png"`, "Bookmark this page instead", "mode=bookmark"} {
+	for _, want := range []string{`name="reply_to" value="` + page + `"`, `name="ptitle" value="About &lt;the&gt; web"`, `class="pcard"`, `src="https://img.example/p.png"`, "<strong>Reply</strong>", "mode=bookmark"} {
 		if !strings.Contains(form1, want) {
 			t.Errorf("reply form lacks %q:\n%s", want, form1)
 		}
@@ -641,7 +641,7 @@ func TestComposeBookmarkOrReply(t *testing.T) {
 		return "/compose?" + v.Encode()
 	}
 	bm := do4(alice, q("wm", "0"), ck)
-	for _, want := range []string{`value="A [fine] post"`, "![A fine post](https://blog.example/i.jpg)", "&gt; Something worth reading.", "[blog.example](https://blog.example/post?id=7)", `value="web, reading"`, "Reply to this page instead", "mode=reply"} {
+	for _, want := range []string{`value="A [fine] post"`, "![A fine post](https://blog.example/i.jpg)", "&gt; Something worth reading.", "[blog.example](https://blog.example/post?id=7)", `value="web, reading"`, "<strong>Bookmark</strong>", "mode=reply", "mode=like"} {
 		if !strings.Contains(bm, want) {
 			t.Errorf("bookmark mode lacks %q:\n%s", want, bm)
 		}
@@ -650,7 +650,7 @@ func TestComposeBookmarkOrReply(t *testing.T) {
 		t.Errorf("a bookmark is not a reply")
 	}
 	rp := do4(alice, q("wm", "1"), ck)
-	if !strings.Contains(rp, `name="reply_to" value="https://blog.example/post?id=7"`) || !strings.Contains(rp, "Bookmark this page instead") || strings.Contains(rp, "![A fine post]") {
+	if !strings.Contains(rp, `name="reply_to" value="https://blog.example/post?id=7"`) || !strings.Contains(rp, "<strong>Reply</strong>") || strings.Contains(rp, "![A fine post]") {
 		t.Errorf("reply mode:\n%s", rp)
 	}
 	// the user's choice wins over the guess
@@ -663,5 +663,64 @@ func TestComposeBookmarkOrReply(t *testing.T) {
 	// an unsafe image address is dropped
 	if bad := do4(alice, q("wm", "1", "pimg", "javascript:alert(1)"), ck); strings.Contains(bad, "javascript:") {
 		t.Errorf("unsafe image kept:\n%s", bad)
+	}
+}
+
+// A like of an ordinary web page: the bookmarklet's Like mode, a like that carries what the page looked
+// like, and Unlike from the likes lines.
+func TestLikeANonWeftPage(t *testing.T) {
+	alice, bob, carol := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol")
+	ctx := t.Context()
+	page := carol.base + "/about-the-web" // not a Weft post
+	ack := loginCookie(t, alice)
+
+	q := url.Values{"page": {page}, "ptitle": {"About the <web>"}, "pdesc": {"A page about the web."}, "pimg": {"https://img.example/p.png"}, "mode": {"like"}}
+	lp := do4(alice, "/compose?"+q.Encode(), ack)
+	for _, want := range []string{"Like this page", `class="pcard"`, `action="/like"`, `name="from" value="page"`, `name="target" value="` + page + `"`,
+		"<strong>Like</strong>", "mode=bookmark", "mode=reply"} {
+		if !strings.Contains(lp, want) {
+			t.Errorf("like mode lacks %q:\n%s", want, lp)
+		}
+	}
+	vals := url.Values{"target": {page}, "from": {"page"}, "ptitle": {"About the <web>"}, "pdesc": {"A page about the web."}, "pimg": {"https://img.example/p.png"}}
+	w := formAs(alice, "/like", ack, "http://"+alice.host+"/compose", vals)
+	if w.Code != 303 || w.Header().Get("Location") != "/timeline?likes=1" {
+		t.Fatalf("like from the page: %d %q", w.Code, w.Header().Get("Location"))
+	}
+
+	// published with what the page looked like, and the like's own page shows it
+	lx := alice.get("/likes.xml")
+	if !regexp.MustCompile(`<weft:likeOf href="` + regexp.QuoteMeta(page) + `"[^>]*title="About the &lt;web&gt;"[^>]*description="A page about the web\."[^>]*image="https://img\.example/p\.png"`).MatchString(lx) {
+		t.Errorf("likes.xml lacks the snapshot:\n%s", lx)
+	}
+	if lk := alice.get("/likes/1"); !strings.Contains(lk, `class="pcard"`) || !strings.Contains(lk, "A page about the web.") || !strings.Contains(lk, "u-like-of") {
+		t.Errorf("like page lacks the card:\n%s", lk)
+	}
+	// the likes lines say what was liked, and offer Unlike
+	mine := do4(alice, "/timeline?likes=1", ack)
+	if !strings.Contains(mine, "<strong>You</strong> liked") || !strings.Contains(mine, "“About the &lt;web&gt;” (carol.localhost") || !strings.Contains(mine, `action="/unlike"`) {
+		t.Errorf("own like line:\n%s", mine)
+	}
+	// a follower sees the title too, not just the address
+	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
+	bob.s.RefreshAll(ctx)
+	if fl := do4(bob, "/timeline?likes=1", loginCookie(t, bob)); !strings.Contains(fl, "“About the &lt;web&gt;”") {
+		t.Errorf("follower's likes line lacks the title:\n%s", fl)
+	}
+	// liking again with nothing new keeps the one like; the API takes the snapshot and refuses unsafe images
+	formAs(alice, "/like", ack, "", url.Values{"target": {page}})
+	alice.call(t, "POST", "/api/likes", `{"target":"`+carol.base+`/other","context":{"title":"Other","image":"javascript:alert(1)"}}`, 200)
+	lx = alice.get("/likes.xml")
+	if strings.Count(lx, "<item>") != 2 || strings.Contains(lx, "javascript:") || !strings.Contains(lx, `title="Other"`) {
+		t.Errorf("likes.xml after more likes:\n%s", lx)
+	}
+
+	// Unlike from the likes line withdraws it
+	formAs(alice, "/unlike", ack, "http://"+alice.host+"/timeline?likes=1", url.Values{"target": {page}})
+	if after := alice.get("/likes.xml"); strings.Contains(after, page) {
+		t.Errorf("unliked page still in likes.xml:\n%s", after)
+	}
+	if again := do4(alice, "/timeline?likes=1", ack); strings.Contains(again, "About the &lt;web&gt;") {
+		t.Errorf("unliked page still shown")
 	}
 }

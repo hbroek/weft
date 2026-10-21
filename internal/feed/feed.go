@@ -53,8 +53,13 @@ type FeedRef struct {
 }
 
 // LikeRef is weft:likeOf: the item is a like of the post at Href.
+// LikeRef is weft:likeOf: the address of the liked page, and optionally what it looked like (its
+// title, a short description and an image), for a like of a page that publishes no feed.
 type LikeRef struct {
-	Href string `xml:"href,attr"`
+	Href        string `xml:"href,attr"`
+	Title       string `xml:"title,attr,omitempty"`
+	Description string `xml:"description,attr,omitempty"`
+	Image       string `xml:"image,attr,omitempty"`
 }
 
 // Likes is weft:likes: a post's count of verified likes from trusted senders.

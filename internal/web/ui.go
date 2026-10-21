@@ -102,31 +102,40 @@ func (s *Server) composeForm(w http.ResponseWriter, r *http.Request, q *req) {
 	title, body, kws := strings.TrimSpace(v.Get("title")), v.Get("body"), feed.SplitKeywords(v.Get("keywords"))
 	var d func(*pageData)
 	if page := httpURL(v.Get("page")); page != "" {
-		// the bookmarklet's page: a bookmark card, or a reply to it when the page can take a Webmention
+		// the bookmarklet's page: a bookmark card, a reply to it (the default when the page can take a
+		// Webmention), or a like of it
 		info := feed.ParentInfo{Title: v.Get("ptitle"), Description: v.Get("pdesc"), Image: v.Get("pimg")}.Clean()
 		mode := v.Get("mode")
-		if mode != "reply" && mode != "bookmark" {
+		if mode != "reply" && mode != "bookmark" && mode != "like" {
 			mode = "bookmark"
 			if v.Get("wm") == "1" {
 				mode = "reply"
 			}
 		}
-		other := url.Values{}
-		for k, vs := range v {
-			other[k] = vs
+		var modes []modeLink
+		for _, m := range []struct{ key, label string }{{"bookmark", "Bookmark"}, {"reply", "Reply"}, {"like", "Like"}} {
+			q2 := url.Values{}
+			for k, vs := range v {
+				q2[k] = vs
+			}
+			q2.Set("mode", m.key)
+			modes = append(modes, modeLink{Label: m.label, Href: "/compose?" + q2.Encode(), Current: m.key == mode})
 		}
-		r.ParseForm()
-		if mode == "reply" {
+		d = func(d *pageData) { d.Modes = modes }
+		switch mode {
+		case "like":
+			dd := s.data(r, q, "Like this page")
+			dd.Modes, dd.ReplyTo, dd.PInfo, dd.Parent = modes, page, info, newParentCard(page, info)
+			s.show(w, "likepage", http.StatusOK, dd)
+			return
+		case "reply":
+			r.ParseForm()
 			r.Form.Set("reply_to", page) // the editor reads these from the form
 			r.Form.Set("ptitle", info.Title)
 			r.Form.Set("pdesc", info.Description)
 			r.Form.Set("pimg", info.Image)
-			other.Set("mode", "bookmark")
-			d = func(d *pageData) { d.ModeHref, d.ModeLabel = "/compose?"+other.Encode(), "Bookmark this page instead" }
-		} else {
+		default:
 			title, body = info.Title, bookmarkBody(page, info)
-			other.Set("mode", "reply")
-			d = func(d *pageData) { d.ModeHref, d.ModeLabel = "/compose?"+other.Encode(), "Reply to this page instead" }
 		}
 	}
 	s.editor(w, r, q, http.StatusOK, "New post", "/compose", "Publish", "", title, body, kws, "", d)

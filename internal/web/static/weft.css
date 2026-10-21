@@ -74,7 +74,7 @@ ul.thread, ul.thread ul { list-style: none; padding-left: 1rem; border-left: 2px
 .node { margin: .75rem 0; }
 .note { display: block; color: var(--warn); }
 .focus { scroll-margin-top: 4rem; background: var(--focus-bg); box-shadow: 0 0 0 2px #f08a4b99, var(--shadow); }
-article.likeevent { color: var(--muted); font-size: .9rem; background: none; border: 0; box-shadow: none; padding: 0 1.1rem; margin: .6rem 0; }
+article.likeevent { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .75rem; color: var(--muted); font-size: .9rem; background: none; border: 0; box-shadow: none; padding: 0 1.1rem; margin: .6rem 0; }
 #preview .empty { color: var(--muted); }
 
 /* card footer: likes left, date in the middle, icon actions right */
@@ -91,6 +91,8 @@ article.likeevent { color: var(--muted); font-size: .9rem; background: none; bor
 .pc-t strong { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .pc-d { color: var(--muted); font-size: .9em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .pc-t small { color: var(--muted); }
+.modes { display: flex; gap: 1rem; margin: .5rem 0 1rem; }
+.modes strong { border-bottom: 2px solid var(--orange); }
 .card-top { display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; }
 .card-top p, .card-top h2, .card-top h3 { margin: 0; }
 .when { white-space: nowrap; color: var(--muted); font-size: .85em; }
@@ -138,3 +140,4 @@ footer img { vertical-align: -4px; border-radius: 4px; }
 .site { display: inline-flex; align-items: center; }
 .site .av { width: 1.7rem; height: 1.7rem; font-size: .8rem; margin-right: .5rem; }
 .site > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+article.likeevent p, article.likeevent form { margin: .2rem 0; }
