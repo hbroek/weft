@@ -18,7 +18,7 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-db weft.db] [-dev] [-v] [-poll 5m]
+  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-db weft.db] [-dev] [-v] [-poll 5m|0]
   weft user add [-db weft.db] [-display NAME] [-bio TEXT] [-password PW] USERNAME
   weft user passwd [-db weft.db] -password PW USERNAME
   weft user token  [-db weft.db] USERNAME      (issues a new API token, invalidating the old one)
@@ -63,7 +63,7 @@ func main() {
 		db := fs.String("db", "weft.db", "SQLite file")
 		dev := fs.Bool("dev", false, "allow fetching feeds from loopback/private addresses (local development only)")
 		verbose := fs.Bool("v", false, "log every API call")
-		poll := fs.Duration("poll", 5*time.Minute, "how often to refresh followed feeds")
+		poll := fs.Duration("poll", 5*time.Minute, "how often to refresh followed feeds (0 turns the background refresh off)")
 		fs.Parse(os.Args[2:])
 		legacyDB(*db)
 		st, err := store.Open(*db)

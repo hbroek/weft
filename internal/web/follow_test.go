@@ -1,11 +1,13 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hbroek/weft/internal/store"
 )
@@ -153,5 +155,16 @@ func TestLocalFollowerSeesPostImmediately(t *testing.T) {
 	w := do(s, "GET", bh, "/api/timeline", btok, "")
 	if !strings.Contains(w.Body.String(), "fresh news") {
 		t.Fatalf("bob's timeline should show alice's new post right away:\n%s", w.Body)
+	}
+}
+
+// A poll interval of zero (or less) turns the background refresh off instead of crashing the ticker.
+func TestPollerWithoutInterval(t *testing.T) {
+	for _, every := range []time.Duration{0, -time.Second} {
+		i := newInstance(t, "alice")
+		ctx, cancel := context.WithCancel(context.Background())
+		i.s.StartPoller(ctx, every)
+		time.Sleep(50 * time.Millisecond) // a bad interval panics in the goroutine right away
+		cancel()
 	}
 }

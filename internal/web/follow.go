@@ -394,15 +394,21 @@ func (s *Server) RefreshAll(ctx context.Context) {
 // interval, and processing the Webmention queues now and then and whenever one is kicked.
 func (s *Server) StartPoller(ctx context.Context, every time.Duration) {
 	go func() {
-		feeds := time.NewTicker(every)
+		// An interval of zero or less switches the background refresh off; followed feeds then
+		// refresh only on "Refresh now". A nil channel never fires.
+		var refresh <-chan time.Time
+		if every > 0 {
+			feeds := time.NewTicker(every)
+			defer feeds.Stop()
+			refresh = feeds.C
+		}
 		queues := time.NewTicker(time.Minute) // retries of failed jobs
-		defer feeds.Stop()
 		defer queues.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-feeds.C:
+			case <-refresh:
 				s.RefreshAll(ctx)
 			case <-queues.C:
 				s.ProcessQueues(ctx)
