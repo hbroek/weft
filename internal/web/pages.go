@@ -101,16 +101,17 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{if eq .Thread.View "curated"}}<strong>Whole thread</strong>{{else}}<a href="{{.Thread.CuratedHref}}">Whole thread</a>{{end}} |
 {{if eq .Thread.View "raw"}}<strong>Raw</strong>{{else}}<a href="{{.Thread.RawHref}}">Raw</a>{{end}}
 <small>({{.Thread.Count}} posts)</small></p>
-<p><small>{{if eq .Thread.View "focus"}}The post, the posts above it back to the root, and its replies. Use “replies →” on any post to open that branch.{{else if eq .Thread.View "curated"}}Only the replies each author approved, read down from the root.{{else}}Everything your reader knows about this conversation, including replies that were not approved.{{end}}</small></p>
+<p><small>{{if eq .Thread.View "focus"}}The post, the posts above it back to the root, and its replies. Use the replies icon on any post to open that branch.{{else if eq .Thread.View "curated"}}Only the replies each author approved, read down from the root.{{else}}Everything your reader knows about this conversation, including replies that were not approved.{{end}}</small></p>
 <ul class="thread">{{template "node" .Thread.Root}}</ul>
 {{template "foot"}}{{end}}
+{{define "drilltext"}}{{if gt .Replies 0}}{{.Replies}} {{if .Other}}other {{end}}{{if eq .Replies 1}}reply{{else}}replies{{end}}{{else if .Other}}Other replies{{else}}Replies{{end}}{{end}}
+{{define "ic-replies"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>{{end}}
 {{define "node"}}<li><div{{if .Focus}} id="focus"{{end}} class="node{{if .Focus}} focus{{end}}">
 {{if .Tombstone}}<em>original post removed</em> <small>{{.URL}}</small>
 {{else if .Missing}}<em>{{.Note}}</em> <a href="{{.URL}}">{{.URL}}</a>
 {{else}}{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} <a href="{{.URL}}"><time>{{.Date}}</time></a>{{if .Title}} <em>{{.Title}}</em>{{end}}
 {{.HTML}}{{if .Note}}<small class="note">{{.Note}}</small>{{end}}{{end}}
-{{if .ReplyHref}}<a href="{{.ReplyHref}}">Reply</a>{{end}}
-{{if .DrillHref}} <a href="{{.DrillHref}}">{{if gt .Replies 0}}{{.Replies}} {{if .Other}}other {{end}}{{if eq .Replies 1}}reply{{else}}replies{{end}} &rarr;{{else if .Other}}other replies &rarr;{{else}}replies &rarr;{{end}}</a>{{end}}</div>
+{{if or .ReplyHref .DrillHref}}<div class="node-actions">{{if .DrillHref}}<a class="ico" href="{{.DrillHref}}" title="{{template "drilltext" .}}" aria-label="{{template "drilltext" .}}">{{template "ic-replies"}}{{if gt .Replies 0}}<span class="cnt">{{.Replies}}</span>{{end}}</a>{{end}}{{if .ReplyHref}}<a class="ico" href="{{.ReplyHref}}" title="Reply" aria-label="Reply">{{template "ic-reply"}}</a>{{end}}</div>{{end}}</div>
 {{if .Children}}<ul>{{range .Children}}{{template "node" .}}{{end}}</ul>{{end}}</li>{{end}}
 {{define "moderation"}}{{template "head" .}}<h2>Replies to your posts</h2>
 {{range .Moderation}}<article>

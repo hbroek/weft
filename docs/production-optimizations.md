@@ -9,7 +9,7 @@ on a realistic dataset (`make hackernews` gives a deep, cold thread), and decide
 ## 1. Fetch cache for thread pages
 
 **Problem.** `/thread` is rebuilt on every click and the fetch cache lives for one page build only.
-Clicking "replies →" makes that reply the new focus, so the server reads the whole chain from the
+Clicking the replies icon makes that reply the new focus, so the server reads the whole chain from the
 root again: about depth+1 fetches. For a thread of strangers (nothing in the local store) that is the
 full depth every click. The browser cannot do the fetching instead, because other servers do not allow
 cross-origin requests; every remote fetch goes through the user's own server.

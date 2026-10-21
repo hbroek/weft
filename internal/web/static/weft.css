@@ -81,6 +81,8 @@ article.likeevent { color: var(--muted); font-size: .9rem; background: none; bor
 .react { display: flex; align-items: center; gap: .25rem; margin: 0; }
 .meta { display: flex; justify-content: space-between; align-items: center; gap: .5rem; margin-top: .6rem; }
 .m-r { display: flex; justify-content: flex-end; gap: .15rem; }
+.node-actions { display: flex; justify-content: flex-end; align-items: center; gap: .15rem; margin-top: .4rem; }
+.ico .cnt { margin-left: .3rem; font-size: .85em; align-self: center; }
 .card-top { display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; }
 .card-top p, .card-top h2, .card-top h3 { margin: 0; }
 .when { white-space: nowrap; color: var(--muted); font-size: .85em; }

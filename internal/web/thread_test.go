@@ -4,6 +4,7 @@ import (
 	"html"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -299,6 +300,12 @@ func TestThreadFocusReadsOnlyTheBranch(t *testing.T) {
 	}
 	if !strings.Contains(page, "/thread?url="+url.QueryEscape(ub)) {
 		t.Errorf("an ancestor lacks a link that opens its branch:\n%s", page)
+	}
+	// reply and the other-replies link are icons with labels, not words and an arrow
+	if !strings.Contains(page, `class="ico" href="/compose?reply_to=`) || !strings.Contains(page, `aria-label="Reply"`) ||
+		!regexp.MustCompile(`aria-label="(\d+ (other )?repl(y|ies)|Other replies|Replies)"`).MatchString(page) ||
+		strings.Contains(page, ">Reply</a>") || strings.Contains(page, "&rarr;") || strings.Contains(page, "→") {
+		t.Errorf("thread actions should be icons:\n%s", page)
 	}
 	if cost > 6 {
 		t.Errorf("focused view cost %d fetches for a path of 4 posts", cost)
