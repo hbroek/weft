@@ -391,7 +391,7 @@ func TestWhoLikedPage(t *testing.T) {
 		t.Errorf("both likers should now offer Unfollow:\n%s", own)
 	}
 
-	// on a post in a feed Bob follows: himself, and the followed who liked it
+	// on a post in a feed Bob follows: himself, and the people he follows who liked it
 	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
 	bob.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
 	bob.s.RefreshAll(ctx)
@@ -400,9 +400,17 @@ func TestWhoLikedPage(t *testing.T) {
 	if !strings.Contains(bl, ">You<") || !strings.Contains(bl, ">Carol<") || !strings.Contains(bl, `action="/following/remove"`) {
 		t.Errorf("bob's list:\n%s", bl)
 	}
+	// another user on the same server follows Carol too: that must not put her on bob's list
+	if _, err := bob.s.st.AddUser("zed", "Zed", ""); err != nil {
+		t.Fatal(err)
+	}
+	zed, _ := bob.s.st.UserByName("zed")
+	bob.s.st.Follow(zed.ID, carol.base+"/feed.xml")
+	bob.s.RefreshAll(ctx)
 	formAs(bob, "/following/remove", bck, "http://"+bob.host+page, url.Values{"url": {carol.base + "/feed.xml"}})
-	if bl := do4(bob, page, bck); !strings.Contains(bl, ">Carol<") || !strings.Contains(bl, `action="/following"`) || !strings.Contains(bl, "not followed") || strings.Contains(bl, "not counted") {
-		t.Errorf("an unfollowed liker should offer Follow again:\n%s", bl)
+	bl = do4(bob, page, bck)
+	if strings.Contains(bl, "Carol") || strings.Contains(bl, "not followed") || !strings.Contains(bl, ">You<") {
+		t.Errorf("only people bob follows belong on his list:\n%s", bl)
 	}
 	if c := do(bob.s, "GET", bob.host, page, "", "").Code; c == 200 {
 		t.Errorf("a list for a remote post is for the owner only")

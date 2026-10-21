@@ -15,7 +15,7 @@ type likerRow struct {
 
 // likedByPage lists who liked a post, like the Following page: on one of this site's posts everyone
 // whose like was received (the count only includes the people the owner follows), on a post in a
-// followed feed the owner and the people whose likes were seen while following them. Each has a Follow or
+// followed feed the owner and the people they follow who liked it. Each has a Follow or
 // Unfollow button for the owner.
 func (s *Server) likedByPage(w http.ResponseWriter, r *http.Request, q *req) {
 	target := httpURL(r.FormValue("target"))
@@ -73,19 +73,17 @@ func (s *Server) likedByPage(w http.ResponseWriter, r *http.Request, q *req) {
 		if s.iLike(q.host.ID, target) {
 			d.Likers = append(d.Likers, likerRow{Name: "You", State: "you", Counted: true})
 		}
-		fl, err := s.st.LikersOf(target)
+		// only people this user follows: the likes cache is shared by every user on the server
+		fl, err := s.st.FeedLikes(q.host.ID, "", 1000)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		for _, l := range fl {
-			row := likerRow{Name: orStr(l.FeedTitle, l.FeedURL), FeedURL: l.FeedURL, State: "follow"}
-			if on, _ := s.st.IsFollowing(q.host.ID, l.FeedURL); on {
-				row.State, row.Counted = "unfollow", true
-			} else {
-				row.Tag = "not followed"
+		own := s.base(r) + "/feed.xml"
+		for i := len(fl) - 1; i >= 0; i-- { // oldest first
+			if l := fl[i]; l.Target == target && l.FeedURL != own {
+				d.Likers = append(d.Likers, likerRow{Name: orStr(l.FeedTitle, l.FeedURL), FeedURL: l.FeedURL, State: "unfollow", Counted: true})
 			}
-			d.Likers = append(d.Likers, row)
 		}
 		counted := 0
 		for _, l := range d.Likers {

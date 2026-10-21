@@ -83,25 +83,3 @@ func (s *Store) FollowedLikers(userID int64) (map[string][]string, error) {
 	}
 	return out, rows.Err()
 }
-
-// LikersOf returns the cached likes of one post by the people whose feeds were fetched for a
-// follower, including ones since unfollowed, so a list of likers can offer to follow them again.
-func (s *Store) LikersOf(target string) ([]FeedLike, error) {
-	rows, err := s.db.Query(`SELECT l.feed_url, COALESCE(d.title,''), l.guid, l.target, l.published
-		FROM feed_likes l LEFT JOIN feeds d ON d.url=l.feed_url WHERE l.target=? ORDER BY l.published, l.guid`, target)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []FeedLike
-	for rows.Next() {
-		var l FeedLike
-		var pub int64
-		if err := rows.Scan(&l.FeedURL, &l.FeedTitle, &l.GUID, &l.Target, &pub); err != nil {
-			return nil, err
-		}
-		l.Published = time.Unix(pub, 0)
-		out = append(out, l)
-	}
-	return out, rows.Err()
-}
