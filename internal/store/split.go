@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -269,6 +270,18 @@ func splitUser(ctx context.Context, in *Instance, snap string, id int64, name st
 		{"wm_queue", `user_id=? OR (user_id=0 AND substr(source, instr(source,'//')+2, length(?)+1) = ?||'.')`, []any{id, name, name}},
 	}
 	for _, s := range steps {
+		if slices.Contains(lazyTables, s.table) { // only an account that has such rows gets the tables
+			var have int
+			if err := c.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM old.`+s.table+` WHERE `+s.where+`)`, s.args...).Scan(&have); err != nil {
+				return err
+			}
+			if have == 0 {
+				continue
+			}
+			if _, err := c.ExecContext(ctx, lazySchema); err != nil {
+				return err
+			}
+		}
 		n, err := copyRows(ctx, c, s.table, s.where, s.args...)
 		if err != nil {
 			return err

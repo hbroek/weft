@@ -165,6 +165,7 @@ func TestImportRefusals(t *testing.T) {
 		})}, "2 accounts"},
 		{"dangling row", map[string][]byte{"manifest.json": manifestJSON(goodM), "user.db": withDB(func(db *sql.DB) {
 			db.Exec(`PRAGMA foreign_keys=OFF`)
+			db.Exec(lazySchema)
 			db.Exec(`INSERT INTO replies(post_id,source,published,status,received) VALUES (999,'s',1,'approved',1)`)
 		})}, "refer to rows"},
 	}

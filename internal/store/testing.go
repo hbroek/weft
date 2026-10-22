@@ -22,4 +22,4 @@ func (in *Instance) SpaceForTests(t interface {
 }
 
 // RawDBForTests exposes the user's connection, as Instance's does for the shared one.
-func (s *Space) RawDBForTests() *sql.DB { return s.db }
+func (s *Space) RawDBForTests() *sql.DB { return s.db.DB }

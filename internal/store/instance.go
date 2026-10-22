@@ -157,7 +157,7 @@ func (in *Instance) Space(name string) (*Space, func(), error) {
 		return nil, nil, err
 	}
 	var once sync.Once
-	return &Space{in: in, db: e.db, name: name, uid: e.uid}, func() { once.Do(func() { in.pool.release(e) }) }, nil
+	return &Space{in: in, db: lazyDB{e.db}, name: name, uid: e.uid}, func() { once.Do(func() { in.pool.release(e) }) }, nil
 }
 
 func newToken() (string, error) {

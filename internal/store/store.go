@@ -25,7 +25,7 @@ var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,30}$`)
 // caches only through Instance methods, so that each can live in its own database file.
 type Space struct {
 	in   *Instance
-	db   *sql.DB
+	db   lazyDB
 	name string
 	uid  int64
 }

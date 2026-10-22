@@ -178,7 +178,11 @@ func closeAll(es []*entry) {
 // closeDB writes the write-ahead log back and closes the file; the last connection to close then
 // deletes the -wal and -shm files, so a database at rest is a single file.
 func closeDB(db *sql.DB) error {
-	db.Exec(`PRAGMA optimize`)
+	// statistics help the planner only where there is something to plan, and cost a small file two pages
+	var pages int
+	if db.QueryRow(`PRAGMA page_count`).Scan(&pages) == nil && pages >= 256 {
+		db.Exec(`PRAGMA optimize`)
+	}
 	db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
 	return db.Close()
 }

@@ -58,7 +58,7 @@ func (s *Space) Export(w io.Writer, domain string) error {
 	}
 	db.SetMaxOpenConns(1)
 	for _, q := range []string{`DELETE FROM sessions`, `UPDATE users SET token_hash=''`} {
-		if _, err := db.Exec(q); err != nil {
+		if _, err := db.Exec(q); err != nil && !missing(err) { // a file with no sessions table has none to scrub
 			db.Close()
 			return err
 		}

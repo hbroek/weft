@@ -301,6 +301,9 @@ func (s *Space) ReplaceSubreplies(postID int64, via string, rows []Subreply) (ch
 	if !changed {
 		return false, nil
 	}
+	if err := s.db.ensure(); err != nil {
+		return false, err
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return false, err

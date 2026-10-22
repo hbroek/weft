@@ -5,6 +5,10 @@ import "database/sql"
 // A user's file holds everything that is theirs. Ids are kept in the user's own counters. user_id is
 // always the id of the one row in users: the column is a leftover of the single-file layout, kept so
 // that no query or row had to change, and can go in a later migration.
+//
+// A new file gets only the tables every account uses. The rest (lazySchema) is created by the first
+// write that needs it, see lazy.go: an empty table costs a page and each of its indexes another, which
+// for an account that never receives a reply is most of its file.
 const spaceSchema = `
 CREATE TABLE users (
   id INTEGER PRIMARY KEY,
@@ -17,11 +21,6 @@ CREATE TABLE users (
   pw_hash BLOB,
   created INTEGER NOT NULL,
   avatar TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE sessions (
-  token_hash TEXT PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  expires INTEGER NOT NULL
 );
 CREATE TABLE posts (
   id INTEGER PRIMARY KEY,
@@ -51,7 +50,17 @@ CREATE TABLE follows (
   added INTEGER NOT NULL,
   PRIMARY KEY (user_id, feed_url)
 );
-CREATE TABLE replies (
+`
+
+// lazySchema is created on first use, all at once, and may already exist (a file made by weft split or
+// import has it).
+const lazySchema = `
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  expires INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS replies (
   id INTEGER PRIMARY KEY,
   post_id INTEGER NOT NULL REFERENCES posts(id),
   source TEXT NOT NULL,
@@ -68,7 +77,7 @@ CREATE TABLE replies (
   replies_href TEXT NOT NULL DEFAULT '',
   UNIQUE(post_id, source)
 );
-CREATE TABLE subreplies (
+CREATE TABLE IF NOT EXISTS subreplies (
   id INTEGER PRIMARY KEY,
   post_id INTEGER NOT NULL REFERENCES posts(id),
   via TEXT NOT NULL,
@@ -81,7 +90,7 @@ CREATE TABLE subreplies (
   published INTEGER NOT NULL,
   UNIQUE(post_id, source)
 );
-CREATE TABLE likes (
+CREATE TABLE IF NOT EXISTS likes (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id),
   target TEXT NOT NULL,
@@ -93,8 +102,8 @@ CREATE TABLE likes (
   parent_desc TEXT NOT NULL DEFAULT '',
   parent_image TEXT NOT NULL DEFAULT ''
 );
-CREATE UNIQUE INDEX likes_active ON likes(user_id, target) WHERE deleted=0;
-CREATE TABLE likes_in (
+CREATE UNIQUE INDEX IF NOT EXISTS likes_active ON likes(user_id, target) WHERE deleted=0;
+CREATE TABLE IF NOT EXISTS likes_in (
   id INTEGER PRIMARY KEY,
   post_id INTEGER NOT NULL REFERENCES posts(id),
   source TEXT NOT NULL,
@@ -104,7 +113,7 @@ CREATE TABLE likes_in (
   created INTEGER NOT NULL,
   UNIQUE(post_id, source)
 );
-CREATE TABLE wm_queue (
+CREATE TABLE IF NOT EXISTS wm_queue (
   id INTEGER PRIMARY KEY,
   dir TEXT NOT NULL,
   user_id INTEGER NOT NULL DEFAULT 0,
