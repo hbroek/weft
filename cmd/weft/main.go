@@ -37,7 +37,7 @@ func usage() {
   weft move     [-data weft] [-cancel] USERNAME NEWADDRESS   (USERNAME has moved to the server at NEWADDRESS, e.g. https://alice.example.org: every request to the old address, the feed too, gets a permanent redirect there, and the file goes to trash/ for 30 days; export and import it on the new server first; -cancel undoes a move while the file is still in the trash)
   weft fsck     [-data weft] [-full] [-fix] [USERNAME...]   (checks instance.db, every user's file, and that the directory matches the files; -full also checks every index entry; -fix rebuilds the directory (reindex) when that is all that is wrong; exits 1 if problems remain)
   weft reindex  [-data weft]   (rebuilds the directory's follows and work from the users' files)
-  weft backup   [-data weft] -to DIR [-full]   (consistent snapshots of instance.db and each changed user; safe while the server runs; then rsync DIR)
+  weft backup   [-data weft] -to DIR [-full]   (consistent snapshots of instance.db and each changed user; safe while the server runs; then back DIR up with restic or rsync)
   weft restore  -from DIR -data DIR2     (build a data folder from a backup; DIR2 must not exist or be empty)`)
 	os.Exit(2)
 }

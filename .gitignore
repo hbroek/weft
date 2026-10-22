@@ -10,3 +10,4 @@
 *agent*.json
 .DS_Store
 *.log
+backup/

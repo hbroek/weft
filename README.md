@@ -153,7 +153,17 @@ RSS 2.0 (what Weft publishes, and most blogs), RSS 1.0 (`rdf:RDF`, as Slashdot p
 
 **Data folder.** The server keeps its data in a folder (`-data DIR`, `weft` by default): `instance.db` holds the feeds everyone follows and the list of users, and each user has a file of their own, `users/ab/alice.db`, with their posts, replies, likes, follows and login. A database from before this layout (a single `weft.db`) is converted once with `weft split -db weft.db -data weft`; the old file is only read. See [docs/per-user-databases.md](docs/per-user-databases.md).
 
-**Your data, your move.** The profile page has *Download my data*: one zip with your posts, replies, likes, follows and login, without sessions or API token. `weft export USERNAME` does the same from the command line, and `weft import FILE` brings an export onto a server (it refuses a name that is taken, and prints a new API token). For backups, `weft backup -to DIR` writes consistent snapshots of the shared database and of each user who changed since the last run, while the server runs; copy `DIR` anywhere with rsync. `weft restore -from DIR -data NEW` builds a data folder from it.
+**Your data, your move.** The profile page has *Download my data*: one zip with your posts, replies, likes, follows and login, without sessions or API token. `weft export USERNAME` does the same from the command line, and `weft import FILE` brings an export onto a server (it refuses a name that is taken, and prints a new API token). For backups, `weft backup -to DIR` writes consistent snapshots of the shared database and of each user who changed since the last run, while the server runs; back `DIR` up with [restic](https://restic.net) (encrypted, deduplicated, with retention and many storage backends):
+
+```
+weft backup -data weft -to /var/backups/weft-snap
+restic -r sftp:backup@host:weft backup /var/backups/weft-snap
+restic -r sftp:backup@host:weft forget --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
+```
+
+Run both from cron, one after the other. Back up `DIR`, never the live data folder: its files can be half-written. `restic restore latest --target DIR2` brings the snapshot back, and `weft restore -from DIR2 -data NEW` builds a data folder from it. Plain rsync of `DIR` works too.
+
+
 
 **Your own domain.** On the profile page, *Your address* lets you add a domain such as `weft.example.com`. You prove it is yours with a TXT record (`_weft.weft.example.com`, value `weft-verify=…`; a CNAME cannot prove it, because every user's CNAME names the same target), and point it at the server with a CNAME. Once verified the domain is your address: the old `name.<domain>` address, the feed included, redirects to it with a permanent redirect (301, or 308 for a POST), and readers that follow you switch over by themselves, because a feed that is permanently redirected has moved. Use a subdomain: a bare domain cannot be a CNAME. You sign in again at the new address.
 

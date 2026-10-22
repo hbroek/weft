@@ -18,7 +18,7 @@ It is not mainly a speed change: one SQLite file holds far more than a small ins
 1. **Split by ownership.** A user's file holds everything that is theirs: profile and credentials, posts, likes, received replies and likes with the owner's decisions on them, follows, the Webmention queue, and any cache that only that user needs. Caches that are a function of the public network and keyed by URL (feeds, their items, other people's likes) go in one shared database.
 2. **Portable identity needs a custom domain.** A `weft.mydomain.com` CNAME lets the user move between instances without changing a single address. Users on a hosted subdomain are warned that moving changes their address. After a move the old address redirects for 3 months, then the account is deleted.
 3. **WAL stays on.** It is required on the shared database, and the per-user files use it too (`synchronous=NORMAL`, log capped at 1 MiB). Closing a database properly leaves a single file; idle users are closed by the pool and so are single files at rest.
-4. **Backup is `VACUUM INTO` snapshots plus rsync.** Never rsync live database files.
+4. **Backup is `VACUUM INTO` snapshots, then restic.** Never back up live database files. restic (or rsync) copies the snapshot folder.
 5. **Versioning is `PRAGMA user_version` per file**, with numbered migrations applied when a file is opened.
 
 ## What goes where
@@ -113,7 +113,7 @@ The path is a pure function of the name, so routing a request needs no lookup. A
 
 ## Backup
 
-`weft backup -to DIR` snapshots `instance.db` always, and each user file that changed since its last backup (compare the modification time of the file and its `-wal` with a `last_backup` stamp in the directory). Snapshots are `VACUUM INTO`, so they are consistent while the server runs. rsync then copies `DIR`. `weft restore` puts snapshots back and runs `reindex`. Cold users are single files and cost nothing to copy again.
+`weft backup -to DIR` snapshots `instance.db` always, and each user file that changed since its last backup (compare the modification time of the file and its `-wal` with a `last_backup` stamp in the directory). Snapshots are `VACUUM INTO`, so they are consistent while the server runs. restic then backs up `DIR` (it skips files whose time and size are unchanged, and deduplicates the rest, so a re-written user file costs only its changed pages); rsync works as well. `weft restore` puts snapshots back and runs `reindex`. Cold users are single files and cost nothing to copy again.
 
 ## Moving today's database
 
