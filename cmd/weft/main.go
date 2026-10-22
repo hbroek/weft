@@ -30,7 +30,11 @@ func usage() {
                   TARGET is a feed or site URL, or a bare user name on this instance (alice -> http://alice.localhost:8080/).
                   The target's server must be running.
   weft user list   [-data weft]
-  weft split    -db OLD.db -data DIR     (convert a single-file database into the per-user layout in DIR; OLD.db is not changed)`)
+  weft split    -db OLD.db -data DIR     (convert a single-file database into the per-user layout in DIR; OLD.db is not changed)
+  weft export   [-data weft] [-domain localhost] [-o FILE] USERNAME   (writes FILE, default USERNAME.weft.zip: the account, without sessions or API token)
+  weft import   [-data weft] FILE        (creates the user in FILE; prints a new API token; refuses a name that is taken)
+  weft backup   [-data weft] -to DIR [-full]   (consistent snapshots of instance.db and each changed user; safe while the server runs; then rsync DIR)
+  weft restore  -from DIR -data DIR2     (build a data folder from a backup; DIR2 must not exist or be empty)`)
 	os.Exit(2)
 }
 
@@ -72,6 +76,98 @@ func main() {
 			for _, d := range rep.Dropped {
 				fmt.Println("  left behind:", d)
 			}
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+	case "export":
+		fs := flag.NewFlagSet("export", flag.ExitOnError)
+		data := fs.String("data", "weft", "data folder")
+		domain := fs.String("domain", "localhost", "base domain the user is served under, recorded in the export")
+		out := fs.String("o", "", "file to write (default USERNAME.weft.zip)")
+		fs.Parse(os.Args[2:])
+		if fs.NArg() != 1 {
+			usage()
+		}
+		name := fs.Arg(0)
+		if *out == "" {
+			*out = name + ".weft.zip"
+		}
+		st, err := store.Open(*data)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer st.Close()
+		sp, release, err := st.Space(name)
+		if err != nil {
+			log.Fatalf("no user %q", name)
+		}
+		defer release()
+		f, err := os.OpenFile(*out, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // an export holds the password hash: private
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := sp.Export(f, *domain); err != nil {
+			f.Close()
+			os.Remove(*out)
+			log.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(*out)
+	case "import":
+		fs := flag.NewFlagSet("import", flag.ExitOnError)
+		data := fs.String("data", "weft", "data folder")
+		fs.Parse(os.Args[2:])
+		if fs.NArg() != 1 {
+			usage()
+		}
+		st, err := store.Open(*data)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer st.Close()
+		name, tok, err := st.Import(fs.Arg(0))
+		if err != nil {
+			st.Close()
+			log.Fatal(err)
+		}
+		fmt.Fprintf(os.Stderr, "imported %s; the API token below is new and shown once\n", name)
+		fmt.Println(tok)
+	case "backup":
+		fs := flag.NewFlagSet("backup", flag.ExitOnError)
+		data := fs.String("data", "weft", "data folder")
+		to := fs.String("to", "", "backup folder")
+		full := fs.Bool("full", false, "copy every user, not only those who changed")
+		fs.Parse(os.Args[2:])
+		if *to == "" {
+			usage()
+		}
+		st, err := store.Open(*data)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer st.Close()
+		rep, err := st.Backup(*to, *full)
+		if rep != nil {
+			fmt.Printf("%d users: %d copied, %d unchanged, %.1f MB written to %s\n", rep.Users, rep.Copied, rep.Unchanged, float64(rep.Bytes)/1e6, *to)
+		}
+		if err != nil {
+			st.Close()
+			log.Fatal(err)
+		}
+	case "restore":
+		fs := flag.NewFlagSet("restore", flag.ExitOnError)
+		from := fs.String("from", "", "backup folder")
+		data := fs.String("data", "", "data folder to create (must not exist or be empty)")
+		fs.Parse(os.Args[2:])
+		if *from == "" || *data == "" {
+			usage()
+		}
+		rep, err := store.Restore(*from, *data)
+		if rep != nil {
+			fmt.Printf("%d users restored to %s (%.1f MB)\n", rep.Users, *data, float64(rep.Bytes)/1e6)
 		}
 		if err != nil {
 			log.Fatal(err)

@@ -57,6 +57,9 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <label>Avatar image address (optional, an http:// or https:// link; the first letter of your name is shown without one) <input type="text" name="avatar" value="{{.Profile.Avatar}}" placeholder="https://example.com/me.jpg" inputmode="url"></label>
 <p>{{template "avatar" .}}<small> preview of your current avatar</small></p>
 <p><button>Save</button></p></form>
+<h3>Your data</h3>
+<p><small>Everything you have here in one file: posts, replies, likes, who you follow and your login. It holds no sessions and no API token. Whoever runs a Weft server can import it to bring you there.</small></p>
+<form method="post" action="/export"><button>Download my data</button></form>
 {{template "foot"}}{{end}}
 {{define "ic-reply"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v3"/></svg>{{end}}
 {{define "ic-thread"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{{end}}

@@ -1,6 +1,6 @@
 *.db
-/weft/
-/hackernews/
+/weft
+/hackernews
 /data/
 /a/
 /b/

@@ -5,12 +5,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/store"
 )
 
 const host = "alice.localhost:8080"
@@ -484,5 +487,60 @@ func TestPostsHaveAuthorHCard(t *testing.T) {
 	form(s, "POST", "/profile", ck, url.Values{"display": {"Alice"}, "avatar": {""}}, "")
 	if pg := do(s, "GET", host, "/", "", "").Body.String(); !strings.Contains(pg, `>Alice</a></span>`) || strings.Contains(pg, "u-photo") {
 		t.Errorf("author card without an avatar:\n%s", pg)
+	}
+}
+
+// The owner downloads their account as a zip, which another instance can import: the new server then
+// publishes byte for byte the same feed. Others cannot download it, and a form from another site cannot
+// trigger it.
+func TestExportThenImportElsewhere(t *testing.T) {
+	s, tok := setup(t)
+	s.space("alice").SetPassword("correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, "http://"+host))
+	for _, md := range []string{"first *post*", "second post"} {
+		if w := form(s, "POST", "/compose", ck, url.Values{"markdown": {md}, "keywords": {"go"}}, ""); w.Code != 303 {
+			t.Fatalf("compose: %d", w.Code)
+		}
+	}
+	feedBefore := do(s, "GET", host, "/feed.xml", "", "").Body.String()
+
+	if w := form(s, "POST", "/export", "", nil, "http://"+host); w.Code != 303 || w.Header().Get("Location") != "/login" {
+		t.Errorf("export logged out: %d", w.Code)
+	}
+	if w := form(s, "POST", "/export", ck, nil, "http://evil.example"); w.Code != 403 {
+		t.Errorf("cross-origin export: %d", w.Code)
+	}
+	if w := do(s, "GET", host, "/export", tok, ""); w.Code == 200 {
+		t.Errorf("GET /export answered 200; only a form post may download")
+	}
+	w := form(s, "POST", "/export", ck, nil, "http://"+host)
+	if w.Code != 200 || w.Header().Get("Content-Type") != "application/zip" || !strings.Contains(w.Header().Get("Content-Disposition"), "attachment; filename=\"alice-") {
+		t.Fatalf("export: %d %v", w.Code, w.Header())
+	}
+	zipPath := filepath.Join(t.TempDir(), "alice.zip")
+	os.WriteFile(zipPath, w.Body.Bytes(), 0o600)
+
+	// another instance, with nobody on it
+	st2, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st2.Close() })
+	name, newTok, err := st2.Import(zipPath)
+	if err != nil || name != "alice" {
+		t.Fatalf("import: %q %v", name, err)
+	}
+	s2 := New(Config{BaseDomain: "localhost"}, st2)
+	if after := do(s2, "GET", host, "/feed.xml", "", "").Body.String(); after != feedBefore {
+		t.Errorf("the imported feed differs from the original:\n--- before\n%s\n--- after\n%s", feedBefore, after)
+	}
+	if w := do(s2, "GET", host, "/api/replies", tok, ""); w.Code != 401 {
+		t.Errorf("the old token still works on the new instance: %d", w.Code)
+	}
+	if w := do(s2, "GET", host, "/api/replies", newTok, ""); w.Code != 200 {
+		t.Errorf("the new token does not work: %d", w.Code)
+	}
+	if w := form(s2, "POST", "/login", "", url.Values{"password": {"correct horse"}}, "http://"+host); w.Code != 303 {
+		t.Errorf("the password did not travel: %d", w.Code)
 	}
 }

@@ -1,8 +1,11 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -61,4 +64,27 @@ func (s *Server) profile(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// export sends the owner their whole account as a zip: posts, replies, likes, follows and login, without
+// sessions or API token. It is a POST so that a link, a prefetch or another site cannot trigger it.
+func (s *Server) export(w http.ResponseWriter, r *http.Request, q *req) {
+	if !s.requireOwner(w, r, q) {
+		return
+	}
+	tmp, err := os.CreateTemp("", "weft-export-*.zip") // on disk, not in memory: an account may be large
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	if err := q.sp.Export(tmp, s.cfg.BaseDomain); err != nil {
+		http.Error(w, "export failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%s.weft.zip"`, q.host.Name, time.Now().Format("2006-01-02")))
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeContent(w, r, "", time.Time{}, tmp)
 }

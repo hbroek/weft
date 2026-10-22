@@ -82,9 +82,12 @@ func (in *Instance) Close() error {
 }
 
 // spacePath is where a user's file lives. The name must already be valid: it becomes a file name.
-func (in *Instance) spacePath(name string) string {
+func (in *Instance) spacePath(name string) string { return filepath.Join(in.dir, spaceRel(name)) }
+
+// spaceRel is the path of a user's file below a data folder or a backup: users/ab/alice.db.
+func spaceRel(name string) string {
 	h := sha256.Sum256([]byte(name))
-	return filepath.Join(in.dir, "users", hex.EncodeToString(h[:1]), name+".db")
+	return filepath.Join("users", hex.EncodeToString(h[:1]), name+".db")
 }
 
 // openSpaceDB opens a user's file, bringing its schema up to date. A new file gets 1 KiB pages: a user
@@ -409,4 +412,39 @@ func anys(s []string) []any {
 		out[i] = v
 	}
 	return out
+}
+
+// syncUser rewrites this user's rows in the directory (the feeds they follow, when their next Webmention
+// job is due) from their own file, which is the truth.
+func (in *Instance) syncUser(sp *Space) error {
+	urls, err := sp.followURLs(sp.UID())
+	if err != nil {
+		return err
+	}
+	var due sql.NullInt64
+	if err := sp.db.QueryRow(`SELECT MIN(next_try) FROM wm_queue WHERE done=0`).Scan(&due); err != nil {
+		return err
+	}
+	tx, err := in.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM local_follows WHERE name=?`, sp.name); err != nil {
+		return err
+	}
+	for _, u := range urls {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO local_follows(feed_url,name) VALUES(?,?)`, u, sp.name); err != nil {
+			return err
+		}
+	}
+	if due.Valid {
+		_, err = tx.Exec(`INSERT INTO work(name,next_due) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET next_due=excluded.next_due`, sp.name, due.Int64)
+	} else {
+		_, err = tx.Exec(`DELETE FROM work WHERE name=?`, sp.name)
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
