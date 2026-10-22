@@ -23,6 +23,7 @@ import (
 
 type tlRow struct {
 	Author, AuthorHref, Title, Link, Date, InReplyTo, ReplyHref string
+	ReplyWho                                                    string // whose post it replies to, for "replying to …"
 	Target, FeedURL, Tally, TallyTip, ThreadHref                string
 	Mine                                                        bool
 	HasThread                                                   bool // it replies to something or has replies
@@ -98,7 +99,8 @@ func replyHref(it store.TimelineItem) string {
 	return "/compose?reply_to=" + url.QueryEscape(target) + "&reply_feed=" + url.QueryEscape(it.FeedURL)
 }
 
-func (s *Server) rows(sp *store.Space, feedURL string) ([]tlRow, []store.TimelineItem, error) {
+func (s *Server) rows(r *http.Request, q *req, feedURL string) ([]tlRow, []store.TimelineItem, error) {
+	sp := q.sp
 	userID := sp.UID()
 	var items []store.TimelineItem
 	var err error
@@ -127,6 +129,13 @@ func (s *Server) rows(sp *store.Space, feedURL string) ([]tlRow, []store.Timelin
 			Date: it.Published.Format("2 Jan 2006 at 15:04"), ISO: it.Published.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(it.Published), MD: orStr(it.Markdown, it.Text), HTML: remoteHTML(it), Edited: it.Updated != nil, Keywords: it.Keywords,
 			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(n), TallyTip: likedBy(names, n),
 			Mine: mine, when: it.Published})
+		if row := &out[len(out)-1]; row.InReplyTo != "" {
+			who, card := s.replyContext(r, q, row.InReplyTo)
+			row.ReplyWho = who
+			if row.Parent == nil {
+				row.Parent = card
+			}
+		}
 	}
 	return out, items, nil
 }
@@ -203,6 +212,13 @@ func (s *Server) ownRows(r *http.Request, q *req) ([]tlRow, error) {
 			Edited: p.Updated != nil, Keywords: p.Keywords, EditHref: "/posts/" + p.Slug + "/edit",
 			ReplyHref: "/compose?reply_to=" + url.QueryEscape(pu), ThreadHref: threadHref(pu, ""), HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 			Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), when: p.Created})
+		if row := &out[len(out)-1]; row.InReplyTo != "" {
+			who, card := s.replyContext(r, q, row.InReplyTo)
+			row.ReplyWho = who
+			if row.Parent == nil {
+				row.Parent = card
+			}
+		}
 	}
 	return out, nil
 }
@@ -212,7 +228,7 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	only := r.FormValue("feed")
-	rows, _, err := s.rows(q.sp, only)
+	rows, _, err := s.rows(r, q, only)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

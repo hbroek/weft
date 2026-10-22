@@ -119,6 +119,8 @@ The path is a pure function of the name, so routing a request needs no lookup. A
 
 `weft split -db weft.db -data DIR` reads the existing single database and writes the new layout: for each user a file at the current version with their rows (child tables through their posts), and `instance.db` with the shared tables, the directory and `local_follows`. It never changes the old file, and it compares row counts per table afterwards. The server runs in one of two modes during the transition: `-db FILE` as now, or `-data DIR`. The old mode is removed when the split has been used on the real data.
 
+*Done on 22 October 2026 for the real databases: `weft.db` (4 users) and `hackernews.db` (634 users) were split into `weft/` and `hackernews/`. Before the switch the split was run into scratch folders and the new build served them beside the old servers: all 24 public pages of `weft` and, apart from a few likes feeds that the live poller changed between two requests, all 2,536 pages of `hackernews` were identical, and `weft fsck -full` found nothing. The old servers were then stopped with SIGTERM (leaving single files), the files copied to `backup/pre-migration/`, split again, checked, and the new servers started with `-data`. The old `.db` files, `backup/pre-per-user/` and the tag `pre-per-user-db` are the way back.*
+
 ## Phases
 
 Every phase leaves the tests passing and the server runnable.

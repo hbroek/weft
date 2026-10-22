@@ -217,3 +217,81 @@ func TestFollowAtomFeed(t *testing.T) {
 		t.Errorf("both addresses are the same feed")
 	}
 }
+
+// A reply in the timeline says whose post it answers and shows the first lines of it, from what this server
+// already has: the reader's own post, another user of the server, or a followed feed.
+func TestReplyHeaderNamesTheParent(t *testing.T) {
+	s, port, aliceTok, bobTok := twoUsers(t)
+	alice, bob := "alice.localhost:"+port, "bob.localhost:"+port
+	urlOf := func(body string) string {
+		i := strings.Index(body, `"url":"`)
+		if i < 0 {
+			t.Fatalf("no url in %s", body)
+		}
+		rest := body[i+len(`"url":"`):]
+		return rest[:strings.Index(rest, `"`)]
+	}
+	ua := urlOf(do(s, "POST", alice, "/api/posts", aliceTok, `{"title":"Pickleball at the Rally House","markdown":"Played **three** sets, see [the club](http://club.example)."}`).Body.String())
+	ub := urlOf(do(s, "POST", bob, "/api/posts", bobTok, `{"title":"Bob on trains","markdown":"Late again."}`).Body.String())
+	do(s, "POST", bob, "/api/posts", bobTok, `{"markdown":"Count me in.","in_reply_to":"`+ua+`"}`)
+	do(s, "POST", alice, "/api/posts", aliceTok, `{"markdown":"Same here.","in_reply_to":"`+ub+`"}`)
+	do(s, "POST", alice, "/api/posts", aliceTok, `{"markdown":"Interesting.","in_reply_to":"http://elsewhere.example/a/b"}`)
+	do(s, "POST", alice, "/api/following", aliceTok, `{"url":"http://`+bob+`/"}`)
+
+	s.space("alice").SetPassword("correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", map[string][]string{"password": {"correct horse"}}, ""))
+	page := do3(s, "GET", alice, "/timeline", ck).Body.String()
+	for _, want := range []string{
+		`replying to <a href="` + ua + `">your post</a>`, // bob answering alice
+		"Pickleball at the Rally House",                  // the card
+		"Played three sets, see the club.",
+		`replying to <a href="` + ub + `">Bob’s post</a>`, // alice answering bob
+		"Bob on trains",
+		`replying to <a href="http://elsewhere.example/a/b">elsewhere.example</a>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("timeline lacks %q:\n%s", want, page)
+		}
+	}
+	if strings.Contains(page, "replying to <a href=\""+ua+"\">a post") {
+		t.Errorf("still says \"a post\"")
+	}
+}
+
+// The card of a post without a title is named by its first words, the alt text of its first image, or "a
+// photo"; its first image is the thumbnail; a post with nothing to show gets no card.
+func TestReplyCardFallbacks(t *testing.T) {
+	s, port, aliceTok, bobTok := twoUsers(t)
+	alice, bob := "alice.localhost:"+port, "bob.localhost:"+port
+	urlOf := func(body string) string {
+		rest := body[strings.Index(body, `"url":"`)+len(`"url":"`):]
+		return rest[:strings.Index(rest, `"`)]
+	}
+	cases := []struct {
+		name, post string
+		want       []string
+	}{
+		{"words", `{"markdown":"First words of an untitled post."}`, []string{`<strong>First words of an untitled post.</strong>`}},
+		{"alt", `{"markdown":"![Pickleball court](http://img.example/c.jpg)"}`, []string{`<strong>Pickleball court</strong>`, `src="http://img.example/c.jpg"`}},
+		{"photo", `{"markdown":"![](http://img.example/d.jpg)"}`, []string{`<strong>a photo</strong>`, `src="http://img.example/d.jpg"`}},
+		{"titled", `{"title":"Titled","markdown":"Some *words* ![x](http://img.example/e.jpg)"}`, []string{`<strong>Titled</strong>`, `Some words`, `src="http://img.example/e.jpg"`}},
+	}
+	for _, c := range cases {
+		u := urlOf(do(s, "POST", alice, "/api/posts", aliceTok, c.post).Body.String())
+		do(s, "POST", bob, "/api/posts", bobTok, `{"markdown":"re `+c.name+`","in_reply_to":"`+u+`"}`)
+	}
+	do(s, "POST", alice, "/api/following", aliceTok, `{"url":"http://`+bob+`/"}`)
+	s.space("alice").SetPassword("correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", map[string][]string{"password": {"correct horse"}}, ""))
+	page := do3(s, "GET", alice, "/timeline", ck).Body.String()
+	for _, c := range cases {
+		for _, w := range c.want {
+			if !strings.Contains(page, w) {
+				t.Errorf("%s: timeline lacks %q:\n%s", c.name, w, page)
+			}
+		}
+	}
+	if strings.Contains(page, "![") || strings.Contains(page, "<strong>alice.localhost") {
+		t.Errorf("a card shows raw Markdown or the host as its title")
+	}
+}
