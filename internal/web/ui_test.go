@@ -547,3 +547,75 @@ func TestExportThenImportElsewhere(t *testing.T) {
 		t.Errorf("the password did not travel: %d", w.Code)
 	}
 }
+
+// An address can be chosen when a post is written, in the form and in the API, and never afterwards.
+func TestChoosingAnAddress(t *testing.T) {
+	s, tok := setup(t)
+	if err := s.space("alice").SetPassword("correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+
+	if p := do3(s, "GET", host, "/compose?title=Pickleball+at+the+Rally+House", ck).Body.String(); !regexp.MustCompile(`name="slug"[^>]*value="pickleball-at-the-rally-house"[^>]*data-auto="1"`).MatchString(p) {
+		t.Errorf("the new post form does not suggest an address:\n%s", p)
+	}
+	// the page the form talks to answers with the words of the address for what is typed so far
+	if got := form(s, "POST", "/preview", ck, url.Values{"title": {"Pickleball at the Rally House"}, "markdown": {"x"}}, "").Header().Get("X-Slug-Base"); got != "pickleball-at-the-rally-house" {
+		t.Errorf("X-Slug-Base = %q", got)
+	}
+	if got := form(s, "POST", "/preview", ck, url.Values{"markdown": {"Heading out for pickleball. More later."}}, "").Header().Get("X-Slug-Base"); got != "heading-out-for-pickleball" {
+		t.Errorf("X-Slug-Base from the first sentence = %q", got)
+	}
+	// the words typed are cleaned and the short code is always added
+	code := regexp.MustCompile(`^/posts/my-trip-to-lisbon\.[a-z0-9]{4}$`)
+	w := form(s, "POST", "/compose", ck, url.Values{"markdown": {"Lisbon was warm."}, "slug": {"My Trip to Lisbon!"}}, "")
+	loc := w.Header().Get("Location")
+	if w.Code != 303 || !code.MatchString(loc) {
+		t.Fatalf("compose with an address: %d %s", w.Code, loc)
+	}
+	if p := do3(s, "GET", host, loc, ck).Body.String(); !strings.Contains(p, "Lisbon was warm.") {
+		t.Errorf("the post is not at its address")
+	}
+	if feedXML := do(s, "GET", host, "/feed.xml", "", "").Body.String(); !strings.Contains(feedXML, loc+"</link>") {
+		t.Errorf("the feed does not link the chosen address:\n%s", feedXML)
+	}
+	// a dot in the words is a hyphen
+	if w = form(s, "POST", "/compose", ck, url.Values{"markdown": {"x"}, "slug": {"v1.2 notes"}}, ""); !strings.HasPrefix(w.Header().Get("Location"), "/posts/v1-2-notes.") {
+		t.Errorf("a dot in the address: %s", w.Header().Get("Location"))
+	}
+	// the same words again: another code, nobody is refused
+	w = form(s, "POST", "/compose", ck, url.Values{"markdown": {"Another trip."}, "slug": {"my-trip-to-lisbon"}}, "")
+	if loc2 := w.Header().Get("Location"); w.Code != 303 || !code.MatchString(loc2) || loc2 == loc {
+		t.Errorf("same words: %d %s (first %s)", w.Code, loc2, loc)
+	}
+	// an address with nothing usable in it: the form comes back with what was typed
+	if w = form(s, "POST", "/compose", ck, url.Values{"markdown": {"Keep this text."}, "slug": {"!!!"}}, ""); w.Code != 400 ||
+		!strings.Contains(w.Body.String(), "needs letters or digits") || !strings.Contains(w.Body.String(), "Keep this text.") || !strings.Contains(w.Body.String(), `value="!!!"`) {
+		t.Errorf("bad address: %d", w.Code)
+	}
+	// empty means made from the post, as before
+	if w = form(s, "POST", "/compose", ck, url.Values{"markdown": {"Plain note about boats."}}, ""); !strings.HasPrefix(w.Header().Get("Location"), "/posts/plain-note-about-boats.") {
+		t.Errorf("no address chosen: %s", w.Header().Get("Location"))
+	}
+
+	// the API takes the words too
+	w = do(s, "POST", host, "/api/posts", tok, `{"markdown":"By API.","slug":"api-post"}`)
+	if w.Code != 201 || !regexp.MustCompile(`/posts/api-post\.[a-z0-9]{4}"`).MatchString(w.Body.String()) {
+		t.Errorf("API with a slug: %d %s", w.Code, w.Body)
+	}
+	if w = do(s, "POST", host, "/api/posts", tok, `{"markdown":"Bad.","slug":"!!!"}`); w.Code != 400 {
+		t.Errorf("API with an unusable slug: %d", w.Code)
+	}
+
+	// editing offers no address box, and an edit sends none
+	if p := do3(s, "GET", host, loc+"/edit", ck).Body.String(); strings.Contains(p, `name="slug"`) {
+		t.Errorf("the edit form offers to change the address")
+	}
+	form(s, "POST", loc+"/edit", ck, url.Values{"markdown": {"Edited."}, "slug": {"somewhere-else"}}, "")
+	if w := do3(s, "GET", host, loc, ck); w.Code != 200 || !strings.Contains(w.Body.String(), "Edited.") {
+		t.Errorf("an edit moved the post: %d", w.Code)
+	}
+	if w := do3(s, "GET", host, "/posts/somewhere-else", ck); w.Code != 404 {
+		t.Errorf("an edit created an address: %d", w.Code)
+	}
+}

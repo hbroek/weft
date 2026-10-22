@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -73,6 +74,9 @@ func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status i
 			f(&d)
 		}
 	}
+	if del == "" && d.Form.Slug == "" { // a new post: suggest the words of its address, which the author may reword
+		d.Form.Slug, d.SlugAuto = store.SlugBase(title, markdown), true
+	}
 	s.show(w, "editor", status, d)
 }
 
@@ -88,6 +92,7 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	w.Header().Set("X-Slug-Base", store.SlugBase(strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown"))) // the address the form suggests
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(h))
 }
@@ -158,9 +163,10 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	title, body, kws := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown"), feed.SplitKeywords(r.FormValue("keywords"))
-	p, msg := s.create(r, q.host, title, body, kws, httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed")), parentFromForm(r))
+	slug := strings.TrimSpace(r.FormValue("slug"))
+	p, msg := s.create(r, q.host, title, body, slug, kws, httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed")), parentFromForm(r))
 	if msg != "" {
-		s.editor(w, r, q, http.StatusBadRequest, "New post", "/compose", "Publish", "", title, body, kws, msg)
+		s.editor(w, r, q, http.StatusBadRequest, "New post", "/compose", "Publish", "", title, body, kws, msg, func(d *pageData) { d.Form.Slug = slug })
 		return
 	}
 	http.Redirect(w, r, "/posts/"+p.Slug, http.StatusSeeOther)
@@ -213,7 +219,7 @@ func (s *Server) deleteForm(w http.ResponseWriter, r *http.Request, q *req) {
 
 // create validates, renders and stores a new post, and for a reply, links it into its thread
 // and queues a Webmention to the parent. msg is a user-facing validation error.
-func (s *Server) create(r *http.Request, u *store.User, title, markdown string, keywords []string, replyTo, replyFeed string, parent feed.ParentInfo) (*store.Post, string) {
+func (s *Server) create(r *http.Request, u *store.User, title, markdown, slug string, keywords []string, replyTo, replyFeed string, parent feed.ParentInfo) (*store.Post, string) {
 	if strings.TrimSpace(markdown) == "" {
 		return nil, "Write something first."
 	}
@@ -221,7 +227,7 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown string, 
 	if err != nil {
 		return nil, err.Error()
 	}
-	n := store.NewPost{UserID: u.ID, Title: title, Markdown: markdown, HTML: html, Keywords: keywords}
+	n := store.NewPost{UserID: u.ID, Title: title, Markdown: markdown, HTML: html, Keywords: keywords, Slug: slug}
 	if replyTo != "" {
 		n.Parent = parent
 		n.InReplyTo = replyTo
@@ -229,6 +235,9 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown string, 
 	}
 	p, err := reqOf(r).sp.AddPost(n)
 	if err != nil {
+		if msg, ok := slugMessage(err); ok {
+			return nil, msg
+		}
 		return nil, err.Error()
 	}
 	if p.InReplyTo != "" {
@@ -236,6 +245,15 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown string, 
 	}
 	s.refreshOwnFeed(r)
 	return p, ""
+}
+
+// slugMessage is the sentence for an address that cannot be used.
+func slugMessage(err error) (string, bool) {
+	switch {
+	case errors.Is(err, store.ErrBadSlug):
+		return "The address needs letters or digits, and at most 80 characters.", true
+	}
+	return "", false
 }
 
 // update replaces a post's content and, for a reply, tells the parent it changed.

@@ -168,6 +168,8 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label>Markdown <textarea name="markdown" required>{{.Form.Markdown}}</textarea></label>
 <label>Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="travel, open source, weekend project"></label>
+{{if not .Delete}}<label>Address <input type="text" name="slug" id="slug" value="{{.Form.Slug}}" maxlength="80"{{if .SlugAuto}} data-auto="1"{{end}} autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+<p><small>The end of the post's link. It follows your title or first sentence until you change it, and cannot be changed once the post is published. A short code is added to make it yours alone.</small></p>{{end}}
 <p><button>{{.Button}}</button></p></form>
 <h3>Preview</h3>
 <article id="preview" class="h-entry"><h3 id="preview-title"{{if not .Form.Title}} hidden{{end}}>{{.Form.Title}}</h3><div id="preview-body">{{if .Preview}}{{.Preview}}{{else}}<p class="empty">Nothing to preview yet.</p>{{end}}</div>
@@ -175,7 +177,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <script>
 (function(){
 var md=document.querySelector('textarea[name=markdown]'),ti=document.querySelector('input[name=title]'),kw=document.querySelector('input[name=keywords]'),kwbox=document.getElementById('preview-kw'),
- body=document.getElementById('preview-body'),head=document.getElementById('preview-title'),timer,seq=0,shown=0;
+ body=document.getElementById('preview-body'),head=document.getElementById('preview-title'),sl=document.getElementById('slug'),timer,seq=0,shown=0,auto=!!(sl&&sl.dataset.auto);
 if(!md||!body)return;
 function title(){head.textContent=ti.value.trim();head.hidden=!ti.value.trim()}
 function chips(){
@@ -185,13 +187,14 @@ function chips(){
 }
 function render(){
  var n=++seq;
- fetch('/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'markdown='+encodeURIComponent(md.value),credentials:'same-origin'})
-  .then(function(r){return r.ok?r.text():null})
+ fetch('/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'markdown='+encodeURIComponent(md.value)+'&title='+encodeURIComponent(ti.value),credentials:'same-origin'})
+  .then(function(r){if(r.ok&&auto&&sl&&n>=shown){var b=r.headers.get('X-Slug-Base');if(b)sl.value=b}return r.ok?r.text():null})
   .then(function(h){if(h===null||n<shown)return;shown=n;body.innerHTML=h.trim()?h:'<p class="empty">Nothing to preview yet.</p>'})
   .catch(function(){});
 }
 md.addEventListener('input',function(){clearTimeout(timer);timer=setTimeout(render,200)});
-ti.addEventListener('input',title);
+ti.addEventListener('input',function(){title();clearTimeout(timer);timer=setTimeout(render,200)});
+if(sl)sl.addEventListener('input',function(){auto=sl.value.trim()===''});
 if(kw&&kwbox)kw.addEventListener('input',chips);
 })();
 </script>
@@ -246,7 +249,8 @@ type pageData struct {
 	Keyword, TopicFeed                           string       // a keyword filter on the home page, and the feed of just those posts
 	Bookmarklet                                  template.URL // javascript: link that sends the current page to /compose; owner's home page only
 	LikesToggle                                  string
-	Form                                         struct{ Title, Markdown, Keywords string }
+	Form                                         struct{ Title, Markdown, Keywords, Slug string }
+	SlugAuto                                     bool // the address is the suggestion, to follow the title and text until it is reworded
 }
 
 func (s *Server) data(r *http.Request, q *req, title string) pageData {

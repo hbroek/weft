@@ -62,6 +62,9 @@ type NewPost struct {
 	InReplyTo, InReplyToFeed, Root, RootFeed string
 	Keywords                                 []string
 	Parent                                   feed.ParentInfo // optional title, description and image of the page replied to
+	// Slug is the words of the address the author chose, if any (see CleanSlug); empty means the words are
+	// taken from the title or the first sentence. The short code that makes it unique is added either way.
+	Slug string
 	// Created is when the post was written; the zero value means now. Importers set it.
 	Created time.Time
 }
@@ -120,8 +123,14 @@ func (s *Space) AddPost(n NewPost) (*Post, error) {
 	var res sql.Result
 	var slug string
 	var err error
-	for try := 0; try < 8; try++ { // a collision in the 4-character suffix is rare; draw again
-		slug = Slug(n.Title, n.Markdown)
+	words := SlugBase(n.Title, n.Markdown)
+	if strings.TrimSpace(n.Slug) != "" { // the words the author chose
+		if words, err = CleanSlug(n.Slug); err != nil {
+			return nil, err
+		}
+	}
+	for try := 0; try < 8; try++ { // a collision in the 4-character code is rare; draw again
+		slug = words + slugSep + Suffix()
 		res, err = s.db.Exec(`INSERT INTO posts(user_id,uid,slug,title,markdown,html,created,in_reply_to,in_reply_to_feed,root,root_feed,keywords,parent_title,parent_desc,parent_image) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			n.UserID, uid, slug, n.Title, n.Markdown, n.HTML, now.Unix(), n.InReplyTo, n.InReplyToFeed, n.Root, n.RootFeed, packKeywords(n.Keywords), parent.Title, parent.Description, parent.Image)
 		if err == nil || !strings.Contains(err.Error(), "UNIQUE") {

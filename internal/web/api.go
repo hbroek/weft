@@ -16,6 +16,9 @@ type postReq struct {
 	Markdown string `json:"markdown"`
 	// Keywords are optional words or phrases, published as the item's <category> elements.
 	Keywords []string `json:"keywords"`
+	// Slug is an optional address for the post: the end of its permalink. It is cleaned to lowercase letters,
+	// digits and hyphens, and cannot be changed after the post is made.
+	Slug string `json:"slug"`
 	// InReplyTo makes the post a reply to the post at this permalink. InReplyToFeed is an
 	// optional hint: the parent's feed URL.
 	InReplyTo     string `json:"in_reply_to"`
@@ -67,7 +70,7 @@ func (s *Server) apiCreate(w http.ResponseWriter, r *http.Request, q *req) {
 	if in.Context != nil {
 		parent = feed.ParentInfo{Title: in.Context.Title, Description: in.Context.Description, Image: in.Context.Image}
 	}
-	p, msg := s.create(r, q.host, in.Title, in.Markdown, feed.Keywords(in.Keywords), httpURL(in.InReplyTo), httpURL(in.InReplyToFeed), parent)
+	p, msg := s.create(r, q.host, in.Title, in.Markdown, in.Slug, feed.Keywords(in.Keywords), httpURL(in.InReplyTo), httpURL(in.InReplyToFeed), parent)
 	if msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return

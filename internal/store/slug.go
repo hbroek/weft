@@ -2,6 +2,7 @@ package store
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -62,7 +63,10 @@ func firstSentence(markdown string) string {
 // Slug builds a URL path segment for a post: the words of its title or, for an untitled note,
 // of its first sentence, then a short random suffix that makes it unique in the author's namespace.
 // A slug is made once and never changes, even when the post is edited.
-func Slug(title, markdown string) string {
+func Slug(title, markdown string) string { return SlugBase(title, markdown) + slugSep + Suffix() }
+
+// SlugBase is the words of a slug, without the suffix: what the compose form suggests as the address.
+func SlugBase(title, markdown string) string {
 	src := title
 	if strings.TrimSpace(src) == "" {
 		src = firstSentence(markdown)
@@ -80,14 +84,36 @@ func Slug(title, markdown string) string {
 		words = append(words, w)
 		n += len(w) + 1
 	}
-	base := strings.Join(words, "-")
-	if base == "" {
-		base = "post"
+	if base := strings.Join(words, "-"); base != "" {
+		return base
 	}
+	return "post"
+}
+
+// Suffix is a short random string that, after a full stop, makes an address unique among an author's.
+func Suffix() string {
 	var suf [suffixLen]byte
 	rand.Read(suf[:])
 	for i := range suf {
 		suf[i] = suffixAlphabet[int(suf[i])%len(suffixAlphabet)]
 	}
-	return base + slugSep + string(suf[:])
+	return string(suf[:])
+}
+
+// maxCustomSlug is the longest address an author may choose.
+const maxCustomSlug = 80
+
+var ErrBadSlug = errors.New("an address needs letters or digits, and at most 80 characters")
+
+// CleanSlug turns the words an author typed for the address into the words of a slug: lowercase letters
+// and digits joined by single hyphens. Anything else (spaces, dots, underscores, accents, emoji) becomes a
+// hyphen or is dropped, so "My trip to Lisbon!" is "my-trip-to-lisbon". The short code that makes the
+// address unique is always added after it, by AddPost. An author may choose the words only when the post
+// is made; after that the address never changes.
+func CleanSlug(s string) (string, error) {
+	s = strings.Trim(nonWord.ReplaceAllString(strings.ToLower(strings.TrimSpace(s)), "-"), "-")
+	if s == "" || len(s) > maxCustomSlug {
+		return "", ErrBadSlug
+	}
+	return s, nil
 }

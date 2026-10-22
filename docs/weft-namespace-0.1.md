@@ -61,7 +61,7 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 | Element | Status | Rule |
 | --- | --- | --- |
 | `<guid isPermaLink="false">` | Required | The post's identity: `urn:uuid:` plus a UUID (version 7 recommended) made once when the post is created. It is not a URL and never changes, so the post stays the same post if its author moves to another host. |
-| `<link>` | Required | The post's HTML permalink: the author's host plus a slug, such as `https://alice.example/posts/the-reader-half.k3x9`. This URL is the post's address in replies (`weft:inReplyTo`, `weft:root`), likes and Webmentions. It is the only URL that serves the post. The slug is built from the title or the first sentence of a note plus a short random suffix, is unique in the author's namespace, and never changes after publishing, even if the post is edited. A deleted post keeps its slug reserved. |
+| `<link>` | Required | The post's HTML permalink: the author's host plus a slug, such as `https://alice.example/posts/the-reader-half.k3x9`. This URL is the post's address in replies (`weft:inReplyTo`, `weft:root`), likes and Webmentions. It is the only URL that serves the post. The slug is built from the title or the first sentence of a note plus a short random suffix (the words may be ones the author chose when making the post: lowercase letters, digits and hyphens; the suffix is always added), is unique in the author's namespace, and never changes after publishing, even if the post is edited. A deleted post keeps its slug reserved. |
 | `<description>` | Required | Rendered HTML of the post. |
 | `<title>` | Optional | Include only if the author gave one. Apps must not invent titles from the first line. |
 | `<source:markdown>` | Recommended | The original Markdown, unaltered. |
