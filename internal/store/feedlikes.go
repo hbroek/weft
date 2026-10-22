@@ -57,7 +57,7 @@ func (in *Instance) likesOf(urls []string, tail string, args ...any) ([]FeedLike
 	if len(urls) == 0 {
 		return nil, nil
 	}
-	rows, err := in.db.Query(`SELECT l.feed_url, COALESCE(d.title,''), l.guid, l.target, l.published, l.parent_title, l.parent_desc, l.parent_image
+	rows, err := in.rdb.Query(`SELECT l.feed_url, COALESCE(d.title,''), l.guid, l.target, l.published, l.parent_title, l.parent_desc, l.parent_image
 		FROM feed_likes l LEFT JOIN feeds d ON d.url=l.feed_url WHERE l.feed_url IN (`+marks(len(urls))+`) `+tail,
 		append(anys(urls), args...)...)
 	if err != nil {

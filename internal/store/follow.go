@@ -111,7 +111,7 @@ func (s *Space) Follows(userID int64) ([]Follow, error) {
 
 // FollowedFeedURLs returns every feed that at least one user follows.
 func (s *Instance) FollowedFeedURLs() ([]string, error) {
-	rows, err := s.db.Query(`SELECT DISTINCT feed_url FROM local_follows ORDER BY feed_url`)
+	rows, err := s.rdb.Query(`SELECT DISTINCT feed_url FROM local_follows ORDER BY feed_url`)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func (s *Instance) FollowedFeedURLs() ([]string, error) {
 
 // FollowersOf names the users of this instance who follow the feed.
 func (s *Instance) FollowersOf(feedURL string) ([]string, error) {
-	rows, err := s.db.Query(`SELECT name FROM local_follows WHERE feed_url=? ORDER BY name`, feedURL)
+	rows, err := s.rdb.Query(`SELECT name FROM local_follows WHERE feed_url=? ORDER BY name`, feedURL)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +161,7 @@ func (s *Instance) DropFeed(feedURL string) error {
 // HasItems reports whether any item of the feed is cached, i.e. whether it has been read before.
 func (s *Instance) HasItems(feedURL string) bool {
 	var n int
-	s.db.QueryRow(`SELECT COUNT(*) FROM items WHERE feed_url=?`, feedURL).Scan(&n)
+	s.rdb.QueryRow(`SELECT COUNT(*) FROM items WHERE feed_url=?`, feedURL).Scan(&n)
 	return n > 0
 }
 
@@ -256,7 +256,7 @@ const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link,
 		FROM items i LEFT JOIN feeds d ON d.url=i.feed_url `
 
 func (in *Instance) queryTimeline(q string, args ...any) ([]TimelineItem, error) {
-	rows, err := in.db.Query(q, args...)
+	rows, err := in.rdb.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -35,7 +35,8 @@ func (s *Space) User() (*User, error) {
 // all its users share (feeds, their items, the likes the people they follow have published), in
 // instance.db. Each user's own data is a file of its own, reached through Space.
 type Instance struct {
-	db   *sql.DB
+	db   *sql.DB // the writer: one connection, so writes queue up here instead of failing with "database is locked"
+	rdb  *sql.DB // read-only connections, several at once; in write-ahead mode readers do not wait for the writer
 	dir  string
 	pool *pool
 	dirs dirCache
@@ -46,6 +47,9 @@ type Instance struct {
 
 // ErrNameTaken is returned when a user name is already in use.
 var ErrNameTaken = errors.New("name taken")
+
+// readers is how many reads of instance.db may run at once.
+const readers = 8
 
 const pragmas = "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=journal_size_limit(1048576)&_pragma=synchronous(NORMAL)"
 
@@ -65,10 +69,19 @@ func Open(dir string) (*Instance, error) {
 		db.Close()
 		return nil, fmt.Errorf("instance.db: %w", err)
 	}
-	in := &Instance{db: db, dir: dir}
+	rdb, err := sql.Open("sqlite", filepath.Join(dir, "instance.db")+"?"+pragmas+"&_pragma=query_only(1)")
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	rdb.SetMaxOpenConns(readers)
+	in := &Instance{db: db, rdb: rdb, dir: dir}
 	in.pool = newPool(in.openSpace, poolCap(), 5*time.Minute)
 	return in, nil
 }
+
+// OpenFiles is how many files the process may have open, or 0 if that is not known.
+func (in *Instance) OpenFiles() int { return openFileLimit() }
 
 // PoolCap is how many users' databases may be open at once.
 func (in *Instance) PoolCap() int { return in.pool.cap }
@@ -77,7 +90,7 @@ func (in *Instance) PoolCap() int { return in.pool.cap }
 // after everything that uses the instance has stopped.
 func (in *Instance) Close() error {
 	in.closing.Do(func() {
-		in.closeErr = errors.Join(in.pool.close(), closeDB(in.db))
+		in.closeErr = errors.Join(in.pool.close(), in.rdb.Close(), closeDB(in.db)) // the writer closes last, and removes the -wal and -shm
 	})
 	return in.closeErr
 }
@@ -215,7 +228,7 @@ func (in *Instance) AddUser(name, display, bio string) (token string, err error)
 
 // UserNames lists the names of the users who are served here, oldest first.
 func (in *Instance) UserNames() ([]string, error) {
-	rows, err := in.db.Query(`SELECT name FROM users WHERE status!='moved' ORDER BY created, name`)
+	rows, err := in.rdb.Query(`SELECT name FROM users WHERE status!='moved' ORDER BY created, name`)
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +266,9 @@ func (in *Instance) Reindex() error {
 	due := map[string]int64{}
 	for _, name := range names {
 		sp, release, err := in.Space(name)
+		if errors.Is(err, ErrNotFound) {
+			continue // a user without a file has nothing to index; fsck reports it
+		}
 		if err != nil {
 			return fmt.Errorf("reindex %s: %w", name, err)
 		}
@@ -299,7 +315,7 @@ func (in *Instance) Reindex() error {
 // Followed reports whether any user of this instance follows the feed.
 func (in *Instance) Followed(feedURL string) bool {
 	var n int
-	in.db.QueryRow(`SELECT COUNT(*) FROM local_follows WHERE feed_url=?`, feedURL).Scan(&n)
+	in.rdb.QueryRow(`SELECT COUNT(*) FROM local_follows WHERE feed_url=?`, feedURL).Scan(&n)
 	return n > 0
 }
 
@@ -315,7 +331,7 @@ func (in *Instance) removeLocalFollow(name, feedURL string) error {
 
 // UsersWithWork returns the users that have a Webmention job due now, so the worker opens only those.
 func (in *Instance) UsersWithWork() ([]string, error) {
-	rows, err := in.db.Query(`SELECT name FROM work WHERE next_due<=? ORDER BY next_due, name`, time.Now().Unix())
+	rows, err := in.rdb.Query(`SELECT name FROM work WHERE next_due<=? ORDER BY next_due, name`, time.Now().Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +374,7 @@ func (in *Instance) FeedInfos(urls []string) (map[string]FeedInfo, error) {
 	if len(urls) == 0 {
 		return out, nil
 	}
-	rows, err := in.db.Query(`SELECT url,title,link,fetched,error,image FROM feeds WHERE url IN (`+marks(len(urls))+`)`, anys(urls)...)
+	rows, err := in.rdb.Query(`SELECT url,title,link,fetched,error,image FROM feeds WHERE url IN (`+marks(len(urls))+`)`, anys(urls)...)
 	if err != nil {
 		return nil, err
 	}
@@ -397,7 +413,7 @@ func (in *Instance) itemByGUID(urls []string, guid string) (*CachedItem, error) 
 		return nil, ErrNotFound
 	}
 	c := &CachedItem{}
-	err := in.db.QueryRow(`SELECT feed_url,guid,in_reply_to,root,root_feed FROM items WHERE guid=? AND feed_url IN (`+marks(len(urls))+`) LIMIT 1`,
+	err := in.rdb.QueryRow(`SELECT feed_url,guid,in_reply_to,root,root_feed FROM items WHERE guid=? AND feed_url IN (`+marks(len(urls))+`) LIMIT 1`,
 		append([]any{guid}, anys(urls)...)...).Scan(&c.FeedURL, &c.GUID, &c.InReplyTo, &c.Root, &c.RootFeed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound

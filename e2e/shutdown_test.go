@@ -75,6 +75,9 @@ func TestServeShutsDownCleanly(t *testing.T) {
 		if err != nil || d.IsDir() {
 			return nil
 		}
+		if filepath.Base(p) == "weft.lock" {
+			return nil // the lock file stays; it holds nothing
+		}
 		files++
 		if strings.HasSuffix(p, "-wal") || strings.HasSuffix(p, "-shm") {
 			t.Errorf("%s left behind after a clean shutdown", p)
@@ -86,5 +89,46 @@ func TestServeShutsDownCleanly(t *testing.T) {
 	}
 	if !strings.Contains(log.String(), "database closed") {
 		t.Errorf("no sign the database was closed:\n%s", log.String())
+	}
+}
+
+// A second server on the same data folder refuses to start, and the first goes on working.
+func TestSecondServerOnTheSameFolderRefuses(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "weft")
+	if out, err := exec.Command("go", "build", "-o", bin, "../cmd/weft").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	data := filepath.Join(dir, "data")
+	if out, err := exec.Command(bin, "user", "add", "-data", data, "alice").CombinedOutput(); err != nil {
+		t.Fatalf("user add: %v\n%s", err, out)
+	}
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := l.Addr().String()
+	l.Close()
+	first := exec.Command(bin, "serve", "-addr", addr, "-data", data, "-domain", "localhost", "-poll", "0")
+	if err := first.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { first.Process.Signal(syscall.SIGTERM); first.Wait() }()
+	up := false
+	for i := 0; i < 100 && !up; i++ {
+		req, _ := http.NewRequest("GET", "http://"+addr+"/feed.xml", nil)
+		req.Host = "alice.localhost"
+		if res, err := http.DefaultClient.Do(req); err == nil {
+			res.Body.Close()
+			up = res.StatusCode == 200
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !up {
+		t.Fatal("the first server did not come up")
+	}
+	out, err := exec.Command(bin, "serve", "-addr", "127.0.0.1:0", "-data", data, "-poll", "0").CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "in use by another weft server") {
+		t.Fatalf("second server: err=%v\n%s", err, out)
 	}
 }

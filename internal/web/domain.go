@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -159,10 +161,10 @@ func (s *Server) domainRemove(w http.ResponseWriter, r *http.Request, q *req) {
 	http.Redirect(w, r, s.cfg.Scheme+"://"+q.host.Name+"."+s.cfg.BaseDomain+port+"/login", http.StatusSeeOther)
 }
 
-// Internal is the handler for the private listener the reverse proxy asks before it requests a TLS
-// certificate for a host it has not seen (Caddy's on_demand_tls "ask"). It answers 200 for a host this
-// instance serves and 404 for any other, so certificates are only ever requested for real users and
-// verified domains. Never serve it on a public address.
+// Internal is the handler for the private listener. The reverse proxy asks it, before it requests a TLS
+// certificate for a host it has not seen (Caddy's on_demand_tls "ask"), whether the host is served: 200
+// for a host this instance serves and 404 for any other, so certificates are only ever requested for
+// real users and verified domains. A monitor reads /metrics from it. Never serve it on a public address.
 func (s *Server) Internal() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /domain-ok", func(w http.ResponseWriter, r *http.Request) {
@@ -173,7 +175,34 @@ func (s *Server) Internal() http.Handler {
 		}
 		http.NotFound(w, r)
 	})
+	mux.HandleFunc("GET /metrics", s.metrics)
 	return mux
+}
+
+// metrics writes the instance's numbers in the Prometheus text format.
+func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
+	st := s.st.Stats()
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+	var b strings.Builder
+	m := func(kind, name, help string, v any) {
+		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s %s\n%s %v\n", name, help, name, kind, name, v)
+	}
+	m("gauge", "weft_pool_open", "User databases open now.", st.PoolOpen)
+	m("gauge", "weft_pool_in_use", "Open user databases a request is using.", st.PoolInUse)
+	m("gauge", "weft_pool_cap", "Most user databases kept open at once.", st.PoolCap)
+	m("counter", "weft_pool_hits_total", "Requests that found their user's database open.", st.PoolHits)
+	m("counter", "weft_pool_opens_total", "User databases opened.", st.PoolOpens)
+	m("counter", "weft_pool_evictions_total", "User databases closed to stay within the cap.", st.PoolEvictions)
+	m("counter", "weft_pool_idle_closes_total", "User databases closed for being idle.", st.PoolIdle)
+	m("gauge", "weft_instance_reads_in_use", "Read connections of instance.db in use.", st.ReadsInUse)
+	m("counter", "weft_instance_read_wait_seconds_total", "Time spent waiting for a read connection of instance.db.", st.ReadWait.Seconds())
+	m("gauge", "weft_instance_writes_in_use", "1 while the write connection of instance.db is in use.", st.WriteInUse)
+	m("counter", "weft_instance_write_wait_seconds_total", "Time spent waiting for the write connection of instance.db.", st.WriteWait.Seconds())
+	m("gauge", "weft_users", "Users, those who moved away included.", st.Users)
+	m("gauge", "weft_users_moved", "Users who moved away.", st.Moved)
+	m("gauge", "weft_trash_files", "Files of moved users waiting to be deleted.", st.TrashFiles)
+	m("gauge", "weft_open_files_limit", "The process's limit on open files (0: unknown).", st.FileLimit)
+	io.WriteString(w, b.String())
 }
 
 // servedHost reports whether host is name.<BaseDomain> of a user who is still here, or the verified

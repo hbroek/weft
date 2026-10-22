@@ -178,3 +178,17 @@ weft serve -addr 127.0.0.1:8080 -internal 127.0.0.1:8081 -domain example.org -sc
 `-internal` is a second, private listener that answers only that one question (200 for `name.example.org` of a user and for verified domains, 404 for anything else); keep it on a loopback address. `-cname-target` is the name shown to users as the CNAME target; point it directly at the server (not through a proxy that cannot issue certificates for other domains, such as Cloudflare's orange cloud).
 
 **Moving to another server.** Export the account, import it on the new server, then on the old one run `weft move -data DIR USERNAME https://new.example.org`. From then on every request to the old address, the feed included, gets a permanent redirect to the same place on the new one (a 301, or a 308 for a POST), for good: the name stays reserved. A running server puts the account's file in `DIR/trash/` within a minute and deletes it after 30 days; until then `weft move -cancel USERNAME` brings everything back.
+
+**Looking after a server.** `weft fsck` checks `instance.db` and every user's file and that the directory matches the files; `-full` checks more, `-fix` rebuilds the directory when that is all that is wrong, and it exits 1 if anything is left. It only reads, so it can run beside a server (it takes about a millisecond a user). `weft reindex` rebuilds the directory on its own, which is also how a restored folder gets its follows back. `weft serve` locks the data folder, so a second server on it refuses to start, warns at startup if the limit on open files is low or if the directory and the files disagree, and with `-internal` also serves `/metrics` (pool, `instance.db` waits, users, trash) in the Prometheus text format; keep that address private.
+
+To watch the numbers over time, point a [Prometheus](https://prometheus.io) server at the private address (the format is plain text, so `curl http://127.0.0.1:8081/metrics` shows it too). In `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: weft
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["127.0.0.1:8081"]   # the -internal address
+```
+
+Two numbers worth an alert: `rate(weft_pool_evictions_total[5m])` staying high means the cap on open user databases is too small for the traffic (raise `ulimit -n`), and `rate(weft_instance_read_wait_seconds_total[5m])` rising means reads of `instance.db` are queueing for a connection.

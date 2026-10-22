@@ -116,7 +116,7 @@ func (in *Instance) SetDomain(name, domain string) (*Domain, error) {
 func (in *Instance) DomainOf(name string) (*Domain, error) {
 	d := &Domain{Name: name}
 	var v, c int64
-	err := in.db.QueryRow(`SELECT domain,token,verified,created FROM domains WHERE name=?`, name).Scan(&d.Domain, &d.Token, &v, &c)
+	err := in.rdb.QueryRow(`SELECT domain,token,verified,created FROM domains WHERE name=?`, name).Scan(&d.Domain, &d.Token, &v, &c)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -157,7 +157,7 @@ func (in *Instance) RemoveDomain(name string) error {
 // address still answers, with a redirect, and so needs a certificate.
 func (in *Instance) UserExists(name string) bool {
 	var n int
-	in.db.QueryRow(`SELECT COUNT(*) FROM users WHERE name=?`, name).Scan(&n)
+	in.rdb.QueryRow(`SELECT COUNT(*) FROM users WHERE name=?`, name).Scan(&n)
 	return n > 0
 }
 
@@ -195,7 +195,7 @@ func (in *Instance) loadDirs() (map[string]Entry, map[string]string, error) {
 		return c.byName, c.hosts, nil
 	}
 	byName, hosts := map[string]Entry{}, map[string]string{}
-	rows, err := in.db.Query(`SELECT name,status,moved_to FROM users WHERE status!='active'`)
+	rows, err := in.rdb.Query(`SELECT name,status,moved_to FROM users WHERE status!='active'`)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -209,7 +209,7 @@ func (in *Instance) loadDirs() (map[string]Entry, map[string]string, error) {
 		byName[n] = e
 	}
 	rows.Close()
-	rows, err = in.db.Query(`SELECT domain,name FROM domains WHERE verified=1`)
+	rows, err = in.rdb.Query(`SELECT domain,name FROM domains WHERE verified=1`)
 	if err != nil {
 		return nil, nil, err
 	}

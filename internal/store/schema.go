@@ -185,11 +185,6 @@ CREATE TABLE work (
   name TEXT PRIMARY KEY,
   next_due INTEGER NOT NULL
 );
-CREATE TABLE meta (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-INSERT INTO meta(key,value) VALUES ('shard_depth','2');
 `
 
 func spaceV1(tx *sql.Tx) error    { _, err := tx.Exec(spaceSchema); return err }

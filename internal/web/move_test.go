@@ -339,3 +339,27 @@ func TestReaderIgnoresTemporaryAndBrokenRedirects(t *testing.T) {
 		}
 	}
 }
+
+func TestMetrics(t *testing.T) {
+	s, port, toks := hosts(t, Config{}, "alice")
+	do(s, "POST", "alice.base.localhost:"+port, "/api/posts", toks["alice"], `{"markdown":"x"}`)
+	do(s, "GET", "alice.base.localhost:"+port, "/", "", "")
+	w := httptest.NewRecorder()
+	s.Internal().ServeHTTP(w, httptest.NewRequest("GET", "http://127.0.0.1/metrics", nil))
+	body := w.Body.String()
+	if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
+		t.Fatalf("metrics: %d %s", w.Code, w.Header().Get("Content-Type"))
+	}
+	for _, want := range []string{"\nweft_pool_open 1\n", "\nweft_users 1\n", "\nweft_users_moved 0\n", "weft_pool_cap ", "weft_instance_read_wait_seconds_total "} {
+		if !strings.Contains(body, want) {
+			t.Errorf("metrics lack %q:\n%s", want, body)
+		}
+	}
+	if !strings.Contains(body, "\nweft_pool_hits_total ") || strings.Contains(body, "\nweft_pool_hits_total 0\n") {
+		t.Errorf("the second request should have been a pool hit:\n%s", body)
+	}
+	// the public side has no such page
+	if w := do(s, "GET", "alice.base.localhost:"+port, "/metrics", "", ""); w.Code != 404 {
+		t.Errorf("/metrics on the public listener: %d", w.Code)
+	}
+}

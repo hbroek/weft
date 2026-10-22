@@ -42,7 +42,6 @@ The shared database (`instance.db`) also becomes the **directory**, with no user
 - `domains(domain, name, verified)`
 - `local_follows(feed_url, name)`, a reverse index of which local users follow which feed
 - `work(name, next_due)`, which users have Webmention jobs waiting
-- `meta` (format version, shard depth)
 
 Everything in the directory can be rebuilt by scanning the user files (`weft reindex`).
 
@@ -56,7 +55,7 @@ Everything in the directory can be rebuilt by scanning the user files (`weft rei
   backup/                    snapshots written by `weft backup`
 ```
 
-The path is a pure function of the name, so routing a request needs no lookup. A fixed two-character prefix gives 256 folders, enough for hundreds of thousands of users; the depth is recorded in `meta` and a `weft reshard` command can change it. A user file is created exclusively, which also makes the name unique.
+The path is a pure function of the name, so routing a request needs no lookup. A fixed two-character prefix gives 256 folders: a million users is about 4,000 files in each, which file systems handle without trouble, so the depth is not configurable and there is no `reshard` command. A user file is created exclusively, which also makes the name unique.
 
 ## Architecture
 
@@ -133,7 +132,8 @@ Every phase leaves the tests passing and the server runnable.
    Notes on what phase 3 did: `weft export NAME` and the owner's "Download my data" button (a POST on the profile page) write a zip of `manifest.json` and `user.db`. The copy is made with `VACUUM INTO`, scrubbed of sessions and the token hash, and copied again with `VACUUM INTO` so nothing deleted stays in free pages. `weft import FILE` unpacks to a temporary folder inside the data folder, then checks the manifest (format, schema not newer, a valid name), `integrity_check`, `foreign_key_check`, no triggers or views, and exactly one account with the manifest's name. It claims the name in the directory (refusing a taken name), moves the file into place, resets the API token (printed once) and fills the directory rows. There is no `--as`: an import never renames a user. `weft backup -to DIR` writes `VACUUM INTO` snapshots of `instance.db` and of each user whose live file (or non-empty `-wal`) changed since the last run, with the change times kept in `DIR/backup.json` so that different backup folders do not confuse each other; `-full` copies everyone. `weft restore -from DIR -data NEW` copies the files into an empty folder, opens and `quick_check`s each, and rebuilds the directory. Tried on copies of the real data: 634 users back up in about 19 MB, a second run copies none, and the restore matches.
 4. **Custom domains and moves.** *Done, uncommitted at the time of writing; see the notes below.*
    Notes on what phase 4 did: instance schema 2 adds `domains(domain, name, token, verified, created)`, with a unique index on verified domains so that anyone may claim a name but only one claim can win. The directory (`users` status and `moved_to`, and the verified domains) is read into memory and refreshed after a change made here or within 10 seconds of one made by the `weft` command, so a request costs no query on `instance.db`. The `user()` middleware asks `route` first: a user with a verified domain is redirected there from any other host, and a moved user is redirected to `moved_to`; both before the user's file is opened. The profile page has *Your address* (add a domain, the TXT record to publish, *Check now*, remove). `weft move [-cancel] NAME ADDRESS` marks a move; only the server moves files (it holds them open), so a minute-by-minute housekeeping step in the poller moves the file of a moved user to `trash/name.unix.db` once no request is using it, takes the user's follows, work and domain out of the directory, and deletes trash older than 30 days. `Unmove` brings the file back from the trash and rebuilds the directory. `weft serve -internal ADDR` serves `/domain-ok?domain=` for Caddy's `ask`; `-cname-target` names the CNAME target on the profile page. The fetch client reports whether a document came through permanent redirects only (`Result.Moved`); when a refreshed feed did, `followMove` replaces each local follower's follow with the final address (`ReplaceFollow`), refreshes it and drops the old feed's cache, at most three moves per refresh. Known gap: a like given to a post by its old permalink is not recognised on the new one, so that post shows as not liked.
-5. **Hardening.** `reindex`, `fsck`, `reshard`, pool metrics, descriptor limits checked at startup.
+5. **Hardening.** *Done, uncommitted at the time of writing; see the notes below.*
+   Notes on what phase 5 did. **Readers of `instance.db`:** it has one write connection and up to 8 read-only ones (the write-ahead log lets readers run beside the writer); the 13 read-only queries on it use the readers. On the 2,000-user test instance this took timelines at 1,000 requests/s from a 4.3 s median to 2.8 ms, and heavy page and feed reads at 3,000/s from 1.5 s to 8 ms. **`weft fsck [-full] [-fix] [NAME...]`:** checks `instance.db` and each user's file (`quick_check`, or `integrity_check` with `-full`; foreign keys; exactly one account whose name is the file's; schema version not newer, or older and so upgraded when opened), and that the directory matches the files: every user has a file (unless moved away), every file has a user and is in the folder its name hashes to, and the directory's follows and next-work match the file. It only reads, works while the server runs, and takes about 1.3 ms a file; `-fix` rebuilds the directory when that is all that is wrong. It cannot see damage inside row text, which SQLite does not checksum; `weft backup` is the defence. **`weft reindex`** is the same rebuild on its own, and skips a user whose file is missing instead of stopping. **At startup** `weft serve` takes a lock on `DIR/weft.lock` (a second server on the folder refuses to start), logs the pool cap and the process's file limit and warns when the cap is under 64, and runs the cheap half of fsck, logging up to five disagreements. **Metrics:** the private `-internal` listener also serves `/metrics` in the Prometheus text format: pool open, in use, cap, hits, opens, evictions and idle closes; waits on `instance.db`'s read and write connections; users, moved users, trash files, and the file limit. **Not done, on purpose:** `weft reshard` (see Disk layout) and a `migrate` command (the user files have one schema version, so there is nothing to upgrade in bulk yet). The unused `meta` table was removed from `instance.db`.
 
 ## Tests
 
@@ -151,11 +151,11 @@ Every phase leaves the tests passing and the server runnable.
 |---|---|
 | Many small files | hash-prefix folders; the reverse index; at-rest files are single files |
 | Cold open latency | opening a small SQLite file takes about a millisecond; the version check is one pragma |
-| Descriptor and memory limits | pool cap, small page cache, a startup check against `ulimit -n` |
+| Descriptor and memory limits | pool cap, small page cache, the cap follows `ulimit -n`; a warning at startup when it is small |
 | Backup is no longer one atomic copy | not needed: users do not depend on each other's rows |
 | Replication tools (Litestream) need a config per file | use the snapshot backup instead |
-| A migration bug found one file at a time | dry-run on copies; `migrate --all`; a backup before each file's first upgrade |
-| The directory drifts from the files | it is rebuildable (`reindex`); checked at startup |
+| A migration bug found one file at a time | `weft fsck` lists files at an older schema; take a `weft backup` before upgrading Weft; a `migrate` command is left for the first migration of the user files that needs one |
+| The directory drifts from the files | it is rebuildable (`weft reindex`, or `weft fsck -fix`); a cheap check at every start |
 | Moves rely on custom domains that users may not set up | clear warnings, and the 3-month redirect for those who move without one |
 
 ## Decisions on the open questions

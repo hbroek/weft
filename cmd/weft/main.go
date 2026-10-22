@@ -35,6 +35,8 @@ func usage() {
   weft export   [-data weft] [-domain localhost] [-o FILE] USERNAME   (writes FILE, default USERNAME.weft.zip: the account, without sessions or API token)
   weft import   [-data weft] FILE        (creates the user in FILE; prints a new API token; refuses a name that is taken)
   weft move     [-data weft] [-cancel] USERNAME NEWADDRESS   (USERNAME has moved to the server at NEWADDRESS, e.g. https://alice.example.org: every request to the old address, the feed too, gets a permanent redirect there, and the file goes to trash/ for 30 days; export and import it on the new server first; -cancel undoes a move while the file is still in the trash)
+  weft fsck     [-data weft] [-full] [-fix] [USERNAME...]   (checks instance.db, every user's file, and that the directory matches the files; -full also checks every index entry; -fix rebuilds the directory (reindex) when that is all that is wrong; exits 1 if problems remain)
+  weft reindex  [-data weft]   (rebuilds the directory's follows and work from the users' files)
   weft backup   [-data weft] -to DIR [-full]   (consistent snapshots of instance.db and each changed user; safe while the server runs; then rsync DIR)
   weft restore  -from DIR -data DIR2     (build a data folder from a backup; DIR2 must not exist or be empty)`)
 	os.Exit(2)
@@ -60,6 +62,62 @@ func main() {
 		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname}, *poll); err != nil {
 			log.Fatal(err)
 		}
+	case "fsck":
+		fs := flag.NewFlagSet("fsck", flag.ExitOnError)
+		db := fs.String("data", "weft", "data folder: instance.db and users/")
+		full := fs.Bool("full", false, "check every index entry too (slower)")
+		fix := fs.Bool("fix", false, "rebuild the directory when that is all that is wrong")
+		fs.Parse(os.Args[2:])
+		st, err := store.Open(*db)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer st.Close()
+		report := func() *store.FsckReport {
+			rep, err := st.Fsck(context.Background(), *full, fs.Args()...)
+			if err != nil {
+				log.Fatal(err)
+			}
+			return rep
+		}
+		rep := report()
+		fixable := 0
+		for _, p := range rep.Problems {
+			if p.Fixes {
+				fixable++
+			}
+		}
+		if *fix && fixable > 0 {
+			fmt.Printf("rebuilding the directory to fix %d problem(s)\n", fixable)
+			if err := st.Reindex(); err != nil {
+				log.Fatal(err)
+			}
+			rep = report()
+		}
+		for _, p := range rep.Problems {
+			fmt.Println(p)
+		}
+		if len(rep.Old) > 0 {
+			fmt.Printf("%d user file(s) have an older schema and are upgraded when opened\n", len(rep.Old))
+		}
+		fmt.Printf("%d user file(s) checked, %d problem(s)\n", rep.Users, len(rep.Problems))
+		if len(rep.Problems) > 0 {
+			st.Close()
+			os.Exit(1)
+		}
+	case "reindex":
+		fs := flag.NewFlagSet("reindex", flag.ExitOnError)
+		db := fs.String("data", "weft", "data folder: instance.db and users/")
+		fs.Parse(os.Args[2:])
+		st, err := store.Open(*db)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer st.Close()
+		if err := st.Reindex(); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("directory rebuilt")
 	case "move":
 		fs := flag.NewFlagSet("move", flag.ExitOnError)
 		db := fs.String("data", "weft", "data folder: instance.db and users/")
@@ -355,11 +413,31 @@ func main() {
 // and wait for it, and only then close the database, which writes out the write-ahead log and removes
 // the -wal and -shm files, in the shared database and in every user's.
 func serve(addr, internal, dataDir string, cfg web.Config, poll time.Duration) error {
+	unlock, err := store.Lock(dataDir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	st, err := store.Open(dataDir)
 	if err != nil {
 		return err
 	}
-	log.Printf("data folder %s: up to %d user databases open at once", dataDir, st.PoolCap())
+	log.Printf("data folder %s: up to %d user databases open at once (the process may open %d files)", dataDir, st.PoolCap(), st.OpenFiles())
+	if st.PoolCap() < 64 {
+		log.Printf("warning: that is few; raise the limit on open files (ulimit -n) so that busy hours do not keep reopening databases")
+	}
+	if probs, err := st.CheckDirectory(); err != nil {
+		log.Printf("checking the directory: %v", err)
+	} else if len(probs) > 0 {
+		for i, p := range probs {
+			if i == 5 {
+				log.Printf("... and %d more", len(probs)-5)
+				break
+			}
+			log.Printf("directory check: %s", p)
+		}
+		log.Printf("warning: the directory and the files disagree; run `weft fsck -data %s`", dataDir)
+	}
 	srv := web.New(cfg, st)
 
 	stopSignals, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

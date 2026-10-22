@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,8 +21,14 @@ type pool struct {
 
 	mu      sync.Mutex
 	entries map[string]*entry
+	n       poolCounts
 	stop    chan struct{}
 	done    sync.WaitGroup
+}
+
+// poolCounts are totals since the process started.
+type poolCounts struct {
+	hits, opens, evictions, idleCloses atomic.Int64
 }
 
 type entry struct {
@@ -56,6 +63,7 @@ func (p *pool) get(name string) (*entry, error) {
 	p.mu.Lock()
 	if e := p.entries[name]; e != nil {
 		e.refs++
+		p.n.hits.Add(1)
 		p.mu.Unlock()
 		<-e.ready // another request may still be opening it
 		if e.err != nil {
@@ -65,6 +73,7 @@ func (p *pool) get(name string) (*entry, error) {
 	}
 	e := &entry{name: name, ready: make(chan struct{}), refs: 1, last: time.Now()}
 	p.entries[name] = e
+	p.n.opens.Add(1)
 	evict := p.evictLocked()
 	p.mu.Unlock()
 	closeAll(evict)
@@ -105,6 +114,7 @@ func (p *pool) evictLocked() []*entry {
 			break
 		}
 		delete(p.entries, oldest.name)
+		p.n.evictions.Add(1)
 		out = append(out, oldest)
 	}
 	return out
@@ -126,6 +136,7 @@ func (p *pool) sweep() {
 			for n, e := range p.entries {
 				if e.refs == 0 && time.Since(e.last) > p.idle {
 					delete(p.entries, n)
+					p.n.idleCloses.Add(1)
 					out = append(out, e)
 				}
 			}
@@ -152,6 +163,19 @@ func (p *pool) forget(name string) bool {
 	p.mu.Unlock()
 	closeAll([]*entry{e})
 	return true
+}
+
+// inUse is how many open databases a request holds right now.
+func (p *pool) inUse() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n := 0
+	for _, e := range p.entries {
+		if e.refs > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // size is how many databases are open.
