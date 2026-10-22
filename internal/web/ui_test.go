@@ -40,7 +40,7 @@ func cookieOf(w *httptest.ResponseRecorder) string {
 
 func TestHumanFlow(t *testing.T) {
 	s, tok := setup(t)
-	if err := s.st.SetPassword("alice", "correct horse"); err != nil {
+	if err := s.space("alice").SetPassword("correct horse"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -141,7 +141,7 @@ func TestTimelineCanShowOneFeed(t *testing.T) {
 	u, _ := s.st.UserByName("alice")
 	for _, n := range []string{"a", "b"} {
 		url := "http://" + n + ".example/feed.xml"
-		if err := s.st.Follow(u.ID, url); err != nil {
+		if err := s.space("alice").Follow(u.ID, url); err != nil {
 			t.Fatal(err)
 		}
 		xml := `<rss version="2.0"><channel><title>Feed ` + n + `</title><item><title>Post from ` + n + `</title><link>http://` + n + `.example/p</link><guid>http://` + n + `.example/p</guid><description>hello</description></item></channel></rss>`
@@ -153,7 +153,7 @@ func TestTimelineCanShowOneFeed(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.st.SetPassword("alice", "correct horse"); err != nil {
+	if err := s.space("alice").SetPassword("correct horse"); err != nil {
 		t.Fatal(err)
 	}
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
@@ -176,7 +176,7 @@ func TestThreadLinkOnlyWhereThereIsAThread(t *testing.T) {
 	s, _ := setup(t)
 	u, _ := s.st.UserByName("alice")
 	const fu = "http://a.example/feed.xml"
-	if err := s.st.Follow(u.ID, fu); err != nil {
+	if err := s.space("alice").Follow(u.ID, fu); err != nil {
 		t.Fatal(err)
 	}
 	item := func(n, extra string) string {
@@ -194,7 +194,7 @@ func TestThreadLinkOnlyWhereThereIsAThread(t *testing.T) {
 	if err := s.st.SaveFeed(fu, p); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.st.SetPassword("alice", "correct horse"); err != nil {
+	if err := s.space("alice").SetPassword("correct horse"); err != nil {
 		t.Fatal(err)
 	}
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
@@ -211,7 +211,7 @@ func TestThreadLinkOnlyWhereThereIsAThread(t *testing.T) {
 // publishes, and a /preview endpoint feeds it as you type.
 func TestEditorPreview(t *testing.T) {
 	s, _ := setup(t)
-	if err := s.st.SetPassword("alice", "correct horse"); err != nil {
+	if err := s.space("alice").SetPassword("correct horse"); err != nil {
 		t.Fatal(err)
 	}
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
@@ -246,7 +246,7 @@ func TestEditorPreview(t *testing.T) {
 // Keywords are typed in a box under the Markdown, published as <category> and shown as chips.
 func TestKeywordsEndToEnd(t *testing.T) {
 	s, tok := setup(t)
-	if err := s.st.SetPassword("alice", "correct horse"); err != nil {
+	if err := s.space("alice").SetPassword("correct horse"); err != nil {
 		t.Fatal(err)
 	}
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
@@ -293,7 +293,7 @@ func TestKeywordsEndToEnd(t *testing.T) {
 // /compose?title=&body=&keywords= prefills the form; it publishes nothing and escapes what it is given.
 func TestComposePrefill(t *testing.T) {
 	s, _ := setup(t)
-	s.st.SetPassword("alice", "correct horse")
+	s.space("alice").SetPassword("correct horse")
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
 
 	q := url.Values{"title": {"Hello \"world\""}, "body": {"Some *text* <script>x</script>"}, "keywords": {"go, open web"}}
@@ -307,7 +307,7 @@ func TestComposePrefill(t *testing.T) {
 	if strings.Contains(page, "<script>x") {
 		t.Errorf("prefill not escaped")
 	}
-	if posts, _ := s.st.RecentPosts(1, 10); len(posts) != 0 {
+	if posts, _ := s.space("alice").RecentPosts(1, 10); len(posts) != 0 {
 		t.Errorf("prefill must not publish: %d posts", len(posts))
 	}
 }
@@ -316,7 +316,7 @@ func TestComposePrefill(t *testing.T) {
 // javascript: link (html/template rewrites unsafe ones) that targets this host's compose form.
 func TestBookmarkletOnHome(t *testing.T) {
 	s, _ := setup(t)
-	s.st.SetPassword("alice", "correct horse")
+	s.space("alice").SetPassword("correct horse")
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
 
 	if page := do(s, "GET", host, "/", "", "").Body.String(); strings.Contains(page, "javascript:") {
@@ -371,7 +371,7 @@ func TestSiteIcons(t *testing.T) {
 // right. The styles carry the palette with light, dark and auto modes.
 func TestHeaderAndThemes(t *testing.T) {
 	s, _ := setup(t)
-	s.st.SetPassword("alice", "correct horse")
+	s.space("alice").SetPassword("correct horse")
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
 
 	vis := do(s, "GET", host, "/", "", "").Body.String()
@@ -402,7 +402,7 @@ func TestHeaderAndThemes(t *testing.T) {
 // The header menu marks the view you are on.
 func TestMenuShowsCurrentView(t *testing.T) {
 	s, _ := setup(t)
-	s.st.SetPassword("alice", "correct horse")
+	s.space("alice").SetPassword("correct horse")
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
 	for path, on := range map[string]string{"/compose": "compose", "/timeline": "timeline", "/following": "following", "/replies": "replies", "/": ""} {
 		page := do3(s, "GET", host, path, ck).Body.String()
@@ -416,7 +416,7 @@ func TestMenuShowsCurrentView(t *testing.T) {
 // A user can set an avatar image address; without one the pages show the first letter of the name.
 func TestAvatarAndInitialFallback(t *testing.T) {
 	s, _ := setup(t)
-	s.st.SetPassword("alice", "correct horse")
+	s.space("alice").SetPassword("correct horse")
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
 
 	// only the owner reaches the profile page
@@ -463,7 +463,7 @@ func TestAvatarAndInitialFallback(t *testing.T) {
 func TestPostsHaveAuthorHCard(t *testing.T) {
 	s, tok := setup(t)
 	do(s, "POST", host, "/api/posts", tok, `{"markdown":"A reply","in_reply_to":"http://other.example/p"}`)
-	s.st.SetPassword("alice", "correct horse")
+	s.space("alice").SetPassword("correct horse")
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
 	form(s, "POST", "/profile", ck, url.Values{"display": {"Alice <A>"}, "avatar": {"https://img.example/a.png"}}, "")
 	card := regexp.MustCompile(`(?s)<article class="h-entry">\s*<span class="p-author h-card" hidden><a class="u-url p-name" href="http://alice\.localhost:8080/">Alice &lt;A&gt;</a><img class="u-photo" src="https://img\.example/a\.png"`)
@@ -472,11 +472,11 @@ func TestPostsHaveAuthorHCard(t *testing.T) {
 	if !card.MatchString(home) {
 		t.Errorf("home page entry lacks the author h-card:\n%s", home)
 	}
-	posts, _ := s.st.RecentPosts(1, 1)
+	posts, _ := s.space("alice").RecentPosts(1, 1)
 	if pg := do(s, "GET", host, "/posts/"+posts[0].Slug, "", "").Body.String(); !card.MatchString(pg) || !strings.Contains(pg, `class="u-in-reply-to"`) {
 		t.Errorf("permalink lacks the author h-card or the reply link:\n%s", pg)
 	}
-	s.st.SetLike(1, "http://other.example/p", "")
+	s.space("alice").SetLike(1, "http://other.example/p", "")
 	if lk := do(s, "GET", host, "/likes/1", "", "").Body.String(); !card.MatchString(lk) || !strings.Contains(lk, `u-like-of`) {
 		t.Errorf("like page lacks the author h-card:\n%s", lk)
 	}

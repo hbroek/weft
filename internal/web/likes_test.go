@@ -71,7 +71,7 @@ func TestLikeRoundTripAcrossInstances(t *testing.T) {
 	if tl := bob.call(t, "GET", "/api/timeline", "", 200); !strings.Contains(tl, `"likes":1`) {
 		t.Errorf("remote count not in timeline: %s", tl)
 	}
-	bob.s.st.SetPassword("bob", "correct horse")
+	bob.s.space("bob").SetPassword("correct horse")
 	lr := httptest.NewRequest("POST", bob.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
 	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	lw := httptest.NewRecorder()
@@ -153,7 +153,7 @@ func TestTimelineShowsLikesOfFollowed(t *testing.T) {
 	settle(ctx, alice, bob)
 
 	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
-	alice.s.st.SetPassword("alice", "correct horse")
+	alice.s.space("alice").SetPassword("correct horse")
 	lr := httptest.NewRequest("POST", alice.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
 	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	lw := httptest.NewRecorder()
@@ -217,7 +217,7 @@ func TestKeywordsReachFollowers(t *testing.T) {
 	if tl := bob.call(t, "GET", "/api/timeline", "", 200); !strings.Contains(tl, `"keywords":["pickleball","open web"]`) {
 		t.Errorf("keywords missing from the timeline JSON: %s", tl)
 	}
-	bob.s.st.SetPassword("bob", "correct horse")
+	bob.s.space("bob").SetPassword("correct horse")
 	lr := httptest.NewRequest("POST", bob.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
 	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	lw := httptest.NewRecorder()
@@ -269,7 +269,7 @@ func TestKeywordFilters(t *testing.T) {
 
 	// 2. bob's timeline: follow the whole feed too, then filter
 	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/feed.xml"}`, 200)
-	bob.s.st.SetPassword("bob", "correct horse")
+	bob.s.space("bob").SetPassword("correct horse")
 	lr := httptest.NewRequest("POST", bob.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
 	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	lw := httptest.NewRecorder()
@@ -315,7 +315,7 @@ func TestLikeButtonUpdatesCount(t *testing.T) {
 	ctx := t.Context()
 	ua := alice.post(t, `{"markdown":"count me","keywords":["go"]}`)
 	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
-	bob.s.st.SetPassword("bob", "correct horse")
+	bob.s.space("bob").SetPassword("correct horse")
 	lr := httptest.NewRequest("POST", bob.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
 	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	lw := httptest.NewRecorder()
@@ -409,7 +409,7 @@ func TestWhoLikedPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	zed, _ := bob.s.st.UserByName("zed")
-	bob.s.st.Follow(zed.ID, carol.base+"/feed.xml")
+	bob.s.space("bob").Follow(zed.ID, carol.base+"/feed.xml")
 	bob.s.RefreshAll(ctx)
 	formAs(bob, "/following/remove", bck, "http://"+bob.host+page, url.Values{"url": {carol.base + "/feed.xml"}})
 	bl = do4(bob, page, bck)
@@ -481,13 +481,13 @@ func TestFollowingRecountsLikes(t *testing.T) {
 	}
 
 	// likes recorded before they named their feed point at the likes feed; they recount too
-	xs, _ := alice.s.st.LikesInOf(1)
+	xs, _ := alice.s.space("alice").LikesInOf(1)
 	if len(xs) != 1 {
 		t.Fatalf("likes received: %d", len(xs))
 	}
 	old := xs[0]
 	old.FeedURL = carol.base + "/likes.xml"
-	alice.s.st.UpsertLikeIn(old)
+	alice.s.space("alice").UpsertLikeIn(old)
 	alice.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
 	if !strings.Contains(alice.get("/"), "1 like") {
 		t.Errorf("a like recorded from the likes feed should count once the sender is followed")
@@ -542,12 +542,12 @@ func TestAgo(t *testing.T) {
 // first letter of their name does when they have none.
 func TestTimelineAvatars(t *testing.T) {
 	alice, bob, carol := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol")
-	bob.s.st.UpdateProfile(1, "Bob", "", "https://img.example/bob.png")
+	bob.s.space("bob").UpdateProfile(1, "Bob", "", "https://img.example/bob.png")
 	bob.post(t, `{"markdown":"from bob"}`)
 	carol.post(t, `{"markdown":"from carol"}`)
 	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
 	alice.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
-	alice.s.st.UpdateProfile(1, "Alice", "", "https://img.example/alice.png")
+	alice.s.space("alice").UpdateProfile(1, "Alice", "", "https://img.example/alice.png")
 	alice.post(t, `{"markdown":"from alice"}`)
 	tl := do4(alice, "/timeline", loginCookie(t, alice))
 	for _, want := range []string{
@@ -871,7 +871,7 @@ func TestFeedsAsMarkdown(t *testing.T) {
 
 	// paging: the older posts are one link away
 	for i := 0; i < 101; i++ {
-		if _, err := alice.s.st.AddPost(store.NewPost{UserID: 1, Markdown: fmt.Sprintf("filler %d", i), HTML: "<p>f</p>"}); err != nil {
+		if _, err := alice.s.space("alice").AddPost(store.NewPost{UserID: 1, Markdown: fmt.Sprintf("filler %d", i), HTML: "<p>f</p>"}); err != nil {
 			t.Fatal(err)
 		}
 	}

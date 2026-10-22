@@ -167,3 +167,12 @@ func pathOf(u string) string {
 	x, _ := url.Parse(u)
 	return x.Path
 }
+
+// space opens a user's data for the test, which is how the tests set up and inspect state the pages show.
+func (s *Server) space(name string) *store.Space {
+	sp, _, err := s.st.Space(name)
+	if err != nil {
+		panic(err)
+	}
+	return sp
+}

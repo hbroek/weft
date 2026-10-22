@@ -148,16 +148,16 @@ func countNodes(n *tnode) int {
 
 // resolveRoot finds the thread a post belongs to: a post that carries no weft:root is its own root.
 func (b *threadBuilder) resolveRoot(target string) (root, rootFeed string) {
-	if id, ok := b.s.localPostID(b.q.host.ID, b.base, target); ok {
-		if p, err := b.s.st.Post(b.q.host.ID, id); err == nil && p.Root != "" {
+	if id, ok := b.s.localPostID(b.q.sp, b.base, target); ok {
+		if p, err := b.q.sp.Post(b.q.host.ID, id); err == nil && p.Root != "" {
 			return p.Root, p.RootFeed
 		}
 		return target, b.own
 	}
-	if it, err := b.s.st.ItemByGUID(target); err == nil && it.Root != "" {
+	if it, err := b.q.sp.ItemByGUID(b.q.host.ID, target); err == nil && it.Root != "" {
 		return it.Root, it.RootFeed
 	}
-	if rs, err := b.s.st.RepliesForUser(b.q.host.ID, ""); err == nil {
+	if rs, err := b.q.sp.RepliesForUser(b.q.host.ID, ""); err == nil {
 		for _, rp := range rs {
 			if rp.Source == target && rp.Root != "" {
 				return rp.Root, ""
@@ -216,19 +216,19 @@ func (b *threadBuilder) raw(root, rootFeed string) *tnode {
 	}
 	host := b.q.host.ID
 	var localIDs []int64
-	if id, ok := b.s.localPostID(b.q.host.ID, b.base, root); ok {
-		if p, err := b.s.st.Post(host, id); err == nil && !p.Deleted {
+	if id, ok := b.s.localPostID(b.q.sp, b.base, root); ok {
+		if p, err := b.q.sp.Post(host, id); err == nil && !p.Deleted {
 			add(b.localNode(p))
 			localIDs = append(localIDs, p.ID)
 		}
 	}
-	if ps, err := b.s.st.PostsInThread(host, root); err == nil {
+	if ps, err := b.q.sp.PostsInThread(host, root); err == nil {
 		for _, p := range ps {
 			add(b.localNode(p))
 			localIDs = append(localIDs, p.ID)
 		}
 	}
-	if items, err := b.s.st.ItemsInThread(host, root); err == nil {
+	if items, err := b.q.sp.ItemsInThread(host, root); err == nil {
 		for _, it := range items {
 			if itemTarget(it) != "" {
 				add(b.itemNode(it))
@@ -239,7 +239,7 @@ func (b *threadBuilder) raw(root, rootFeed string) *tnode {
 	for _, id := range localIDs {
 		thread[id] = true
 	}
-	if rs, err := b.s.st.RepliesForUser(host, ""); err == nil {
+	if rs, err := b.q.sp.RepliesForUser(host, ""); err == nil {
 		sort.Slice(rs, func(i, j int) bool { return rs[i].Published.Before(rs[j].Published) })
 		for _, rp := range rs {
 			if thread[rp.PostID] {
@@ -248,7 +248,7 @@ func (b *threadBuilder) raw(root, rootFeed string) *tnode {
 		}
 	}
 	for _, id := range localIDs {
-		if subs, err := b.s.st.SubrepliesFor(id); err == nil {
+		if subs, err := b.q.sp.SubrepliesFor(id); err == nil {
 			for _, sr := range subs {
 				add(b.subNode(sr))
 			}
@@ -390,13 +390,13 @@ func sortTree(n *tnode) {
 
 func (b *threadBuilder) curated(root, rootFeed string) *tnode {
 	var rn *tnode
-	if id, ok := b.s.localPostID(b.q.host.ID, b.base, root); ok {
-		if p, err := b.s.st.Post(b.q.host.ID, id); err == nil && !p.Deleted {
+	if id, ok := b.s.localPostID(b.q.sp, b.base, root); ok {
+		if p, err := b.q.sp.Post(b.q.host.ID, id); err == nil && !p.Deleted {
 			rn = b.localNode(p)
 		}
 	}
 	if rn == nil {
-		if items, err := b.s.st.ItemsInThread(b.q.host.ID, root); err == nil {
+		if items, err := b.q.sp.ItemsInThread(b.q.host.ID, root); err == nil {
 			for _, it := range items {
 				if itemTarget(it) == root {
 					rn = b.itemNode(it)
@@ -446,7 +446,7 @@ func (b *threadBuilder) childrenOf(n *tnode) []*tnode {
 	if n.expanded || n.Tombstone {
 		return nil
 	}
-	if id, ok := b.s.localPostID(b.q.host.ID, b.base, n.URL); ok {
+	if id, ok := b.s.localPostID(b.q.sp, b.base, n.URL); ok {
 		return b.localChildren(id)
 	}
 	href := n.repliesHref
@@ -480,14 +480,14 @@ func (b *threadBuilder) childrenOf(n *tnode) []*tnode {
 func (b *threadBuilder) knownReplies(u string) []*tnode {
 	var out []*tnode
 	host := b.q.host.ID
-	if ps, err := b.s.st.PostsInThread(host, u); err == nil {
+	if ps, err := b.q.sp.PostsInThread(host, u); err == nil {
 		for _, p := range ps {
 			if p.InReplyTo == u && !p.Deleted {
 				out = append(out, b.localNode(p))
 			}
 		}
 	}
-	if items, err := b.s.st.ItemsInThread(host, u); err == nil {
+	if items, err := b.q.sp.ItemsInThread(host, u); err == nil {
 		for _, it := range items {
 			if it.InReplyTo == u && itemTarget(it) != "" {
 				out = append(out, b.itemNode(it))
@@ -502,14 +502,14 @@ func (b *threadBuilder) localChildren(postID int64) []*tnode {
 	var out []*tnode
 	purl := b.s.postURL(b.r, postID)
 	approved := map[string]bool{}
-	if rs, err := b.s.st.RepliesFor(postID, store.StatusApproved); err == nil {
+	if rs, err := b.q.sp.RepliesFor(postID, store.StatusApproved); err == nil {
 		for _, rp := range rs {
 			approved[rp.Source] = true
 			n := b.receivedNode(rp, purl)
 			out = append(out, n)
 		}
 	}
-	if subs, err := b.s.st.SubrepliesFor(postID); err == nil {
+	if subs, err := b.q.sp.SubrepliesFor(postID); err == nil {
 		for _, sr := range subs {
 			if approved[sr.Via] {
 				out = append(out, b.subNode(sr))

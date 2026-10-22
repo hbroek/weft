@@ -25,13 +25,13 @@ type modRow struct {
 
 // repliesFor returns a post's approved replies for display, and how many await approval.
 func (s *Server) repliesFor(q *req, postID int64) (rows []replyRow, pending int) {
-	approved, _ := s.st.RepliesFor(postID, store.StatusApproved)
+	approved, _ := q.sp.RepliesFor(postID, store.StatusApproved)
 	for _, r := range approved {
 		rows = append(rows, replyRow{Author: orStr(r.Author, r.FeedURL), AuthorHref: siteOf(r.FeedURL), Source: httpURL(r.Source), Title: r.Title,
 			Date: r.Published.Format("2 Jan 2006 15:04"), HTML: renderRemote(r.Markdown, r.Text)})
 	}
 	if q.owner {
-		p, _ := s.st.RepliesFor(postID, store.StatusPending)
+		p, _ := q.sp.RepliesFor(postID, store.StatusPending)
 		pending = len(p)
 	}
 	return
@@ -56,7 +56,7 @@ func excerpt(text string) string {
 
 // repliesFeed publishes the approved replies to one post: the parent's downward link.
 func (s *Server) repliesFeed(w http.ResponseWriter, r *http.Request, q *req) {
-	p, err := s.st.PostBySlug(q.host.ID, r.PathValue("slug"))
+	p, err := q.sp.PostBySlug(q.host.ID, r.PathValue("slug"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -66,7 +66,7 @@ func (s *Server) repliesFeed(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "This post was removed.", http.StatusGone)
 		return
 	}
-	replies, err := s.st.RepliesFor(id, store.StatusApproved)
+	replies, err := q.sp.RepliesFor(id, store.StatusApproved)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -88,7 +88,7 @@ func (s *Server) repliesFeed(w http.ResponseWriter, r *http.Request, q *req) {
 			Feed: &feed.FeedRef{Href: rp.FeedURL, Name: rp.Author}, InReplyTo: &feed.Ref{Href: purl}}
 		if rp.RepliesHref != "" {
 			// where this reply's own replies are published, and how many of them are cached here
-			it.Replies = &feed.Replies{Href: rp.RepliesHref, Count: s.st.ApprovedSubreplyCount(id, rp.Source)}
+			it.Replies = &feed.Replies{Href: rp.RepliesHref, Count: q.sp.ApprovedSubreplyCount(id, rp.Source)}
 		}
 		ch.Items = append(ch.Items, it)
 		if rp.Received.After(last) {
@@ -96,7 +96,7 @@ func (s *Server) repliesFeed(w http.ResponseWriter, r *http.Request, q *req) {
 		}
 	}
 	// second level: approved replies to the approved replies, as those replies' feeds report them
-	subs, _ := s.st.SubrepliesFor(id)
+	subs, _ := q.sp.SubrepliesFor(id)
 	approved := map[string]bool{}
 	for _, rp := range replies {
 		approved[rp.Source] = true
@@ -120,7 +120,7 @@ func (s *Server) moderation(w http.ResponseWriter, r *http.Request, q *req) {
 	// pending first, then the rest
 	var rows []modRow
 	for _, st := range []string{store.StatusPending, store.StatusApproved, store.StatusRejected} {
-		rs, err := s.st.RepliesForUser(q.host.ID, st)
+		rs, err := q.sp.RepliesForUser(q.host.ID, st)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -144,12 +144,12 @@ func (s *Server) moderateForm(w http.ResponseWriter, r *http.Request, q *req) {
 		http.NotFound(w, r)
 		return
 	}
-	postID, err := s.st.SetReplyStatus(q.host.ID, id, r.FormValue("status"))
+	postID, err := q.sp.SetReplyStatus(q.host.ID, id, r.FormValue("status"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.bubble(q.host.ID, postID, s.postURL(r, postID))
+	s.bubble(q.sp, postID, s.postURL(r, postID))
 	http.Redirect(w, r, "/replies", http.StatusSeeOther)
 }
 
@@ -170,7 +170,7 @@ func (s *Server) apiReplies(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.apiAuth(w, r, q) {
 		return
 	}
-	rs, err := s.st.RepliesForUser(q.host.ID, r.URL.Query().Get("status"))
+	rs, err := q.sp.RepliesForUser(q.host.ID, r.URL.Query().Get("status"))
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -199,11 +199,11 @@ func (s *Server) apiModerate(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	postID, err := s.st.SetReplyStatus(q.host.ID, id, in.Status)
+	postID, err := q.sp.SetReplyStatus(q.host.ID, id, in.Status)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.bubble(q.host.ID, postID, s.postURL(r, postID))
+	s.bubble(q.sp, postID, s.postURL(r, postID))
 	w.WriteHeader(http.StatusNoContent)
 }

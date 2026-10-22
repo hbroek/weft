@@ -71,7 +71,7 @@ func TestFollowAndTimeline(t *testing.T) {
 	}
 
 	// HTML timeline: remote markup is neutralised
-	s.st.SetPassword("alice", "correct horse")
+	s.space("alice").SetPassword("correct horse")
 	ck := cookieOf(form(s, "POST", "/login", "", map[string][]string{"password": {"correct horse"}}, ""))
 	page := do3(s, "GET", alice, "/timeline", ck).Body.String()
 	for _, bad := range []string{"<img src=x", "onerror", "javascript:", "<script>alert"} {

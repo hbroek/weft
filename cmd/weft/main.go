@@ -110,12 +110,21 @@ func main() {
 				log.Fatal("avatar must be a full http:// or https:// address")
 			}
 		}
+		// space opens the named user's data, or exits
+		space := func(name string) (*store.Space, *store.User) {
+			sp, _, err := st.Space(name)
+			if err != nil {
+				log.Fatalf("no user %q", name)
+			}
+			u, err := sp.User()
+			if err != nil {
+				log.Fatalf("no user %q", name)
+			}
+			return sp, u
+		}
 		switch os.Args[2] {
 		case "set":
-			u, err := st.UserByName(fs.Arg(0))
-			if err != nil {
-				log.Fatalf("no user %q", fs.Arg(0))
-			}
+			sp, u := space(fs.Arg(0))
 			given := map[string]bool{}
 			fs.Visit(func(f *flag.Flag) { given[f.Name] = true }) // only change what was asked for
 			d, b, a := u.Display, u.Bio, u.Avatar
@@ -128,15 +137,12 @@ func main() {
 			if given["avatar"] {
 				a = *avatar
 			}
-			if err := st.UpdateProfile(u.ID, d, b, a); err != nil {
+			if err := sp.UpdateProfile(u.ID, d, b, a); err != nil {
 				log.Fatal(err)
 			}
 			return
 		case "follow":
-			u, err := st.UserByName(fs.Arg(0))
-			if err != nil {
-				log.Fatalf("no user %q", fs.Arg(0))
-			}
+			space(fs.Arg(0)) // exits if there is no such user
 			// An admin command run by the operator, so fetching loopback addresses is fine.
 			srv := web.New(web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: true}, st)
 			failed := false
@@ -148,7 +154,7 @@ func main() {
 					}
 					t = *scheme + "://" + host + "/"
 				}
-				feedURL, err := srv.Follow(context.Background(), u.ID, t)
+				feedURL, err := srv.Follow(context.Background(), fs.Arg(0), t)
 				if err != nil {
 					fmt.Printf("%s: could not follow %s: %v\n", fs.Arg(0), t, err)
 					failed = true
@@ -170,7 +176,8 @@ func main() {
 			}
 			return
 		case "token":
-			tok, err := st.ResetToken(fs.Arg(0))
+			sp, _ := space(fs.Arg(0))
+			tok, err := sp.ResetToken()
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -178,7 +185,8 @@ func main() {
 			return
 		}
 		if os.Args[2] == "passwd" {
-			if err := st.SetPassword(fs.Arg(0), *pw); err != nil {
+			sp, _ := space(fs.Arg(0))
+			if err := sp.SetPassword(*pw); err != nil {
 				log.Fatal(err)
 			}
 			return
@@ -190,16 +198,15 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		sp, u := space(fs.Arg(0))
 		if *pw != "" {
-			if err := st.SetPassword(fs.Arg(0), *pw); err != nil {
+			if err := sp.SetPassword(*pw); err != nil {
 				log.Fatal(err)
 			}
 		}
 		if *avatar != "" {
-			if u, err := st.UserByName(fs.Arg(0)); err == nil {
-				if err := st.UpdateProfile(u.ID, u.Display, u.Bio, *avatar); err != nil {
-					log.Fatal(err)
-				}
+			if err := sp.UpdateProfile(u.ID, u.Display, u.Bio, *avatar); err != nil {
+				log.Fatal(err)
 			}
 		}
 		fmt.Println(tok)

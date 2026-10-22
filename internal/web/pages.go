@@ -270,9 +270,9 @@ func (s *Server) show(w http.ResponseWriter, name string, status int, d pageData
 
 func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, title string, posts []*store.Post, tweak ...func(*pageData)) {
 	d := s.data(r, q, title)
-	tallies, _ := s.st.Tallies(q.host.ID)
-	likers, _ := s.st.Likers(q.host.ID)
-	counts, _ := s.st.ApprovedCounts(q.host.ID)
+	tallies, _ := q.sp.Tallies(q.host.ID)
+	likers, _ := q.sp.Likers(q.host.ID)
+	counts, _ := q.sp.ApprovedCounts(q.host.ID)
 	for _, p := range posts {
 		d.Posts = append(d.Posts, pagePost{
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
@@ -303,9 +303,9 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, q *req) {
 	var posts []*store.Post
 	var err error
 	if kw != "" {
-		posts, err = s.st.PostsWithKeyword(q.host.ID, kw, 50, 0)
+		posts, err = q.sp.PostsWithKeyword(q.host.ID, kw, 50, 0)
 	} else {
-		posts, err = s.st.RecentPosts(q.host.ID, 50)
+		posts, err = q.sp.RecentPosts(q.host.ID, 50)
 	}
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -330,7 +330,7 @@ func postID(r *http.Request) (int64, bool) {
 }
 
 func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
-	p, err := s.st.PostBySlug(q.host.ID, r.PathValue("slug"))
+	p, err := q.sp.PostBySlug(q.host.ID, r.PathValue("slug"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -405,9 +405,9 @@ func (s *Server) feed(w http.ResponseWriter, r *http.Request, q *req) {
 	var posts []*store.Post
 	var err error
 	if kw != "" {
-		posts, err = s.st.PostsWithKeyword(q.host.ID, kw, feedPageSize+1, (page-1)*feedPageSize)
+		posts, err = q.sp.PostsWithKeyword(q.host.ID, kw, feedPageSize+1, (page-1)*feedPageSize)
 	} else {
-		posts, err = s.st.PostsPage(q.host.ID, feedPageSize+1, (page-1)*feedPageSize)
+		posts, err = q.sp.PostsPage(q.host.ID, feedPageSize+1, (page-1)*feedPageSize)
 	}
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -472,8 +472,8 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 	if q.host.Avatar != "" {
 		ch.Image = &feed.ChannelImage{URL: q.host.Avatar, Title: q.host.Display, Link: s.base(r) + "/"}
 	}
-	counts, _ := s.st.ApprovedCounts(q.host.ID)
-	tallies, _ := s.st.Tallies(q.host.ID)
+	counts, _ := q.sp.ApprovedCounts(q.host.ID)
+	tallies, _ := q.sp.Tallies(q.host.ID)
 	var last time.Time
 	for _, p := range posts {
 		if p.Created.After(last) {

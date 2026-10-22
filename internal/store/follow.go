@@ -1,6 +1,7 @@
 package store
 
 import (
+	"slices"
 	"time"
 
 	"github.com/hbroek/weft/internal/feed"
@@ -15,57 +16,90 @@ type Follow struct {
 }
 
 // Follow records that the user follows a feed. Following twice is a no-op.
-func (s *Store) Follow(userID int64, feedURL string) error {
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO follows(user_id,feed_url,added) VALUES(?,?,?)`, userID, feedURL, time.Now().Unix())
-	return err
+func (s *Space) Follow(userID int64, feedURL string) error {
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO follows(user_id,feed_url,added) VALUES(?,?,?)`, userID, feedURL, time.Now().Unix()); err != nil {
+		return err
+	}
+	return s.in.addLocalFollow(s.name, feedURL)
 }
 
-func (s *Store) Unfollow(userID int64, feedURL string) error {
-	_, err := s.db.Exec(`DELETE FROM follows WHERE user_id=? AND feed_url=?`, userID, feedURL)
-	return err
+func (s *Space) Unfollow(userID int64, feedURL string) error {
+	if _, err := s.db.Exec(`DELETE FROM follows WHERE user_id=? AND feed_url=?`, userID, feedURL); err != nil {
+		return err
+	}
+	return s.in.removeLocalFollow(s.name, feedURL)
 }
 
-func (s *Store) IsFollowing(userID int64, feedURL string) (bool, error) {
+func (s *Space) IsFollowing(userID int64, feedURL string) (bool, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM follows WHERE user_id=? AND feed_url=?`, userID, feedURL).Scan(&n)
 	return n > 0, err
 }
 
-// IsFollowingSite reports whether the user follows the author behind feedURL. A person's
-// feeds (posts, likes) share a homepage link, so a match on either the feed URL or the
-// channel link of any followed feed counts.
-func (s *Store) IsFollowingSite(userID int64, feedURL, homepage string) (bool, error) {
-	var n int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM follows f LEFT JOIN feeds d ON d.url=f.feed_url
-		WHERE f.user_id=? AND (f.feed_url=? OR (?<>'' AND d.link=?))`, userID, feedURL, homepage, homepage).Scan(&n)
-	return n > 0, err
-}
-
-func (s *Store) Follows(userID int64) ([]Follow, error) {
-	rows, err := s.db.Query(`SELECT f.feed_url, COALESCE(d.title,''), COALESCE(d.link,''), COALESCE(d.fetched,0), COALESCE(d.error,'')
-		FROM follows f LEFT JOIN feeds d ON d.url=f.feed_url WHERE f.user_id=? ORDER BY f.added, f.feed_url`, userID)
+// followURLs lists the feeds the user follows, in the order they were added.
+func (s *Space) followURLs(userID int64) ([]string, error) {
+	rows, err := s.db.Query(`SELECT feed_url FROM follows WHERE user_id=? ORDER BY added, feed_url`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Follow
+	var out []string
 	for rows.Next() {
-		var f Follow
-		var fetched int64
-		if err := rows.Scan(&f.URL, &f.Title, &f.Link, &fetched, &f.Error); err != nil {
+		var u string
+		if err := rows.Scan(&u); err != nil {
 			return nil, err
 		}
-		if fetched > 0 {
-			f.Fetched = time.Unix(fetched, 0)
-		}
-		out = append(out, f)
+		out = append(out, u)
 	}
 	return out, rows.Err()
 }
 
+// IsFollowingSite reports whether the user follows the author behind feedURL. A person's
+// feeds (posts, likes) share a homepage link, so a match on either the feed URL or the
+// channel link of any followed feed counts.
+func (s *Space) IsFollowingSite(userID int64, feedURL, homepage string) (bool, error) {
+	urls, err := s.followURLs(userID)
+	if err != nil {
+		return false, err
+	}
+	if slices.Contains(urls, feedURL) {
+		return true, nil
+	}
+	if homepage == "" {
+		return false, nil
+	}
+	infos, err := s.in.FeedInfos(urls)
+	if err != nil {
+		return false, err
+	}
+	for _, f := range infos {
+		if f.Link == homepage {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *Space) Follows(userID int64) ([]Follow, error) {
+	urls, err := s.followURLs(userID)
+	if err != nil {
+		return nil, err
+	}
+	infos, err := s.in.FeedInfos(urls)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Follow, 0, len(urls))
+	for _, u := range urls {
+		i := infos[u]
+		out = append(out, Follow{URL: u, Title: i.Title, Link: i.Link, Fetched: i.Fetched, Error: i.Error})
+	}
+	return out, nil
+}
+
 // FollowedFeedURLs returns every feed that at least one user follows.
-func (s *Store) FollowedFeedURLs() ([]string, error) {
-	rows, err := s.db.Query(`SELECT DISTINCT feed_url FROM follows ORDER BY feed_url`)
+func (s *Instance) FollowedFeedURLs() ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT feed_url FROM local_follows ORDER BY feed_url`)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +116,7 @@ func (s *Store) FollowedFeedURLs() ([]string, error) {
 }
 
 // HasItems reports whether any item of the feed is cached, i.e. whether it has been read before.
-func (s *Store) HasItems(feedURL string) bool {
+func (s *Instance) HasItems(feedURL string) bool {
 	var n int
 	s.db.QueryRow(`SELECT COUNT(*) FROM items WHERE feed_url=?`, feedURL).Scan(&n)
 	return n > 0
@@ -91,7 +125,7 @@ func (s *Store) HasItems(feedURL string) bool {
 // SaveFeed stores the items just fetched. A feed that shows everything (no rel="next" page) replaces
 // the cache. A paged feed shows only its newest page: cached items newer than the oldest one
 // fetched that are no longer in it were deleted and are removed, and older ones are kept.
-func (s *Store) SaveFeed(feedURL string, p *feed.Parsed) error {
+func (s *Instance) SaveFeed(feedURL string, p *feed.Parsed) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -152,7 +186,7 @@ func (s *Store) SaveFeed(feedURL string, p *feed.Parsed) error {
 }
 
 // SaveFeedError records a failed fetch without discarding cached items.
-func (s *Store) SaveFeedError(feedURL, msg string) error {
+func (s *Instance) SaveFeedError(feedURL, msg string) error {
 	_, err := s.db.Exec(`INSERT INTO feeds(url,error,fetched) VALUES(?,?,?)
 		ON CONFLICT(url) DO UPDATE SET error=excluded.error, fetched=excluded.fetched`, feedURL, msg, time.Now().Unix())
 	return err
@@ -176,11 +210,10 @@ type TimelineItem struct {
 }
 
 const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.likes, i.replies_href, i.root, i.in_reply_to_feed, i.replies_count, i.keywords, COALESCE(d.image,''), i.parent_title, i.parent_desc, i.parent_image
-		FROM items i JOIN follows f ON f.feed_url=i.feed_url AND f.user_id=?
-		LEFT JOIN feeds d ON d.url=i.feed_url `
+		FROM items i LEFT JOIN feeds d ON d.url=i.feed_url `
 
-func (s *Store) queryTimeline(q string, args ...any) ([]TimelineItem, error) {
-	rows, err := s.db.Query(q, args...)
+func (in *Instance) queryTimeline(q string, args ...any) ([]TimelineItem, error) {
+	rows, err := in.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -206,25 +239,40 @@ func (s *Store) queryTimeline(q string, args ...any) ([]TimelineItem, error) {
 }
 
 // Timeline returns items from the feeds the user follows, newest first.
-func (s *Store) Timeline(userID int64, limit int) ([]TimelineItem, error) {
-	return s.queryTimeline(timelineSelect+`ORDER BY i.published DESC, i.guid LIMIT ?`, userID, limit)
+func (s *Space) Timeline(userID int64, limit int) ([]TimelineItem, error) {
+	urls, err := s.followURLs(userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.in.itemsOf(urls, ``, `ORDER BY i.published DESC, i.guid LIMIT ?`, limit)
 }
 
 // ItemsInThread returns cached items from followed feeds that belong to the thread rooted at root
 // (including the root itself).
-func (s *Store) ItemsInThread(userID int64, root string) ([]TimelineItem, error) {
-	return s.queryTimeline(timelineSelect+`WHERE i.root=? OR i.guid=? ORDER BY i.published, i.guid LIMIT 300`, userID, root, root)
+func (s *Space) ItemsInThread(userID int64, root string) ([]TimelineItem, error) {
+	urls, err := s.followURLs(userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.in.itemsOf(urls, `(i.root=? OR i.guid=?)`, `ORDER BY i.published, i.guid LIMIT 300`, root, root)
 }
 
 // FeedItems returns the cached items of one followed feed, newest first. It is empty if the user
 // does not follow that feed.
-func (s *Store) FeedItems(userID int64, feedURL string, limit int) ([]TimelineItem, error) {
-	return s.queryTimeline(timelineSelect+`WHERE i.feed_url=? ORDER BY i.published DESC, i.guid LIMIT ?`, userID, feedURL, limit)
+func (s *Space) FeedItems(userID int64, feedURL string, limit int) ([]TimelineItem, error) {
+	if ok, err := s.IsFollowing(userID, feedURL); err != nil || !ok {
+		return nil, err
+	}
+	return s.in.itemsOf([]string{feedURL}, ``, `ORDER BY i.published DESC, i.guid LIMIT ?`, limit)
 }
 
 // ItemByTarget returns a cached item of a followed feed by its permalink, or ErrNotFound.
-func (s *Store) ItemByTarget(userID int64, target string) (*TimelineItem, error) {
-	rows, err := s.queryTimeline(timelineSelect+`WHERE i.guid=? LIMIT 1`, userID, target)
+func (s *Space) ItemByTarget(userID int64, target string) (*TimelineItem, error) {
+	urls, err := s.followURLs(userID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.in.itemsOf(urls, `i.guid=?`, `LIMIT 1`, target)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +283,7 @@ func (s *Store) ItemByTarget(userID int64, target string) (*TimelineItem, error)
 }
 
 // ApprovedSubreplyCount is how many approved replies to the direct reply via are cached under postID.
-func (s *Store) ApprovedSubreplyCount(postID int64, via string) int {
+func (s *Space) ApprovedSubreplyCount(postID int64, via string) int {
 	var n int
 	s.db.QueryRow(`SELECT COUNT(*) FROM subreplies WHERE post_id=? AND via=?`, postID, via).Scan(&n)
 	return n

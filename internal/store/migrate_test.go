@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,7 @@ func fixture(t *testing.T, name string) string {
 	return path
 }
 
-func version(t *testing.T, st *Store) int {
+func version(t *testing.T, st *Instance) int {
 	t.Helper()
 	var v int
 	if err := st.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
@@ -59,11 +60,11 @@ func TestOldSchemasUpgrade(t *testing.T) {
 			if v := version(t, st); v != SchemaVersion {
 				t.Errorf("user_version = %d, want %d", v, SchemaVersion)
 			}
-			posts, err := st.PostsPage(1, 10, 0)
+			posts, err := st.SpaceForTests(t, "alice").PostsPage(1, 10, 0)
 			if err != nil || len(posts) != 1 || posts[0].Slug == "" || posts[0].UID == "" {
 				t.Fatalf("old post after upgrade: %v, %v", posts, err)
 			}
-			if _, err := st.AddPost(NewPost{UserID: 1, Markdown: "new", HTML: "<p>new</p>", Keywords: []string{"go"}}); err != nil {
+			if _, err := st.SpaceForTests(t, "alice").AddPost(NewPost{UserID: 1, Markdown: "new", HTML: "<p>new</p>", Keywords: []string{"go"}}); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -123,16 +124,20 @@ func TestMigrationsApplyInOrder(t *testing.T) {
 
 	var ran []int
 	migrations = append(append([]func(*sql.Tx) error{}, saved...),
-		func(tx *sql.Tx) error { ran = append(ran, 2); _, err := tx.Exec(`CREATE TABLE t2(x)`); return err },
 		func(tx *sql.Tx) error {
-			ran = append(ran, 3)
+			ran = append(ran, len(saved)+1)
+			_, err := tx.Exec(`CREATE TABLE t2(x)`)
+			return err
+		},
+		func(tx *sql.Tx) error {
+			ran = append(ran, len(saved)+2)
 			if _, err := tx.Exec(`CREATE TABLE t3(x)`); err != nil {
 				return err
 			}
 			return sql.ErrConnDone // fails after changing something
 		})
 	SchemaVersion = len(migrations)
-	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "version 3") {
+	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d", len(saved)+2)) {
 		t.Fatalf("Open = %v, want the version 3 migration to fail", err)
 	}
 	SchemaVersion = len(saved)
@@ -143,15 +148,24 @@ func TestMigrationsApplyInOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	if v := version(t, st); v != 2 {
-		t.Errorf("user_version = %d, want 2", v)
+	if v := version(t, st); v != len(saved)+1 {
+		t.Errorf("user_version = %d, want %d", v, len(saved)+1)
 	}
 	var n int
 	st.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name IN ('t2','t3')`).Scan(&n)
 	if n != 1 {
 		t.Errorf("tables t2/t3 present: %d, want only t2", n)
 	}
-	if len(ran) != 2 || ran[0] != 2 || ran[1] != 3 {
-		t.Errorf("migrations ran %v, want [2 3] (version 2 once, then the failing 3)", ran)
+	if want := []int{len(saved) + 1, len(saved) + 2}; len(ran) != 2 || ran[0] != want[0] || ran[1] != want[1] {
+		t.Errorf("migrations ran %v, want %v (the new one once, then the failing one)", ran, want)
 	}
+}
+
+func openRaw(t *testing.T, path string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
 }

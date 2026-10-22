@@ -22,7 +22,7 @@ import (
 
 type inst struct {
 	s    *web.Server
-	st   *store.Store
+	st   *store.Instance
 	port string
 	toks map[string]string
 }
@@ -43,9 +43,14 @@ func start(t *testing.T, name string, users ...string) *inst {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := st.SetPassword(u, "password-"+u); err != nil {
+		sp, release, err := st.Space(u)
+		if err != nil {
 			t.Fatal(err)
 		}
+		if err := sp.SetPassword("password-" + u); err != nil {
+			t.Fatal(err)
+		}
+		release()
 		i.toks[u] = tok
 	}
 	return i

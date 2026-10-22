@@ -60,23 +60,24 @@ func TestPostsKeepTheirIdentityAndOldPostsGetOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, _ := st.UserByName("alice")
-	p, err := st.AddPost(NewPost{UserID: u.ID, Title: "Hello there", Markdown: "x", HTML: "x"})
+	sp := st.SpaceForTests(t, "alice")
+	p, err := sp.AddPost(NewPost{UserID: u.ID, Title: "Hello there", Markdown: "x", HTML: "x"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// editing keeps uid and slug
-	if _, err := st.UpdatePost(u.ID, p.ID, "A completely different title", "y", "y", nil); err != nil {
+	if _, err := sp.UpdatePost(u.ID, p.ID, "A completely different title", "y", "y", nil); err != nil {
 		t.Fatal(err)
 	}
-	q, _ := st.Post(u.ID, p.ID)
+	q, _ := sp.Post(u.ID, p.ID)
 	if q.UID != p.UID || q.Slug != p.Slug {
 		t.Errorf("edit changed identity: %s/%s -> %s/%s", p.UID, p.Slug, q.UID, q.Slug)
 	}
-	if got, err := st.PostBySlug(u.ID, p.Slug); err != nil || got.ID != p.ID {
+	if got, err := sp.PostBySlug(u.ID, p.Slug); err != nil || got.ID != p.ID {
 		t.Errorf("PostBySlug: %v %v", got, err)
 	}
 	// slugs are per user: another user may have the same slug, but cannot see this one
-	if _, err := st.PostBySlug(u.ID+1, p.Slug); err == nil {
+	if _, err := sp.PostBySlug(u.ID+1, p.Slug); err == nil {
 		t.Error("slug leaked into another user's namespace")
 	}
 
@@ -90,7 +91,8 @@ func TestPostsKeepTheirIdentityAndOldPostsGetOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	r, _ := st.Post(u.ID, p.ID)
+	sp = st.SpaceForTests(t, "alice")
+	r, _ := sp.Post(u.ID, p.ID)
 	if r.UID == "" || !strings.HasPrefix(r.Slug, "a-completely-different-title.") {
 		t.Errorf("not backfilled: %+v", r)
 	}

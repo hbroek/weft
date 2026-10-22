@@ -13,7 +13,8 @@ import (
 // or from any older database (see its comment). It cannot run in a transaction because the older
 // code it replays relies on statements failing harmlessly.
 var migrations = []func(tx *sql.Tx) error{
-	nil, // 1: schemaV1
+	nil,       // 1: schemaV1
+	directory, // 2: the directory tables
 }
 
 // SchemaVersion is the version a database has after Open.

@@ -21,7 +21,20 @@ var ErrInvalid = errors.New("invalid")
 
 var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,30}$`)
 
-type Store struct{ db *sql.DB }
+// Instance is one Weft server's storage: the user directory and the caches of the public network that
+// all its users share (feeds, their items, the likes the people they follow have published). A user's
+// own data is reached through Space.
+type Instance struct{ db *sql.DB }
+
+// Space is one user's data: profile and credentials, posts, replies and likes received, likes given,
+// follows and the Webmention queue. A Space never reads another user's rows, and reads the shared
+// caches only through Instance methods, so that each can live in its own database file.
+type Space struct {
+	in   *Instance
+	db   *sql.DB
+	name string
+	uid  int64
+}
 
 type User struct {
 	ID      int64
@@ -196,7 +209,7 @@ CREATE INDEX IF NOT EXISTS posts_user ON posts(user_id, created DESC);
 // Open opens (creating if needed) the database at path in WAL mode. journal_size_limit keeps the
 // write-ahead log from staying at the largest size it ever grew to: after a checkpoint the file is cut
 // back to 1 MiB.
-func Open(path string) (*Store, error) {
+func Open(path string) (*Instance, error) {
 	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=journal_size_limit(1048576)")
 	if err != nil {
 		return nil, err
@@ -206,7 +219,7 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	return &Instance{db: db}, nil
 }
 
 func hasColumn(db *sql.DB, table, col string) bool {
@@ -254,7 +267,7 @@ func migrateLikes(db *sql.DB) error {
 // connection to the file, SQLite then also deletes the -wal and -shm files, so a database that was
 // closed properly is a single file (a crash leaves them; the next open recovers). Close it only after
 // everything that uses the store has stopped.
-func (s *Store) Close() error {
+func (s *Instance) Close() error {
 	s.db.Exec(`PRAGMA optimize`)
 	s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
 	return s.db.Close()
@@ -266,7 +279,7 @@ func hashToken(t string) string {
 }
 
 // AddUser creates a user and returns a fresh API token (shown once).
-func (s *Store) AddUser(name, display, bio string) (token string, err error) {
+func (s *Instance) AddUser(name, display, bio string) (token string, err error) {
 	if !nameRE.MatchString(name) {
 		return "", ErrInvalid
 	}
@@ -285,7 +298,7 @@ func (s *Store) AddUser(name, display, bio string) (token string, err error) {
 
 // UpdateProfile sets the name shown, the bio and the avatar address of a user. An empty display
 // name falls back to the user name.
-func (s *Store) UpdateProfile(userID int64, display, bio, avatar string) error {
+func (s *Space) UpdateProfile(userID int64, display, bio, avatar string) error {
 	if display == "" {
 		if err := s.db.QueryRow(`SELECT name FROM users WHERE id=?`, userID).Scan(&display); err != nil {
 			return err
@@ -295,14 +308,14 @@ func (s *Store) UpdateProfile(userID int64, display, bio, avatar string) error {
 	return err
 }
 
-// ResetToken replaces a user's API token and returns the new one (shown once).
-func (s *Store) ResetToken(name string) (string, error) {
+// ResetToken replaces the user's API token and returns the new one (shown once).
+func (s *Space) ResetToken() (string, error) {
 	b := make([]byte, 24)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	tok := hex.EncodeToString(b)
-	res, err := s.db.Exec(`UPDATE users SET token_hash=? WHERE name=?`, hashToken(tok), name)
+	res, err := s.db.Exec(`UPDATE users SET token_hash=? WHERE name=?`, hashToken(tok), s.name)
 	if err != nil {
 		return "", err
 	}
@@ -313,7 +326,7 @@ func (s *Store) ResetToken(name string) (string, error) {
 }
 
 // UserNames lists all user names.
-func (s *Store) UserNames() ([]string, error) {
+func (s *Instance) UserNames() ([]string, error) {
 	rows, err := s.db.Query(`SELECT name FROM users ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -330,16 +343,7 @@ func (s *Store) UserNames() ([]string, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) UserByID(id int64) (*User, error) {
-	u := &User{}
-	err := s.db.QueryRow(`SELECT id,name,display,bio,avatar FROM users WHERE id=?`, id).Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return u, err
-}
-
-func (s *Store) UserByName(name string) (*User, error) {
+func (s *Instance) UserByName(name string) (*User, error) {
 	u := &User{}
 	err := s.db.QueryRow(`SELECT id,name,display,bio,avatar FROM users WHERE name=?`, name).Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -348,16 +352,17 @@ func (s *Store) UserByName(name string) (*User, error) {
 	return u, err
 }
 
-func (s *Store) UserByToken(token string) (*User, error) {
+// UserByToken returns the space's user if token is their API token.
+func (s *Space) UserByToken(token string) (*User, error) {
 	u := &User{}
-	err := s.db.QueryRow(`SELECT id,name,display,bio,avatar FROM users WHERE token_hash=?`, hashToken(token)).Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar)
+	err := s.db.QueryRow(`SELECT id,name,display,bio,avatar FROM users WHERE token_hash=? AND name=?`, hashToken(token), s.name).Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	return u, err
 }
 
-func (s *Store) AddPost(n NewPost) (*Post, error) {
+func (s *Space) AddPost(n NewPost) (*Post, error) {
 	now := n.Created
 	if now.IsZero() {
 		now = time.Now()
@@ -418,7 +423,7 @@ func backfillIdentity(db *sql.DB) error {
 }
 
 // PostBySlug finds a user's post by the last segment of its permalink.
-func (s *Store) PostBySlug(userID int64, slug string) (*Post, error) {
+func (s *Space) PostBySlug(userID int64, slug string) (*Post, error) {
 	p, err := scanPost(s.db.QueryRow(`SELECT `+postCols+` FROM posts WHERE user_id=? AND slug=?`, userID, slug))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -427,7 +432,7 @@ func (s *Store) PostBySlug(userID int64, slug string) (*Post, error) {
 }
 
 // SlugByID returns the slug of a post, whoever owns it.
-func (s *Store) SlugByID(id int64) (string, error) {
+func (s *Space) SlugByID(id int64) (string, error) {
 	var slug string
 	err := s.db.QueryRow(`SELECT slug FROM posts WHERE id=?`, id).Scan(&slug)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -468,7 +473,7 @@ func unpackKeywords(s string) []string {
 	return strings.Split(s, "\n")
 }
 
-func (s *Store) Post(userID, id int64) (*Post, error) {
+func (s *Space) Post(userID, id int64) (*Post, error) {
 	p, err := scanPost(s.db.QueryRow(`SELECT `+postCols+` FROM posts WHERE user_id=? AND id=?`, userID, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -477,12 +482,12 @@ func (s *Store) Post(userID, id int64) (*Post, error) {
 }
 
 // RecentPosts returns a user's non-deleted posts, newest first.
-func (s *Store) RecentPosts(userID int64, limit int) ([]*Post, error) {
+func (s *Space) RecentPosts(userID int64, limit int) ([]*Post, error) {
 	return s.PostsPage(userID, limit, 0)
 }
 
 // PostsPage returns limit of the user's posts, newest first, after skipping offset of them.
-func (s *Store) PostsPage(userID int64, limit, offset int) ([]*Post, error) {
+func (s *Space) PostsPage(userID int64, limit, offset int) ([]*Post, error) {
 	rows, err := s.db.Query(`SELECT `+postCols+` FROM posts WHERE user_id=? AND deleted=0 ORDER BY created DESC, id DESC LIMIT ? OFFSET ?`, userID, limit, offset)
 	if err != nil {
 		return nil, err
@@ -500,7 +505,7 @@ func (s *Store) PostsPage(userID int64, limit, offset int) ([]*Post, error) {
 }
 
 // PostsWithKeyword is PostsPage for the posts that carry the keyword (ignoring case).
-func (s *Store) PostsWithKeyword(userID int64, kw string, limit, offset int) ([]*Post, error) {
+func (s *Space) PostsWithKeyword(userID int64, kw string, limit, offset int) ([]*Post, error) {
 	rows, err := s.db.Query(`SELECT `+postCols+` FROM posts WHERE user_id=? AND deleted=0 AND keywords<>'' ORDER BY created DESC, id DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -527,7 +532,7 @@ func (s *Store) PostsWithKeyword(userID int64, kw string, limit, offset int) ([]
 }
 
 // UpdatePost replaces a post's title, content and keywords and stamps its update time.
-func (s *Store) UpdatePost(userID, id int64, title, markdown, html string, keywords []string) (*Post, error) {
+func (s *Space) UpdatePost(userID, id int64, title, markdown, html string, keywords []string) (*Post, error) {
 	res, err := s.db.Exec(`UPDATE posts SET title=?,markdown=?,html=?,keywords=?,updated=? WHERE user_id=? AND id=? AND deleted=0`,
 		title, markdown, html, packKeywords(keywords), time.Now().Unix(), userID, id)
 	if err != nil {
@@ -541,7 +546,7 @@ func (s *Store) UpdatePost(userID, id int64, title, markdown, html string, keywo
 
 // DeletePost tombstones a post and discards its content. The id stays reserved so the
 // permalink can answer 410 Gone.
-func (s *Store) DeletePost(userID, id int64) error {
+func (s *Space) DeletePost(userID, id int64) error {
 	res, err := s.db.Exec(`UPDATE posts SET deleted=1,title='',markdown='',html='',keywords='',parent_title='',parent_desc='',parent_image='',updated=? WHERE user_id=? AND id=? AND deleted=0`,
 		time.Now().Unix(), userID, id)
 	if err != nil {
@@ -554,7 +559,7 @@ func (s *Store) DeletePost(userID, id int64) error {
 }
 
 // PostsInThread returns the user's own live posts that belong to the thread rooted at root.
-func (s *Store) PostsInThread(userID int64, root string) ([]*Post, error) {
+func (s *Space) PostsInThread(userID int64, root string) ([]*Post, error) {
 	rows, err := s.db.Query(`SELECT `+postCols+` FROM posts WHERE user_id=? AND deleted=0 AND root=? ORDER BY created, id`, userID, root)
 	if err != nil {
 		return nil, err

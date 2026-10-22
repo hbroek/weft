@@ -42,7 +42,7 @@ func (s *Server) apiTimeline(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.apiAuth(w, r, q) {
 		return
 	}
-	items, err := s.st.Timeline(q.host.ID, 200)
+	items, err := q.sp.Timeline(q.host.ID, 200)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -60,7 +60,7 @@ func (s *Server) apiFollowing(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.apiAuth(w, r, q) {
 		return
 	}
-	fs, err := s.st.Follows(q.host.ID)
+	fs, err := q.sp.Follows(q.host.ID)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -85,7 +85,7 @@ func (s *Server) apiFollow(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	u, err := s.follow(r.Context(), q.host.ID, in.URL)
+	u, err := s.follow(r.Context(), q.sp, in.URL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -102,7 +102,7 @@ func (s *Server) apiUnfollow(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if err := s.unfollow(q.host.ID, in.URL); err != nil {
+	if err := s.unfollow(q.sp, in.URL); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}

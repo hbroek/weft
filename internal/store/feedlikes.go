@@ -1,6 +1,7 @@
 package store
 
 import (
+	"slices"
 	"time"
 
 	"github.com/hbroek/weft/internal/feed"
@@ -8,7 +9,7 @@ import (
 
 // SaveFeedLikes replaces the cached likes of the person behind feedURL (their main feed, the one that
 // is followed) with the like items of their likes feed, which is small and shows everything.
-func (s *Store) SaveFeedLikes(feedURL string, items []feed.ParsedItem) error {
+func (s *Instance) SaveFeedLikes(feedURL string, items []feed.ParsedItem) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -37,16 +38,28 @@ type FeedLike struct {
 }
 
 // FeedLikes returns the likes of the feeds the user follows, newest first. A feedURL limits it to one feed.
-func (s *Store) FeedLikes(userID int64, feedURL string, limit int) ([]FeedLike, error) {
-	q := `SELECT l.feed_url, COALESCE(d.title,''), l.guid, l.target, l.published, l.parent_title, l.parent_desc, l.parent_image
-		FROM feed_likes l JOIN follows f ON f.feed_url=l.feed_url AND f.user_id=?
-		LEFT JOIN feeds d ON d.url=l.feed_url `
-	args := []any{userID}
-	if feedURL != "" {
-		q += `WHERE l.feed_url=? `
-		args = append(args, feedURL)
+func (s *Space) FeedLikes(userID int64, feedURL string, limit int) ([]FeedLike, error) {
+	urls, err := s.followURLs(userID)
+	if err != nil {
+		return nil, err
 	}
-	rows, err := s.db.Query(q+`ORDER BY l.published DESC, l.guid LIMIT ?`, append(args, limit)...)
+	if feedURL != "" {
+		if !slices.Contains(urls, feedURL) {
+			return nil, nil
+		}
+		urls = []string{feedURL}
+	}
+	return s.in.likesOf(urls, `ORDER BY l.published DESC, l.guid LIMIT ?`, limit)
+}
+
+// likesOf reads the cached likes published by the given feeds.
+func (in *Instance) likesOf(urls []string, tail string, args ...any) ([]FeedLike, error) {
+	if len(urls) == 0 {
+		return nil, nil
+	}
+	rows, err := in.db.Query(`SELECT l.feed_url, COALESCE(d.title,''), l.guid, l.target, l.published, l.parent_title, l.parent_desc, l.parent_image
+		FROM feed_likes l LEFT JOIN feeds d ON d.url=l.feed_url WHERE l.feed_url IN (`+marks(len(urls))+`) `+tail,
+		append(anys(urls), args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -66,21 +79,22 @@ func (s *Store) FeedLikes(userID int64, feedURL string, limit int) ([]FeedLike, 
 
 // FollowedLikers returns, for each post the people the user follows have liked, their names: the
 // feed's title, or its address when it has none. The oldest like comes first.
-func (s *Store) FollowedLikers(userID int64) (map[string][]string, error) {
-	rows, err := s.db.Query(`SELECT l.target, COALESCE(NULLIF(d.title,''), l.feed_url)
-		FROM feed_likes l JOIN follows f ON f.feed_url=l.feed_url AND f.user_id=?
-		LEFT JOIN feeds d ON d.url=l.feed_url ORDER BY l.published, l.guid`, userID)
+func (s *Space) FollowedLikers(userID int64) (map[string][]string, error) {
+	urls, err := s.followURLs(userID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := map[string][]string{}
-	for rows.Next() {
-		var target, name string
-		if err := rows.Scan(&target, &name); err != nil {
-			return nil, err
-		}
-		out[target] = append(out[target], name)
+	likes, err := s.in.likesOf(urls, `ORDER BY l.published, l.guid LIMIT -1`)
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	out := map[string][]string{}
+	for _, l := range likes {
+		name := l.FeedTitle
+		if name == "" {
+			name = l.FeedURL
+		}
+		out[l.Target] = append(out[l.Target], name)
+	}
+	return out, nil
 }

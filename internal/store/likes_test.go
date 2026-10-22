@@ -18,6 +18,7 @@ func TestMigrateReactionsToLikes(t *testing.T) {
 		`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, display TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', token_hash TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL)`,
 		`CREATE TABLE reactions (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, target TEXT NOT NULL, target_feed TEXT NOT NULL DEFAULT '', polarity TEXT NOT NULL, emoji TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, updated INTEGER, deleted INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE UNIQUE INDEX reactions_active ON reactions(user_id, target) WHERE deleted=0`,
+		`INSERT INTO users(id,name,created) VALUES (1,'alice',1)`,
 		`INSERT INTO reactions(user_id,target,polarity,emoji,created) VALUES (1,'http://a.example/1','+','🎉',1), (1,'http://a.example/2','-','😕',2)`,
 		`CREATE TABLE reactions_in (id INTEGER PRIMARY KEY, post_id INTEGER NOT NULL, source TEXT NOT NULL, feed_url TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '', polarity TEXT NOT NULL, emoji TEXT NOT NULL, trusted INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, UNIQUE(post_id, source))`,
 		`INSERT INTO reactions_in(post_id,source,author,polarity,emoji,trusted,created) VALUES (1,'s1','dana reactions','+','👍',1,1), (1,'s2','Eric','+','👍',1,2)`,
@@ -35,7 +36,7 @@ func TestMigrateReactionsToLikes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	xs, err := st.ActiveLikes(1, 10)
+	xs, err := st.SpaceForTests(t, "alice").ActiveLikes(1, 10)
 	if err != nil || len(xs) != 1 || xs[0].Target != "http://a.example/1" {
 		t.Fatalf("likes after migration: %v %v", xs, err)
 	}

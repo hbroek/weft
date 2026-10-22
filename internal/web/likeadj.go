@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/hbroek/weft/internal/store"
 )
 
 // A like count in the timeline is the one the author publishes, which only changes after the
@@ -32,8 +34,9 @@ func (s *Server) tally(userID int64, target string, cached int) int {
 }
 
 // nudgeTally records that the user liked (d = 1) or unliked (d = -1) a followed post.
-func (s *Server) nudgeTally(userID int64, target string, d int) {
-	it, err := s.st.ItemByTarget(userID, target)
+func (s *Server) nudgeTally(sp *store.Space, target string, d int) {
+	userID := sp.UID()
+	it, err := sp.ItemByTarget(userID, target)
 	if err != nil {
 		return // not a post in a followed feed: its count is not shown
 	}

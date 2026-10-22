@@ -12,15 +12,13 @@ type CachedItem struct {
 	FeedURL, GUID, InReplyTo, Root, RootFeed string
 }
 
-// ItemByGUID finds a cached feed item by its permalink, from any followed feed.
-func (s *Store) ItemByGUID(guid string) (*CachedItem, error) {
-	c := &CachedItem{}
-	err := s.db.QueryRow(`SELECT feed_url,guid,in_reply_to,root,root_feed FROM items WHERE guid=? LIMIT 1`, guid).
-		Scan(&c.FeedURL, &c.GUID, &c.InReplyTo, &c.Root, &c.RootFeed)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
+// ItemByGUID finds a cached item by its permalink, in the feeds the user follows.
+func (s *Space) ItemByGUID(userID int64, guid string) (*CachedItem, error) {
+	urls, err := s.followURLs(userID)
+	if err != nil {
+		return nil, err
 	}
-	return c, err
+	return s.in.itemByGUID(urls, guid)
 }
 
 // ---- Replies received by Webmention ----
@@ -43,7 +41,7 @@ type Reply struct {
 // UpsertReply stores or refreshes a reply. A new reply gets r.Status; an existing one keeps
 // its status, except that pending is promoted to approved when r.Status says so. changed
 // reports whether anything a reader would see differs from what was stored before.
-func (s *Store) UpsertReply(r Reply) (changed bool, err error) {
+func (s *Space) UpsertReply(r Reply) (changed bool, err error) {
 	prior, err := s.ReplyBySource(r.PostID, r.Source)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return false, err
@@ -81,7 +79,7 @@ func sameTime(a, b *time.Time) bool {
 }
 
 // ReplyBySource finds the reply to a post that came from source.
-func (s *Store) ReplyBySource(postID int64, source string) (*Reply, error) {
+func (s *Space) ReplyBySource(postID int64, source string) (*Reply, error) {
 	rows, err := s.db.Query(`SELECT `+replyCols+` FROM replies WHERE post_id=? AND source=?`, postID, source)
 	if err != nil {
 		return nil, err
@@ -98,7 +96,7 @@ func (s *Store) ReplyBySource(postID int64, source string) (*Reply, error) {
 
 // DeleteReply removes a reply whose source has gone away or no longer replies, together with
 // the subtree cached under it. It returns the removed reply, or nil if there was none.
-func (s *Store) DeleteReply(postID int64, source string) (*Reply, error) {
+func (s *Space) DeleteReply(postID int64, source string) (*Reply, error) {
 	prior, err := s.ReplyBySource(postID, source)
 	if errors.Is(err, ErrNotFound) {
 		return nil, nil
@@ -136,7 +134,7 @@ func scanReplies(rows *sql.Rows) ([]Reply, error) {
 }
 
 // RepliesFor lists a post's replies with the given status, oldest first.
-func (s *Store) RepliesFor(postID int64, status string) ([]Reply, error) {
+func (s *Space) RepliesFor(postID int64, status string) ([]Reply, error) {
 	rows, err := s.db.Query(`SELECT `+replyCols+` FROM replies WHERE post_id=? AND status=? ORDER BY published, id`, postID, status)
 	if err != nil {
 		return nil, err
@@ -145,7 +143,7 @@ func (s *Store) RepliesFor(postID int64, status string) ([]Reply, error) {
 }
 
 // RepliesForUser lists all replies to a user's posts, newest first (for moderation).
-func (s *Store) RepliesForUser(userID int64, status string) ([]Reply, error) {
+func (s *Space) RepliesForUser(userID int64, status string) ([]Reply, error) {
 	q := `SELECT r.id,r.post_id,r.source,r.feed_url,r.author,r.title,r.text,r.markdown,r.published,r.updated,r.status,r.received,r.root,r.replies_href
 		FROM replies r JOIN posts p ON p.id=r.post_id WHERE p.user_id=?`
 	args := []any{userID}
@@ -162,7 +160,7 @@ func (s *Store) RepliesForUser(userID int64, status string) ([]Reply, error) {
 
 // SetReplyStatus changes a reply's moderation status and returns the id of the post it belongs
 // to. The reply must belong to one of the user's posts.
-func (s *Store) SetReplyStatus(userID, replyID int64, status string) (postID int64, err error) {
+func (s *Space) SetReplyStatus(userID, replyID int64, status string) (postID int64, err error) {
 	if status != StatusApproved && status != StatusRejected && status != StatusPending {
 		return 0, ErrInvalid
 	}
@@ -178,7 +176,7 @@ func (s *Store) SetReplyStatus(userID, replyID int64, status string) (postID int
 }
 
 // ApprovedCounts maps post id to its number of approved replies.
-func (s *Store) ApprovedCounts(userID int64) (map[int64]int, error) {
+func (s *Space) ApprovedCounts(userID int64) (map[int64]int, error) {
 	rows, err := s.db.Query(`SELECT r.post_id, COUNT(*) FROM replies r JOIN posts p ON p.id=r.post_id
 		WHERE p.user_id=? AND r.status='approved' GROUP BY r.post_id`, userID)
 	if err != nil {
@@ -210,21 +208,33 @@ type QueueItem struct {
 }
 
 // Enqueue adds a Webmention job unless an identical one is already waiting.
-func (s *Store) Enqueue(dir string, userID int64, source, target string) error {
+func (s *Space) Enqueue(dir string, userID int64, source, target string) error {
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM wm_queue WHERE dir=? AND user_id=? AND source=? AND target=? AND done=0`,
 		dir, userID, source, target).Scan(&n); err != nil || n > 0 {
 		return err
 	}
-	_, err := s.db.Exec(`INSERT INTO wm_queue(dir,user_id,source,target,next_try) VALUES(?,?,?,?,?)`,
-		dir, userID, source, target, time.Now().Unix())
-	return err
+	if _, err := s.db.Exec(`INSERT INTO wm_queue(dir,user_id,source,target,next_try) VALUES(?,?,?,?,?)`,
+		dir, userID, source, target, time.Now().Unix()); err != nil {
+		return err
+	}
+	return s.syncWork()
 }
 
-// DueQueue returns jobs ready to run.
-func (s *Store) DueQueue(dir string, limit int) ([]QueueItem, error) {
-	rows, err := s.db.Query(`SELECT id,user_id,attempts,source,target FROM wm_queue WHERE dir=? AND done=0 AND next_try<=? ORDER BY id LIMIT ?`,
-		dir, time.Now().Unix(), limit)
+// syncWork tells the directory when this user's next job is due, or that there is none.
+func (s *Space) syncWork() error {
+	var due sql.NullInt64
+	if err := s.db.QueryRow(`SELECT MIN(next_try) FROM wm_queue WHERE done=0 AND user_id IN (0,?)`, s.uid).Scan(&due); err != nil {
+		return err
+	}
+	return s.in.setWork(s.name, due.Int64)
+}
+
+// DueQueue returns this user's jobs that are ready to run. Jobs queued before they were stamped with
+// their owner have user_id 0 and run for whichever user's turn comes first.
+func (s *Space) DueQueue(dir string, limit int) ([]QueueItem, error) {
+	rows, err := s.db.Query(`SELECT id,user_id,attempts,source,target FROM wm_queue WHERE dir=? AND user_id IN (0,?) AND done=0 AND next_try<=? ORDER BY id LIMIT ?`,
+		dir, s.uid, time.Now().Unix(), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -240,16 +250,20 @@ func (s *Store) DueQueue(dir string, limit int) ([]QueueItem, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) FinishQueue(id int64, note string) error {
-	_, err := s.db.Exec(`UPDATE wm_queue SET done=1, note=? WHERE id=?`, note, id)
-	return err
+func (s *Space) FinishQueue(id int64, note string) error {
+	if _, err := s.db.Exec(`UPDATE wm_queue SET done=1, note=? WHERE id=?`, note, id); err != nil {
+		return err
+	}
+	return s.syncWork()
 }
 
 // RetryQueue schedules another attempt after delay, or gives up after maxAttempts.
-func (s *Store) RetryQueue(id int64, delay time.Duration, maxAttempts int64, note string) error {
-	_, err := s.db.Exec(`UPDATE wm_queue SET attempts=attempts+1, note=?, next_try=?,
-		done=CASE WHEN attempts+1>=? THEN 1 ELSE 0 END WHERE id=?`, note, time.Now().Add(delay).Unix(), maxAttempts, id)
-	return err
+func (s *Space) RetryQueue(id int64, delay time.Duration, maxAttempts int64, note string) error {
+	if _, err := s.db.Exec(`UPDATE wm_queue SET attempts=attempts+1, note=?, next_try=?,
+		done=CASE WHEN attempts+1>=? THEN 1 ELSE 0 END WHERE id=?`, note, time.Now().Add(delay).Unix(), maxAttempts, id); err != nil {
+		return err
+	}
+	return s.syncWork()
 }
 
 // ---- Cached second-level replies (the replies feed's depth) ----
@@ -265,7 +279,7 @@ type Subreply struct {
 
 // ReplaceSubreplies swaps the cached subtree under a direct reply. changed reports whether
 // the set differs from before.
-func (s *Store) ReplaceSubreplies(postID int64, via string, rows []Subreply) (changed bool, err error) {
+func (s *Space) ReplaceSubreplies(postID int64, via string, rows []Subreply) (changed bool, err error) {
 	old, err := s.subreplies(`WHERE post_id=? AND via=?`, postID, via)
 	if err != nil {
 		return false, err
@@ -305,11 +319,11 @@ func (s *Store) ReplaceSubreplies(postID int64, via string, rows []Subreply) (ch
 }
 
 // SubrepliesFor returns all cached second-level replies for a post, oldest first.
-func (s *Store) SubrepliesFor(postID int64) ([]Subreply, error) {
+func (s *Space) SubrepliesFor(postID int64) ([]Subreply, error) {
 	return s.subreplies(`WHERE post_id=?`, postID)
 }
 
-func (s *Store) subreplies(where string, args ...any) ([]Subreply, error) {
+func (s *Space) subreplies(where string, args ...any) ([]Subreply, error) {
 	rows, err := s.db.Query(`SELECT post_id,via,parent,source,feed_url,author,title,text,published FROM subreplies `+where+` ORDER BY published, id`, args...)
 	if err != nil {
 		return nil, err

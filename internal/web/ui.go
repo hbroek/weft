@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -21,14 +20,14 @@ func (s *Server) loginForm(w http.ResponseWriter, r *http.Request, q *req) {
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request, q *req) {
-	u, err := s.st.CheckPassword(q.host.Name, r.FormValue("password"))
+	u, err := q.sp.CheckPassword(r.FormValue("password"))
 	if err != nil {
 		d := s.data(r, q, "Log in")
 		d.Error = "Wrong password."
 		s.show(w, "login", http.StatusUnauthorized, d)
 		return
 	}
-	tok, err := s.st.CreateSession(u.ID)
+	tok, err := q.sp.CreateSession(u.ID)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -40,7 +39,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request, q *req) {
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request, q *req) {
 	if c, err := r.Cookie(cookieName); err == nil {
-		s.st.DeleteSession(c.Value)
+		q.sp.DeleteSession(c.Value)
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -171,7 +170,7 @@ func (s *Server) ownPost(w http.ResponseWriter, r *http.Request, q *req) *store.
 	if !s.requireOwner(w, r, q) {
 		return nil
 	}
-	p, err := s.st.PostBySlug(q.host.ID, r.PathValue("slug"))
+	p, err := q.sp.PostBySlug(q.host.ID, r.PathValue("slug"))
 	if err != nil || p.Deleted {
 		http.NotFound(w, r)
 		return nil
@@ -226,14 +225,14 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown string, 
 	if replyTo != "" {
 		n.Parent = parent
 		n.InReplyTo = replyTo
-		n.InReplyToFeed, n.Root, n.RootFeed = s.resolveThread(r.Context(), s.base(r), u, replyTo, replyFeed)
+		n.InReplyToFeed, n.Root, n.RootFeed = s.resolveThread(r.Context(), s.base(r), reqOf(r).sp, replyTo, replyFeed)
 	}
-	p, err := s.st.AddPost(n)
+	p, err := reqOf(r).sp.AddPost(n)
 	if err != nil {
 		return nil, err.Error()
 	}
 	if p.InReplyTo != "" {
-		s.notify(s.postURL(r, p.ID), p.InReplyTo)
+		s.notify(reqOf(r).sp, s.postURL(r, p.ID), p.InReplyTo)
 	}
 	s.refreshOwnFeed(r)
 	return p, ""
@@ -248,12 +247,12 @@ func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdow
 	if err != nil {
 		return nil, err.Error()
 	}
-	p, err := s.st.UpdatePost(u.ID, id, title, markdown, html, keywords)
+	p, err := reqOf(r).sp.UpdatePost(u.ID, id, title, markdown, html, keywords)
 	if err != nil {
 		return nil, err.Error()
 	}
 	if p.InReplyTo != "" {
-		s.notify(s.postURL(r, p.ID), p.InReplyTo)
+		s.notify(reqOf(r).sp, s.postURL(r, p.ID), p.InReplyTo)
 	}
 	s.refreshOwnFeed(r)
 	return p, ""
@@ -261,11 +260,11 @@ func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdow
 
 // deletePost tombstones a post and, for a reply, tells the parent it is gone.
 func (s *Server) deletePost(r *http.Request, u *store.User, p *store.Post) error {
-	if err := s.st.DeletePost(u.ID, p.ID); err != nil {
+	if err := reqOf(r).sp.DeletePost(u.ID, p.ID); err != nil {
 		return err
 	}
 	if p.InReplyTo != "" {
-		s.notify(s.postURL(r, p.ID), p.InReplyTo)
+		s.notify(reqOf(r).sp, s.postURL(r, p.ID), p.InReplyTo)
 	}
 	s.refreshOwnFeed(r)
 	return nil
@@ -276,8 +275,7 @@ func (s *Server) deletePost(r *http.Request, u *store.User, p *store.Post) error
 // poll. Followers on other instances still wait for their own poll: RSS is pull-based.
 func (s *Server) refreshOwnFeed(r *http.Request) {
 	own := s.base(r) + "/feed.xml"
-	urls, err := s.st.FollowedFeedURLs()
-	if err != nil || !slices.Contains(urls, own) {
+	if !s.st.Followed(own) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)

@@ -85,7 +85,7 @@ func (s *Server) apiUpdate(w http.ResponseWriter, r *http.Request, q *req) {
 	if !ok {
 		return
 	}
-	if _, err := s.st.Post(q.host.ID, id); err != nil {
+	if _, err := q.sp.Post(q.host.ID, id); err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -110,7 +110,7 @@ func (s *Server) apiDelete(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	p, err := s.st.Post(q.host.ID, id)
+	p, err := q.sp.Post(q.host.ID, id)
 	if err != nil || p.Deleted {
 		http.NotFound(w, r)
 		return

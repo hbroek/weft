@@ -79,11 +79,12 @@ func itemTarget(it store.TimelineItem) string {
 }
 
 // iLike reports whether the user currently likes target.
-func (s *Server) iLike(userID int64, target string) bool {
+func (s *Server) iLike(sp *store.Space, target string) bool {
+	userID := sp.UID()
 	if target == "" {
 		return false
 	}
-	_, err := s.st.ActiveLike(userID, target)
+	_, err := sp.ActiveLike(userID, target)
 	return err == nil
 }
 
@@ -96,21 +97,22 @@ func replyHref(it store.TimelineItem) string {
 	return "/compose?reply_to=" + url.QueryEscape(target) + "&reply_feed=" + url.QueryEscape(it.FeedURL)
 }
 
-func (s *Server) rows(userID int64, feedURL string) ([]tlRow, []store.TimelineItem, error) {
+func (s *Server) rows(sp *store.Space, feedURL string) ([]tlRow, []store.TimelineItem, error) {
+	userID := sp.UID()
 	var items []store.TimelineItem
 	var err error
 	if feedURL != "" {
-		items, err = s.st.FeedItems(userID, feedURL, 200)
+		items, err = sp.FeedItems(userID, feedURL, 200)
 	} else {
-		items, err = s.st.Timeline(userID, 200)
+		items, err = sp.Timeline(userID, 200)
 	}
 	if err != nil {
 		return nil, nil, err
 	}
-	likers, _ := s.st.FollowedLikers(userID)
+	likers, _ := sp.FollowedLikers(userID)
 	out := make([]tlRow, 0, len(items))
 	for _, it := range items {
-		mine := s.iLike(userID, itemTarget(it))
+		mine := s.iLike(sp, itemTarget(it))
 		n := s.tally(userID, itemTarget(it), it.Likes)
 		names := likers[itemTarget(it)]
 		if mine {
@@ -140,12 +142,12 @@ func oneLine(text string, n int) string {
 // likedAs describes the post at target for a "liked …" line: one of the user's own posts, a post in a
 // followed feed, or just its address.
 func (s *Server) likedAs(r *http.Request, q *req, target string, info feed.ParentInfo) string {
-	if id, ok := s.localPostID(q.host.ID, s.base(r), target); ok {
-		if p, err := s.st.Post(q.host.ID, id); err == nil {
+	if id, ok := s.localPostID(q.sp, s.base(r), target); ok {
+		if p, err := q.sp.Post(q.host.ID, id); err == nil {
 			return "your post “" + oneLine(orStr(p.Title, p.Markdown), 90) + "”"
 		}
 	}
-	if it, err := s.st.ItemByTarget(q.host.ID, target); err == nil {
+	if it, err := q.sp.ItemByTarget(q.host.ID, target); err == nil {
 		who := orStr(it.FeedTitle, it.FeedURL)
 		return who + "’s post “" + oneLine(orStr(it.Title, it.Text), 90) + "”"
 	}
@@ -157,7 +159,7 @@ func (s *Server) likedAs(r *http.Request, q *req, target string, info feed.Paren
 
 // withLikes adds the likes of followed people, and the user's own, to the timeline rows, in date order.
 func (s *Server) withLikes(r *http.Request, q *req, only string, rows []tlRow) ([]tlRow, error) {
-	ls, err := s.st.FeedLikes(q.host.ID, only, 200)
+	ls, err := q.sp.FeedLikes(q.host.ID, only, 200)
 	if err != nil {
 		return rows, err
 	}
@@ -165,13 +167,13 @@ func (s *Server) withLikes(r *http.Request, q *req, only string, rows []tlRow) (
 		rows = append(rows, tlRow{IsLike: true, Author: orStr(l.FeedTitle, l.FeedURL), AuthorHref: "/timeline?feed=" + url.QueryEscape(l.FeedURL),
 			Date: l.Published.Format("2 Jan 2006 15:04"), LikedHref: httpURL(l.Target), LikedAs: s.likedAs(r, q, l.Target, l.Parent), when: l.Published})
 	}
-	mine, err := s.st.ActiveLikes(q.host.ID, 200)
+	mine, err := q.sp.ActiveLikes(q.host.ID, 200)
 	if err != nil {
 		return rows, err
 	}
 	for _, l := range mine {
 		if only != "" { // on one person's page, only likes of their posts
-			if it, err := s.st.ItemByTarget(q.host.ID, l.Target); err != nil || it.FeedURL != only {
+			if it, err := q.sp.ItemByTarget(q.host.ID, l.Target); err != nil || it.FeedURL != only {
 				continue
 			}
 		}
@@ -185,13 +187,13 @@ func (s *Server) withLikes(r *http.Request, q *req, only string, rows []tlRow) (
 // ownRows are the user's own posts as timeline rows, so a post (or a reply to someone) shows up
 // where its conversation is read. They carry the like tally of the post's page, not a like button.
 func (s *Server) ownRows(r *http.Request, q *req) ([]tlRow, error) {
-	posts, err := s.st.RecentPosts(q.host.ID, 200)
+	posts, err := q.sp.RecentPosts(q.host.ID, 200)
 	if err != nil {
 		return nil, err
 	}
-	tallies, _ := s.st.Tallies(q.host.ID)
-	likers, _ := s.st.Likers(q.host.ID)
-	counts, _ := s.st.ApprovedCounts(q.host.ID)
+	tallies, _ := q.sp.Tallies(q.host.ID)
+	likers, _ := q.sp.Likers(q.host.ID)
+	counts, _ := q.sp.ApprovedCounts(q.host.ID)
 	out := make([]tlRow, 0, len(posts))
 	for _, p := range posts {
 		pu := s.postURL(r, p.ID)
@@ -209,7 +211,7 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	only := r.FormValue("feed")
-	rows, _, err := s.rows(q.host.ID, only)
+	rows, _, err := s.rows(q.sp, only)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -270,7 +272,7 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 	if only != "" {
 		d.Only = only
 		d.Heading = only
-		if fs, err := s.st.Follows(q.host.ID); err == nil {
+		if fs, err := q.sp.Follows(q.host.ID); err == nil {
 			for _, f := range fs {
 				if f.URL == only && f.Title != "" {
 					d.Heading = f.Title
@@ -289,7 +291,7 @@ func (s *Server) followingPage(w http.ResponseWriter, r *http.Request, q *req) {
 }
 
 func (s *Server) renderFollowing(w http.ResponseWriter, r *http.Request, q *req, status int, msg string) {
-	fs, err := s.st.Follows(q.host.ID)
+	fs, err := q.sp.Follows(q.host.ID)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -306,7 +308,7 @@ func (s *Server) followForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.requireOwner(w, r, q) {
 		return
 	}
-	if _, err := s.follow(r.Context(), q.host.ID, r.FormValue("url")); err != nil {
+	if _, err := s.follow(r.Context(), q.sp, r.FormValue("url")); err != nil {
 		s.renderFollowing(w, r, q, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -317,7 +319,7 @@ func (s *Server) unfollowForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.requireOwner(w, r, q) {
 		return
 	}
-	if err := s.unfollow(q.host.ID, r.FormValue("url")); err != nil {
+	if err := s.unfollow(q.sp, r.FormValue("url")); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -328,7 +330,7 @@ func (s *Server) refreshForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.requireOwner(w, r, q) {
 		return
 	}
-	fs, _ := s.st.Follows(q.host.ID)
+	fs, _ := q.sp.Follows(q.host.ID)
 	for _, f := range fs {
 		s.Refresh(r.Context(), f.URL)
 	}
@@ -336,7 +338,8 @@ func (s *Server) refreshForm(w http.ResponseWriter, r *http.Request, q *req) {
 }
 
 // follow resolves a feed or site URL to a feed, fetches it and records the follow.
-func (s *Server) follow(ctx context.Context, userID int64, raw string) (string, error) {
+func (s *Server) follow(ctx context.Context, sp *store.Space, raw string) (string, error) {
+	userID := sp.UID()
 	raw = httpURL(raw)
 	if raw == "" {
 		return "", errors.New("Enter a full http:// or https:// address.")
@@ -365,26 +368,28 @@ func (s *Server) follow(ctx context.Context, userID int64, raw string) (string, 
 		return "", err
 	}
 	s.refreshLikes(ctx, res.URL, p)
-	if err := s.st.Follow(userID, res.URL); err != nil {
+	if err := sp.Follow(userID, res.URL); err != nil {
 		return "", err
 	}
-	s.retrustLikes(userID)
+	s.retrustLikes(sp)
 	return res.URL, nil
 }
 
 // unfollow stops following a feed and recounts the likes on the user's posts.
-func (s *Server) unfollow(userID int64, feedURL string) error {
-	if err := s.st.Unfollow(userID, feedURL); err != nil {
+func (s *Server) unfollow(sp *store.Space, feedURL string) error {
+	userID := sp.UID()
+	if err := sp.Unfollow(userID, feedURL); err != nil {
 		return err
 	}
-	s.retrustLikes(userID)
+	s.retrustLikes(sp)
 	return nil
 }
 
 // retrustLikes makes the likes on the user's posts count exactly when their senders are followed
 // now, so following someone counts the likes they already gave and unfollowing drops them.
-func (s *Server) retrustLikes(userID int64) {
-	xs, err := s.st.LikesInOf(userID)
+func (s *Server) retrustLikes(sp *store.Space) {
+	userID := sp.UID()
+	xs, err := sp.LikesInOf(userID)
 	if err != nil {
 		return
 	}
@@ -392,16 +397,21 @@ func (s *Server) retrustLikes(userID int64) {
 		if x.FeedURL == "" {
 			continue
 		}
-		want, err := s.st.IsFollowingSite(userID, personFeed(x.FeedURL), siteOf(x.FeedURL))
+		want, err := sp.IsFollowingSite(userID, personFeed(x.FeedURL), siteOf(x.FeedURL))
 		if err == nil && want != x.Trusted {
-			s.st.SetLikeInTrust(x.PostID, x.Source, want)
+			sp.SetLikeInTrust(x.PostID, x.Source, want)
 		}
 	}
 }
 
 // Follow makes the user follow a feed or site URL: the same as the Following page, for admin tools.
-func (s *Server) Follow(ctx context.Context, userID int64, raw string) (string, error) {
-	return s.follow(ctx, userID, raw)
+func (s *Server) Follow(ctx context.Context, name, raw string) (string, error) {
+	sp, release, err := s.st.Space(name)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	return s.follow(ctx, sp, raw)
 }
 
 // Refresh re-fetches one feed and replaces its cached items. Failures are recorded, not returned.
@@ -532,7 +542,7 @@ func (s *Server) StartPoller(ctx context.Context, every time.Duration) <-chan st
 
 // opml publishes the follow list (the public follow graph).
 func (s *Server) opml(w http.ResponseWriter, r *http.Request, q *req) {
-	fs, err := s.st.Follows(q.host.ID)
+	fs, err := q.sp.Follows(q.host.ID)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

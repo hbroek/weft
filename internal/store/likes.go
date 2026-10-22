@@ -40,13 +40,13 @@ func scanLike(r interface{ Scan(...any) error }) (*Like, error) {
 
 // SetLike publishes a like of target. Liking again returns the existing like; a feed hint, if given,
 // replaces the stored one.
-func (s *Store) SetLike(userID int64, target, targetFeed string) (*Like, error) {
+func (s *Space) SetLike(userID int64, target, targetFeed string) (*Like, error) {
 	return s.SetLikeInfo(userID, target, targetFeed, feed.ParentInfo{})
 }
 
 // SetLikeInfo is SetLike with what the liked page looked like (title, description, image), for a
 // page that publishes no feed. Liking again with new information replaces the stored one.
-func (s *Store) SetLikeInfo(userID int64, target, targetFeed string, info feed.ParentInfo) (*Like, error) {
+func (s *Space) SetLikeInfo(userID int64, target, targetFeed string, info feed.ParentInfo) (*Like, error) {
 	info = info.Clean()
 	if old, err := s.ActiveLike(userID, target); err == nil {
 		newFeed := targetFeed != "" && targetFeed != old.TargetFeed
@@ -77,7 +77,7 @@ func (s *Store) SetLikeInfo(userID int64, target, targetFeed string, info feed.P
 	return s.likeByID(id)
 }
 
-func (s *Store) likeByID(id int64) (*Like, error) {
+func (s *Space) likeByID(id int64) (*Like, error) {
 	x, err := scanLike(s.db.QueryRow(`SELECT `+likeCols+` FROM likes WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -86,7 +86,7 @@ func (s *Store) likeByID(id int64) (*Like, error) {
 }
 
 // Like returns one of the user's likes, including a withdrawn one (for its tombstone).
-func (s *Store) Like(userID, id int64) (*Like, error) {
+func (s *Space) Like(userID, id int64) (*Like, error) {
 	x, err := s.likeByID(id)
 	if err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func (s *Store) Like(userID, id int64) (*Like, error) {
 }
 
 // ActiveLike returns the user's current like of target.
-func (s *Store) ActiveLike(userID int64, target string) (*Like, error) {
+func (s *Space) ActiveLike(userID int64, target string) (*Like, error) {
 	x, err := scanLike(s.db.QueryRow(`SELECT `+likeCols+` FROM likes WHERE user_id=? AND target=? AND deleted=0`, userID, target))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -107,7 +107,7 @@ func (s *Store) ActiveLike(userID int64, target string) (*Like, error) {
 }
 
 // RemoveLike withdraws the user's like of target. The row stays so its permalink can answer 410.
-func (s *Store) RemoveLike(userID int64, target string) (*Like, error) {
+func (s *Space) RemoveLike(userID int64, target string) (*Like, error) {
 	x, err := s.ActiveLike(userID, target)
 	if err != nil {
 		return nil, err
@@ -119,7 +119,7 @@ func (s *Store) RemoveLike(userID int64, target string) (*Like, error) {
 }
 
 // ActiveLikes lists the user's current likes, newest first.
-func (s *Store) ActiveLikes(userID int64, limit int) ([]*Like, error) {
+func (s *Space) ActiveLikes(userID int64, limit int) ([]*Like, error) {
 	rows, err := s.db.Query(`SELECT `+likeCols+` FROM likes WHERE user_id=? AND deleted=0 ORDER BY created DESC, id DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, err
@@ -146,7 +146,7 @@ type LikeIn struct {
 }
 
 // UpsertLikeIn stores or refreshes a verified like.
-func (s *Store) UpsertLikeIn(r LikeIn) error {
+func (s *Space) UpsertLikeIn(r LikeIn) error {
 	_, err := s.db.Exec(`INSERT INTO likes_in(post_id,source,feed_url,author,trusted,created) VALUES(?,?,?,?,?,?)
 		ON CONFLICT(post_id,source) DO UPDATE SET feed_url=excluded.feed_url, author=excluded.author, trusted=excluded.trusted`,
 		r.PostID, r.Source, r.FeedURL, r.Author, b2i(r.Trusted), time.Now().Unix())
@@ -160,13 +160,13 @@ func b2i(b bool) int {
 	return 0
 }
 
-func (s *Store) DeleteLikeIn(postID int64, source string) error {
+func (s *Space) DeleteLikeIn(postID int64, source string) error {
 	_, err := s.db.Exec(`DELETE FROM likes_in WHERE post_id=? AND source=?`, postID, source)
 	return err
 }
 
 // LikesInFor lists every verified like of a post, trusted or not.
-func (s *Store) LikesInFor(postID int64) ([]LikeIn, error) {
+func (s *Space) LikesInFor(postID int64) ([]LikeIn, error) {
 	rows, err := s.db.Query(`SELECT id,post_id,source,feed_url,author,trusted,created FROM likes_in WHERE post_id=? ORDER BY created,id`, postID)
 	if err != nil {
 		return nil, err
@@ -187,7 +187,7 @@ func (s *Store) LikesInFor(postID int64) ([]LikeIn, error) {
 }
 
 // LikesInOf lists every received like on the user's posts, counted or not.
-func (s *Store) LikesInOf(userID int64) ([]LikeIn, error) {
+func (s *Space) LikesInOf(userID int64) ([]LikeIn, error) {
 	rows, err := s.db.Query(`SELECT l.id,l.post_id,l.source,l.feed_url,l.author,l.trusted,l.created FROM likes_in l
 		JOIN posts p ON p.id=l.post_id WHERE p.user_id=?`, userID)
 	if err != nil {
@@ -209,13 +209,13 @@ func (s *Store) LikesInOf(userID int64) ([]LikeIn, error) {
 }
 
 // SetLikeInTrust changes whether a received like is counted.
-func (s *Store) SetLikeInTrust(postID int64, source string, trusted bool) error {
+func (s *Space) SetLikeInTrust(postID int64, source string, trusted bool) error {
 	_, err := s.db.Exec(`UPDATE likes_in SET trusted=? WHERE post_id=? AND source=?`, b2i(trusted), postID, source)
 	return err
 }
 
 // Tallies returns, for each of the user's posts that has any, the number of likes from trusted senders.
-func (s *Store) Tallies(userID int64) (map[int64]int, error) {
+func (s *Space) Tallies(userID int64) (map[int64]int, error) {
 	rows, err := s.db.Query(`SELECT l.post_id, COUNT(*) FROM likes_in l JOIN posts p ON p.id=l.post_id
 		WHERE p.user_id=? AND l.trusted=1 GROUP BY l.post_id`, userID)
 	if err != nil {
@@ -236,7 +236,7 @@ func (s *Store) Tallies(userID int64) (map[int64]int, error) {
 
 // Likers returns, for each of the user's posts that has any, the names of the senders whose likes
 // count (the ones the user follows), oldest like first. A sender without a name is shown by its feed.
-func (s *Store) Likers(userID int64) (map[int64][]string, error) {
+func (s *Space) Likers(userID int64) (map[int64][]string, error) {
 	rows, err := s.db.Query(`SELECT l.post_id, COALESCE(NULLIF(l.author,''), l.feed_url) FROM likes_in l JOIN posts p ON p.id=l.post_id
 		WHERE p.user_id=? AND l.trusted=1 ORDER BY l.created, l.id`, userID)
 	if err != nil {

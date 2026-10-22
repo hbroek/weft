@@ -56,10 +56,7 @@ func settle(ctx context.Context, insts ...*instance) {
 		}
 		pending := 0
 		for _, i := range insts {
-			for _, dir := range []string{"out", "in"} {
-				q, _ := i.s.st.DueQueue(dir, 100)
-				pending += len(q)
-			}
+			pending += i.s.Pending()
 		}
 		if pending == 0 {
 			return

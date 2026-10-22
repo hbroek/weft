@@ -22,10 +22,10 @@ const maxWMAttempts = 6
 // has cached, an item in the feed named by feedHint, or something unknown. A parent
 // that carries no weft:root is itself the root, which is also how replies to plain RSS
 // items and arbitrary pages work.
-func (s *Server) resolveThread(ctx context.Context, base string, u *store.User, parent, feedHint string) (parentFeed, root, rootFeed string) {
+func (s *Server) resolveThread(ctx context.Context, base string, sp *store.Space, parent, feedHint string) (parentFeed, root, rootFeed string) {
 	parentFeed, root, rootFeed = feedHint, parent, feedHint
-	if id, ok := s.localPostID(u.ID, base, parent); ok {
-		if p, err := s.st.Post(u.ID, id); err == nil {
+	if id, ok := s.localPostID(sp, base, parent); ok {
+		if p, err := sp.Post(sp.UID(), id); err == nil {
 			own := base + "/feed.xml"
 			if p.Root != "" {
 				return own, p.Root, p.RootFeed
@@ -33,14 +33,14 @@ func (s *Server) resolveThread(ctx context.Context, base string, u *store.User, 
 			return own, parent, own
 		}
 	}
-	if it, err := s.st.ItemByGUID(parent); err == nil {
+	if it, err := sp.ItemByGUID(sp.UID(), parent); err == nil {
 		return it.FeedURL, rootOr(it.Root, parent), pick(it.Root != "", it.RootFeed, it.FeedURL)
 	}
 	// Replies to replies often arrive without a feed (the API only knows the post's URL). Without
 	// the feed there is no way to learn the parent's own weft:root, and the parent would wrongly
 	// become the root of the thread, so find the feed first.
 	if feedHint == "" {
-		if feedHint = s.discoverFeed(ctx, u.ID, parent); feedHint != "" {
+		if feedHint = s.discoverFeed(ctx, sp, parent); feedHint != "" {
 			parentFeed, rootFeed = feedHint, feedHint
 		}
 	}
@@ -60,8 +60,8 @@ func (s *Server) resolveThread(ctx context.Context, base string, u *store.User, 
 
 // discoverFeed finds the feed that publishes the post at u: from a reply this user received, or
 // from the discovery link on the post's page.
-func (s *Server) discoverFeed(ctx context.Context, userID int64, u string) string {
-	if rs, err := s.st.RepliesForUser(userID, ""); err == nil {
+func (s *Server) discoverFeed(ctx context.Context, sp *store.Space, u string) string {
+	if rs, err := sp.RepliesForUser(sp.UID(), ""); err == nil {
 		for _, r := range rs {
 			if r.Source == u && r.FeedURL != "" {
 				return r.FeedURL
@@ -89,12 +89,12 @@ func pick(c bool, a, b string) string {
 
 // localPostID recognises base+"/posts/{slug}" as one of the user's own posts. The slug is the
 // post's only public address.
-func (s *Server) localPostID(userID int64, base, raw string) (int64, bool) {
+func (s *Server) localPostID(sp *store.Space, base, raw string) (int64, bool) {
 	slug, ok := strings.CutPrefix(raw, base+"/posts/")
 	if !ok || slug == "" || strings.ContainsAny(slug, "/?#") {
 		return 0, false
 	}
-	p, err := s.st.PostBySlug(userID, slug)
+	p, err := sp.PostBySlug(sp.UID(), slug)
 	if err != nil {
 		return 0, false
 	}
@@ -102,8 +102,8 @@ func (s *Server) localPostID(userID int64, base, raw string) (int64, bool) {
 }
 
 // notify queues an outgoing Webmention.
-func (s *Server) notify(source, target string) {
-	if err := s.st.Enqueue(store.QueueOut, 0, source, target); err == nil {
+func (s *Server) notify(sp *store.Space, source, target string) {
+	if err := sp.Enqueue(store.QueueOut, sp.UID(), source, target); err == nil {
 		s.kick()
 	}
 }
@@ -125,16 +125,16 @@ func (s *Server) webmention(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	tu, _ := url.Parse(target)
-	id, ok := s.localPostID(q.host.ID, s.base(r), tu.Scheme+"://"+tu.Host+tu.Path)
+	id, ok := s.localPostID(q.sp, s.base(r), tu.Scheme+"://"+tu.Host+tu.Path)
 	if !ok {
 		http.Error(w, "target is not a post on this site", http.StatusBadRequest)
 		return
 	}
-	if _, err := s.st.Post(q.host.ID, id); err != nil {
+	if _, err := q.sp.Post(q.host.ID, id); err != nil {
 		http.Error(w, "target post not found", http.StatusBadRequest)
 		return
 	}
-	if err := s.st.Enqueue(store.QueueIn, q.host.ID, source, target); err != nil {
+	if err := q.sp.Enqueue(store.QueueIn, q.host.ID, source, target); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -143,10 +143,28 @@ func (s *Server) webmention(w http.ResponseWriter, r *http.Request, q *req) {
 	fmt.Fprintln(w, "queued")
 }
 
-// ProcessQueues runs all due Webmention jobs once.
+// ProcessQueues runs all due Webmention jobs once, for the users the directory says have some.
 func (s *Server) ProcessQueues(ctx context.Context) {
+	names, err := s.st.UsersWithWork()
+	if err != nil {
+		return
+	}
+	for _, name := range names {
+		if ctx.Err() != nil {
+			return
+		}
+		s.processUser(ctx, name)
+	}
+}
+
+func (s *Server) processUser(ctx context.Context, name string) {
+	sp, release, err := s.st.Space(name)
+	if err != nil {
+		return
+	}
+	defer release()
 	for _, dir := range []string{store.QueueOut, store.QueueIn} {
-		items, err := s.st.DueQueue(dir, 50)
+		items, err := sp.DueQueue(dir, 50)
 		if err != nil {
 			return
 		}
@@ -159,12 +177,12 @@ func (s *Server) ProcessQueues(ctx context.Context) {
 			if dir == store.QueueOut {
 				note, retry = s.sendMention(ctx, it)
 			} else {
-				note, retry = s.receiveMention(ctx, it)
+				note, retry = s.receiveMention(ctx, sp, it)
 			}
 			if retry {
-				s.st.RetryQueue(it.ID, time.Duration(1<<it.Attempts)*time.Minute, maxWMAttempts, note)
+				sp.RetryQueue(it.ID, time.Duration(1<<it.Attempts)*time.Minute, maxWMAttempts, note)
 			} else {
-				s.st.FinishQueue(it.ID, note)
+				sp.FinishQueue(it.ID, note)
 			}
 		}
 	}
@@ -197,8 +215,8 @@ func (s *Server) sendMention(ctx context.Context, it store.QueueItem) (note stri
 }
 
 // receiveMention verifies a received Webmention and records or removes the reply.
-func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note string, retry bool) {
-	host, err := s.st.UserByID(it.UserID)
+func (s *Server) receiveMention(ctx context.Context, sp *store.Space, it store.QueueItem) (note string, retry bool) {
+	host, err := sp.User()
 	if err != nil {
 		return "unknown user", false
 	}
@@ -206,24 +224,24 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 	if err != nil {
 		return "bad target", false
 	}
-	postID, ok := s.localPostID(host.ID, tu.Scheme+"://"+tu.Host, tu.Scheme+"://"+tu.Host+tu.Path)
+	postID, ok := s.localPostID(sp, tu.Scheme+"://"+tu.Host, tu.Scheme+"://"+tu.Host+tu.Path)
 	if !ok {
 		return "target is not a post", false
 	}
-	if p, err := s.st.Post(host.ID, postID); err != nil || p.Deleted {
+	if p, err := sp.Post(host.ID, postID); err != nil || p.Deleted {
 		return "target post is gone", false
 	}
 
 	page, err := s.web.Get(ctx, it.Source)
 	if err != nil {
 		if fetch.IsGone(err) { // the sender deleted their reply or like
-			s.dropMention(host.ID, postID, it.Target, it.Source)
+			s.dropMention(sp, postID, it.Target, it.Source)
 			return "source gone; removed", false
 		}
 		return err.Error(), true
 	}
 	if body := string(page.Body); !strings.Contains(body, it.Target) && !strings.Contains(body, html.EscapeString(it.Target)) {
-		s.dropMention(host.ID, postID, it.Target, it.Source)
+		s.dropMention(sp, postID, it.Target, it.Source)
 		return "source does not link to target", false
 	}
 	feedURL, ok := fetch.FindFeedLink(page.Body, page.URL)
@@ -244,7 +262,7 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 			item = &parsed.Items[i]
 		}
 	}
-	trusted, _ := s.st.IsFollowingSite(host.ID, fr.URL, parsed.Link)
+	trusted, _ := sp.IsFollowingSite(host.ID, fr.URL, parsed.Link)
 	switch {
 	case item != nil && item.InReplyTo == it.Target:
 		status := store.StatusPending
@@ -257,39 +275,39 @@ func (s *Server) receiveMention(ctx context.Context, it store.QueueItem) (note s
 		if !item.Updated.IsZero() {
 			r.Updated = &item.Updated
 		}
-		s.st.DeleteLikeIn(postID, it.Source)
-		changed, err := s.st.UpsertReply(r)
+		sp.DeleteLikeIn(postID, it.Source)
+		changed, err := sp.UpsertReply(r)
 		if err != nil {
 			return err.Error(), true
 		}
-		subChanged := s.refreshSubtree(ctx, postID, it.Source, item.RepliesHref)
-		if cur, err := s.st.ReplyBySource(postID, it.Source); err == nil && cur.Status == store.StatusApproved && (changed || subChanged) {
-			s.bubble(host.ID, postID, it.Target)
+		subChanged := s.refreshSubtree(ctx, sp, postID, it.Source, item.RepliesHref)
+		if cur, err := sp.ReplyBySource(postID, it.Source); err == nil && cur.Status == store.StatusApproved && (changed || subChanged) {
+			s.bubble(sp, postID, it.Target)
 		}
 		return "reply " + status, false
 	case item != nil && item.LikeOf == it.Target:
-		s.dropReply(host.ID, postID, it.Target, it.Source)
-		if err := s.st.UpsertLikeIn(store.LikeIn{PostID: postID, Source: it.Source, FeedURL: orStr(httpURL(item.FeedHref), fr.URL), // the liker's own feed, so the owner can follow it
+		s.dropReply(sp, postID, it.Target, it.Source)
+		if err := sp.UpsertLikeIn(store.LikeIn{PostID: postID, Source: it.Source, FeedURL: orStr(httpURL(item.FeedHref), fr.URL), // the liker's own feed, so the owner can follow it
 			Author: orStr(item.FeedName, parsed.Title), Trusted: trusted}); err != nil {
 			return err.Error(), true
 		}
 		return "like recorded", false
 	default:
-		s.dropMention(host.ID, postID, it.Target, it.Source)
+		s.dropMention(sp, postID, it.Target, it.Source)
 		return "plain mention: source is neither a reply nor a like of target", false
 	}
 }
 
 // dropMention forgets any reply or like previously recorded from source.
-func (s *Server) dropMention(userID, postID int64, target, source string) {
-	s.dropReply(userID, postID, target, source)
-	s.st.DeleteLikeIn(postID, source)
+func (s *Server) dropMention(sp *store.Space, postID int64, target, source string) {
+	s.dropReply(sp, postID, target, source)
+	sp.DeleteLikeIn(postID, source)
 }
 
 // dropReply removes a stored reply and, if it had been visible, tells the post's own parent.
-func (s *Server) dropReply(userID, postID int64, target, source string) {
-	if prior, _ := s.st.DeleteReply(postID, source); prior != nil && prior.Status == store.StatusApproved {
-		s.bubble(userID, postID, target)
+func (s *Server) dropReply(sp *store.Space, postID int64, target, source string) {
+	if prior, _ := sp.DeleteReply(postID, source); prior != nil && prior.Status == store.StatusApproved {
+		s.bubble(sp, postID, target)
 	}
 }
 
@@ -297,9 +315,9 @@ func (s *Server) dropReply(userID, postID int64, target, source string) {
 // change, re-send that post's Webmention to its parent so the parent refreshes its cached
 // subtree. It stops by itself at the root (a post that replies to nothing) and, because it
 // only fires on real changes, any cycle of replies settles.
-func (s *Server) bubble(userID, postID int64, postURL string) {
-	if p, err := s.st.Post(userID, postID); err == nil && p.InReplyTo != "" && !p.Deleted {
-		s.notify(postURL, p.InReplyTo)
+func (s *Server) bubble(sp *store.Space, postID int64, postURL string) {
+	if p, err := sp.Post(sp.UID(), postID); err == nil && p.InReplyTo != "" && !p.Deleted {
+		s.notify(sp, postURL, p.InReplyTo)
 	}
 }
 
@@ -309,9 +327,9 @@ const maxSubreplies = 50
 // refreshSubtree re-reads a direct reply's own replies feed and caches the approved replies
 // to it (the second level of this post's replies feed). It reports whether the cache changed.
 // A feed that cannot be fetched leaves the cache as it was.
-func (s *Server) refreshSubtree(ctx context.Context, postID int64, via, repliesHref string) bool {
+func (s *Server) refreshSubtree(ctx context.Context, sp *store.Space, postID int64, via, repliesHref string) bool {
 	if repliesHref == "" {
-		changed, _ := s.st.ReplaceSubreplies(postID, via, nil)
+		changed, _ := sp.ReplaceSubreplies(postID, via, nil)
 		return changed
 	}
 	res, err := s.web.Get(ctx, repliesHref)
@@ -334,16 +352,27 @@ func (s *Server) refreshSubtree(ctx context.Context, postID int64, via, repliesH
 		rows = append(rows, store.Subreply{PostID: postID, Via: via, Parent: via, Source: it.GUID, FeedURL: it.FeedHref,
 			Author: author, Title: it.Title, Text: it.Text, Published: it.Published})
 	}
-	changed, _ := s.st.ReplaceSubreplies(postID, via, rows)
+	changed, _ := sp.ReplaceSubreplies(postID, via, rows)
 	return changed
 }
 
 // Pending counts Webmention jobs waiting to be sent or processed.
 func (s *Server) Pending() int {
+	names, err := s.st.UsersWithWork()
+	if err != nil {
+		return 0
+	}
 	n := 0
-	for _, dir := range []string{store.QueueOut, store.QueueIn} {
-		q, _ := s.st.DueQueue(dir, 1000)
-		n += len(q)
+	for _, name := range names {
+		sp, release, err := s.st.Space(name)
+		if err != nil {
+			continue
+		}
+		for _, dir := range []string{store.QueueOut, store.QueueIn} {
+			jobs, _ := sp.DueQueue(dir, 1000)
+			n += len(jobs)
+		}
+		release()
 	}
 	return n
 }

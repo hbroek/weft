@@ -33,7 +33,7 @@ type Config struct {
 
 type Server struct {
 	cfg Config
-	st  *store.Store
+	st  *store.Instance
 	mux *http.ServeMux
 	web *fetch.Client
 	// wake nudges the background worker after a Webmention job is queued.
@@ -43,7 +43,7 @@ type Server struct {
 	adj   map[adjKey]likeAdj
 }
 
-func New(cfg Config, st *store.Store) *Server {
+func New(cfg Config, st *store.Instance) *Server {
 	if cfg.Scheme == "" {
 		cfg.Scheme = "http"
 	}
@@ -161,7 +161,7 @@ func (s *Server) base(r *http.Request) string { return s.cfg.Scheme + "://" + r.
 
 // postURL is a post's permanent address: the author's host plus the post's slug.
 func (s *Server) postURL(r *http.Request, id int64) string {
-	slug, err := s.st.SlugByID(id)
+	slug, err := reqOf(r).sp.SlugByID(id)
 	if err != nil {
 		return s.base(r) + "/posts/"
 	}
@@ -170,10 +170,14 @@ func (s *Server) postURL(r *http.Request, id int64) string {
 
 type ctxKey struct{}
 
+// reqOf returns the request context that user() attached: the host user and visitor.
+func reqOf(r *http.Request) *req { return r.Context().Value(ctxKey{}).(*req) }
+
 // req carries what handlers need about the request's host user and visitor.
 type req struct {
 	host  *store.User
-	owner bool // visitor is logged in as the host user
+	sp    *store.Space // the host user's data
+	owner bool         // visitor is logged in as the host user
 }
 
 func (s *Server) user(h func(http.ResponseWriter, *http.Request, *req)) http.HandlerFunc {
@@ -183,14 +187,20 @@ func (s *Server) user(h func(http.ResponseWriter, *http.Request, *req)) http.Han
 			http.NotFound(w, r)
 			return
 		}
-		u, err := s.st.UserByName(name)
+		sp, release, err := s.st.Space(name)
 		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
-		q := &req{host: u}
+		defer release()
+		u, err := sp.User()
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		q := &req{host: u, sp: sp}
 		if c, err := r.Cookie(cookieName); err == nil {
-			if su, err := s.st.UserBySession(c.Value); err == nil && su.ID == u.ID {
+			if su, err := sp.UserBySession(c.Value); err == nil && su.ID == u.ID {
 				q.owner = true
 			}
 		}
@@ -219,7 +229,7 @@ func (s *Server) bearer(r *http.Request, q *req) error {
 	if !ok {
 		return errors.New("missing bearer token")
 	}
-	u, err := s.st.UserByToken(tok)
+	u, err := q.sp.UserByToken(tok)
 	if err != nil || u.ID != q.host.ID {
 		return errors.New("invalid token for this host")
 	}

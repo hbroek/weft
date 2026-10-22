@@ -25,14 +25,14 @@ func (s *Server) likedByPage(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	d := s.data(r, q, "Likes")
 	d.LikeTarget, d.LikeTitle = target, target
-	if id, ok := s.localPostID(q.host.ID, s.base(r), target); ok {
-		p, err := s.st.Post(q.host.ID, id)
+	if id, ok := s.localPostID(q.sp, s.base(r), target); ok {
+		p, err := q.sp.Post(q.host.ID, id)
 		if err != nil || p.Deleted {
 			http.NotFound(w, r)
 			return
 		}
 		d.LikeTitle = orStr(p.Title, oneLine(p.Markdown, 60))
-		xs, err := s.st.LikesInFor(id)
+		xs, err := q.sp.LikesInFor(id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -44,7 +44,7 @@ func (s *Server) likedByPage(w http.ResponseWriter, r *http.Request, q *req) {
 			}
 			row := likerRow{Name: orStr(x.Author, orStr(x.FeedURL, siteHost(x.Source))), FeedURL: x.FeedURL, Counted: x.Trusted}
 			if q.owner && x.FeedURL != "" {
-				if on, _ := s.st.IsFollowing(q.host.ID, x.FeedURL); on {
+				if on, _ := q.sp.IsFollowing(q.host.ID, x.FeedURL); on {
 					row.State = "unfollow"
 				} else if x.Trusted {
 					row.State = "following"
@@ -64,17 +64,17 @@ func (s *Server) likedByPage(w http.ResponseWriter, r *http.Request, q *req) {
 		if !s.requireOwner(w, r, q) {
 			return
 		}
-		it, err := s.st.ItemByTarget(q.host.ID, target)
+		it, err := q.sp.ItemByTarget(q.host.ID, target)
 		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
 		d.LikeTitle = orStr(it.Title, oneLine(it.Text, 60))
-		if s.iLike(q.host.ID, target) {
+		if s.iLike(q.sp, target) {
 			d.Likers = append(d.Likers, likerRow{Name: "You", State: "you", Counted: true})
 		}
 		// only people this user follows: the likes cache is shared by every user on the server
-		fl, err := s.st.FeedLikes(q.host.ID, "", 1000)
+		fl, err := q.sp.FeedLikes(q.host.ID, "", 1000)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

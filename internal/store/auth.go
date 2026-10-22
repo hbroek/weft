@@ -22,8 +22,8 @@ func hashPassword(pw string, salt []byte) ([]byte, error) {
 	return pbkdf2.Key(sha256.New, pw, salt, pbkdf2Iterations, 32)
 }
 
-// SetPassword sets a user's login password.
-func (s *Store) SetPassword(name, pw string) error {
+// SetPassword sets the login password.
+func (s *Space) SetPassword(pw string) error {
 	if len(pw) < 8 {
 		return errors.New("password must be at least 8 characters")
 	}
@@ -35,7 +35,7 @@ func (s *Store) SetPassword(name, pw string) error {
 	if err != nil {
 		return err
 	}
-	res, err := s.db.Exec(`UPDATE users SET pw_salt=?,pw_hash=? WHERE name=?`, salt, h, name)
+	res, err := s.db.Exec(`UPDATE users SET pw_salt=?,pw_hash=? WHERE name=?`, salt, h, s.name)
 	if err != nil {
 		return err
 	}
@@ -45,11 +45,11 @@ func (s *Store) SetPassword(name, pw string) error {
 	return nil
 }
 
-// CheckPassword verifies a login. It does the same work whether or not the user exists.
-func (s *Store) CheckPassword(name, pw string) (*User, error) {
+// CheckPassword verifies a login as this space's user.
+func (s *Space) CheckPassword(pw string) (*User, error) {
 	var salt, want []byte
 	u := &User{}
-	err := s.db.QueryRow(`SELECT id,name,display,bio,avatar,pw_salt,pw_hash FROM users WHERE name=?`, name).
+	err := s.db.QueryRow(`SELECT id,name,display,bio,avatar,pw_salt,pw_hash FROM users WHERE name=?`, s.name).
 		Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar, &salt, &want)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -68,7 +68,7 @@ func (s *Store) CheckPassword(name, pw string) (*User, error) {
 }
 
 // CreateSession returns a new session token for the user.
-func (s *Store) CreateSession(userID int64) (string, error) {
+func (s *Space) CreateSession(userID int64) (string, error) {
 	b := make([]byte, 24)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -79,17 +79,18 @@ func (s *Store) CreateSession(userID int64) (string, error) {
 	return tok, err
 }
 
-func (s *Store) UserBySession(tok string) (*User, error) {
+// UserBySession returns the space's user if tok is one of their live sessions.
+func (s *Space) UserBySession(tok string) (*User, error) {
 	u := &User{}
 	err := s.db.QueryRow(`SELECT u.id,u.name,u.display,u.bio,u.avatar FROM sessions s JOIN users u ON u.id=s.user_id
-		WHERE s.token_hash=? AND s.expires>?`, hashToken(tok), time.Now().Unix()).Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar)
+		WHERE s.token_hash=? AND s.expires>? AND u.name=?`, hashToken(tok), time.Now().Unix(), s.name).Scan(&u.ID, &u.Name, &u.Display, &u.Bio, &u.Avatar)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	return u, err
 }
 
-func (s *Store) DeleteSession(tok string) error {
+func (s *Space) DeleteSession(tok string) error {
 	_, err := s.db.Exec(`DELETE FROM sessions WHERE token_hash=?`, hashToken(tok))
 	return err
 }

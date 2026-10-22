@@ -21,30 +21,32 @@ func (s *Server) setLike(r *http.Request, u *store.User, target, feedHint string
 	if target == "" {
 		return nil, "target must be an http(s) URL"
 	}
-	was := s.iLike(u.ID, target)
-	x, err := s.st.SetLikeInfo(u.ID, target, feedHint, info)
+	sp := reqOf(r).sp
+	was := s.iLike(sp, target)
+	x, err := sp.SetLikeInfo(u.ID, target, feedHint, info)
 	if err != nil {
 		return nil, err.Error()
 	}
 	if !was {
-		s.nudgeTally(u.ID, target, 1)
+		s.nudgeTally(sp, target, 1)
 	}
-	s.notify(s.likeURL(r, x.ID), target)
+	s.notify(sp, s.likeURL(r, x.ID), target)
 	return x, ""
 }
 
 func (s *Server) removeLike(r *http.Request, u *store.User, target string) error {
-	x, err := s.st.RemoveLike(u.ID, httpURL(target))
+	sp := reqOf(r).sp
+	x, err := sp.RemoveLike(u.ID, httpURL(target))
 	if err != nil {
 		return err
 	}
-	s.nudgeTally(u.ID, x.Target, -1)
-	s.notify(s.likeURL(r, x.ID), x.Target)
+	s.nudgeTally(sp, x.Target, -1)
+	s.notify(sp, s.likeURL(r, x.ID), x.Target)
 	return nil
 }
 
 func (s *Server) likesFeed(w http.ResponseWriter, r *http.Request, q *req) {
-	xs, err := s.st.ActiveLikes(q.host.ID, 500)
+	xs, err := q.sp.ActiveLikes(q.host.ID, 500)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -85,7 +87,7 @@ func (s *Server) likePage(w http.ResponseWriter, r *http.Request, q *req) {
 		http.NotFound(w, r)
 		return
 	}
-	x, err := s.st.Like(q.host.ID, id)
+	x, err := q.sp.Like(q.host.ID, id)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -220,11 +222,11 @@ func (s *Server) apiLikesReceived(w http.ResponseWriter, r *http.Request, q *req
 		http.Error(w, "post_id required", http.StatusBadRequest)
 		return
 	}
-	if _, err := s.st.Post(q.host.ID, id); err != nil {
+	if _, err := q.sp.Post(q.host.ID, id); err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	xs, err := s.st.LikesInFor(id)
+	xs, err := q.sp.LikesInFor(id)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

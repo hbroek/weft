@@ -56,7 +56,7 @@ func (s *Server) profile(w http.ResponseWriter, r *http.Request, q *req) {
 		s.renderProfile(w, r, q, http.StatusBadRequest, msg, display, bio, avatar)
 		return
 	}
-	if err := s.st.UpdateProfile(q.host.ID, display, bio, avatar); err != nil {
+	if err := q.sp.UpdateProfile(q.host.ID, display, bio, avatar); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}

@@ -99,7 +99,7 @@ func replyCycle(t *testing.T, alice, bob *instance) (ua, ub string) {
 func loginCookie(t *testing.T, i *instance) string {
 	t.Helper()
 	name := strings.SplitN(i.host, ".", 2)[0]
-	if err := i.s.st.SetPassword(name, "correct horse"); err != nil {
+	if err := i.s.space(name).SetPassword("correct horse"); err != nil {
 		t.Fatal(err)
 	}
 	r := httptest.NewRequest("POST", i.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))

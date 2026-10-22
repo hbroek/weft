@@ -42,7 +42,7 @@ type node struct {
 }
 
 type importer struct {
-	st                   *store.Store
+	st                   *store.Instance
 	scheme, domain, port string
 	users                map[string]*user // by HN name
 	taken                map[string]bool  // weft names in use
@@ -55,9 +55,11 @@ type importer struct {
 type user struct {
 	id            int64
 	name, display string
+	sp            *store.Space
 }
 
 type subKey struct {
+	sp   *store.Space // the space of the post that caches the subtree
 	post int64
 	via  string
 }
@@ -66,6 +68,7 @@ type subKey struct {
 type posted struct {
 	id        int64
 	url, feed string
+	sp        *store.Space
 }
 
 var client = &http.Client{Timeout: 30 * time.Second}
@@ -134,7 +137,7 @@ func main() {
 		if len(rows) > 50 {
 			rows = rows[:50]
 		}
-		if _, err := st.ReplaceSubreplies(k.post, k.via, rows); err != nil {
+		if _, err := k.sp.ReplaceSubreplies(k.post, k.via, rows); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -143,10 +146,14 @@ func main() {
 	if _, err := st.AddUser(*viewer, "Viewer", "Browses the copy of Hacker News."); err != nil {
 		log.Fatal(err)
 	}
-	if err := st.SetPassword(*viewer, *password); err != nil {
+	vsp, _, err := st.Space(*viewer)
+	if err != nil {
 		log.Fatal(err)
 	}
-	v, _ := st.UserByName(*viewer)
+	if err := vsp.SetPassword(*password); err != nil {
+		log.Fatal(err)
+	}
+	v, _ := vsp.User()
 	var feeds []string
 	for f := range im.storyFeeds {
 		feeds = append(feeds, f)
@@ -156,7 +163,7 @@ func main() {
 		if err := st.SaveFeed(f, &feed.Parsed{Title: im.storyTitles[f], Link: strings.TrimSuffix(f, "feed.xml"), Items: im.storyFeeds[f]}); err != nil {
 			log.Fatal(err)
 		}
-		if err := st.Follow(v.ID, f); err != nil {
+		if err := vsp.Follow(v.ID, f); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -201,11 +208,15 @@ func (im *importer) user(hn string) *user {
 	if _, err := im.st.AddUser(name, hn, "Hacker News user "+hn+"."); err != nil {
 		log.Fatalf("user %q: %v", name, err)
 	}
-	row, err := im.st.UserByName(name)
+	sp, _, err := im.st.Space(name)
 	if err != nil {
 		log.Fatal(err)
 	}
-	u := &user{id: row.ID, name: name, display: hn}
+	row, err := sp.User()
+	if err != nil {
+		log.Fatal(err)
+	}
+	u := &user{id: row.ID, name: name, display: hn, sp: sp}
 	im.users[hn] = u
 	im.stats.users++
 	return u
@@ -224,12 +235,12 @@ func (im *importer) write(u *user, n *node, title, markdown string, parent, root
 	if parent != nil {
 		np.InReplyTo, np.InReplyToFeed, np.Root, np.RootFeed = parent.url, parent.feed, root.url, root.feed
 	}
-	p, err := im.st.AddPost(np)
+	p, err := u.sp.AddPost(np)
 	if err != nil {
 		log.Fatalf("post %d: %v", n.ID, err)
 	}
 	im.stats.posts++
-	return &posted{id: p.ID, url: im.host(u) + "/posts/" + p.Slug, feed: im.host(u) + "/feed.xml"}
+	return &posted{id: p.ID, url: im.host(u) + "/posts/" + p.Slug, feed: im.host(u) + "/feed.xml", sp: u.sp}
 }
 
 func (im *importer) story(n *node) *posted {
@@ -253,7 +264,7 @@ func (im *importer) story(n *node) *posted {
 		votes = *n.Points
 	}
 	for i := 0; i < votes; i++ {
-		err := im.st.UpsertLikeIn(store.LikeIn{PostID: root.id, Source: fmt.Sprintf("hn-vote:%d:%d", n.ID, i), Author: "Hacker News voter",
+		err := u.sp.UpsertLikeIn(store.LikeIn{PostID: root.id, Source: fmt.Sprintf("hn-vote:%d:%d", n.ID, i), Author: "Hacker News voter",
 			Trusted: true})
 		if err != nil {
 			log.Fatal(err)
@@ -292,14 +303,14 @@ func (im *importer) comment(n *node, parent, grand, root *posted, depth int) {
 	me := im.write(u, n, "", markdown, parent, root)
 	plain := feed.StripHTML(text)
 	published := time.Unix(n.CreatedAt, 0)
-	_, err := im.st.UpsertReply(store.Reply{PostID: parent.id, Source: me.url, FeedURL: me.feed, Author: u.display, Text: plain, Markdown: markdown,
+	_, err := parent.sp.UpsertReply(store.Reply{PostID: parent.id, Source: me.url, FeedURL: me.feed, Author: u.display, Text: plain, Markdown: markdown,
 		Status: store.StatusApproved, Root: root.url, RepliesHref: me.url + "/replies.xml", Published: published})
 	if err != nil {
 		log.Fatal(err)
 	}
 	im.stats.replies++
 	if grand != nil {
-		k := subKey{grand.id, parent.url}
+		k := subKey{grand.sp, grand.id, parent.url}
 		im.subs[k] = append(im.subs[k], store.Subreply{PostID: grand.id, Via: parent.url, Parent: parent.url, Source: me.url, FeedURL: me.feed,
 			Author: u.display, Text: excerpt(plain), Published: published})
 	}

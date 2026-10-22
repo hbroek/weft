@@ -22,8 +22,9 @@ func TestCloseLeavesOneFile(t *testing.T) {
 	if _, err := st.AddUser("alice", "Alice", ""); err != nil {
 		t.Fatal(err)
 	}
+	sp := st.SpaceForTests(t, "alice")
 	for i := 0; i < 50; i++ {
-		if _, err := st.AddPost(NewPost{UserID: 1, Markdown: fmt.Sprintf("post %d", i), HTML: "<p>x</p>"}); err != nil {
+		if _, err := sp.AddPost(NewPost{UserID: 1, Markdown: fmt.Sprintf("post %d", i), HTML: "<p>x</p>"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -46,7 +47,7 @@ func TestCloseLeavesOneFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer again.Close()
-	if ps, err := again.RecentPosts(1, 100); err != nil || len(ps) != 50 {
+	if ps, err := again.SpaceForTests(t, "alice").RecentPosts(1, 100); err != nil || len(ps) != 50 {
 		t.Errorf("after reopening: %d posts, %v", len(ps), err)
 	}
 }

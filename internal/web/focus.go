@@ -18,8 +18,9 @@ import (
 // only when nothing local knows it. hint is that feed's URL, if the caller has it.
 func (b *threadBuilder) nodeFor(u, hint string) *tnode {
 	host := b.q.host.ID
-	if id, ok := b.s.localPostID(host, b.base, u); ok {
-		if p, err := b.s.st.Post(host, id); err == nil {
+	sp := b.q.sp
+	if id, ok := b.s.localPostID(sp, b.base, u); ok {
+		if p, err := b.q.sp.Post(host, id); err == nil {
 			if p.Deleted {
 				return &tnode{URL: u, Tombstone: true, Author: u, repliesCount: -1}
 			}
@@ -28,12 +29,12 @@ func (b *threadBuilder) nodeFor(u, hint string) *tnode {
 			return n
 		}
 	}
-	if it, err := b.s.st.ItemByTarget(host, u); err == nil {
+	if it, err := b.q.sp.ItemByTarget(host, u); err == nil {
 		n := b.itemNode(*it)
 		n.parentFeed = it.InReplyToFeed
 		return n
 	}
-	if rs, err := b.s.st.RepliesForUser(host, ""); err == nil {
+	if rs, err := b.q.sp.RepliesForUser(host, ""); err == nil {
 		for _, rp := range rs {
 			if rp.Source == u {
 				n := b.receivedNode(rp, b.s.postURL(b.r, rp.PostID))
@@ -54,7 +55,7 @@ func (b *threadBuilder) nodeFor(u, hint string) *tnode {
 		}
 	}
 	if hint == "" {
-		if hint = b.s.discoverFeed(b.ctx, host, u); hint != "" {
+		if hint = b.s.discoverFeed(b.ctx, sp, u); hint != "" {
 			if n := b.fromFeed(u, hint, b.fetchFeed(hint)); n != nil {
 				return n
 			}
@@ -122,7 +123,7 @@ func (b *threadBuilder) feedChild(it feed.ParsedItem) *tnode {
 // now completely known; n itself is always a key when the read worked. nil means it did not.
 func (b *threadBuilder) childIndex(n *tnode) map[string][]*tnode {
 	idx := map[string][]*tnode{n.URL: nil}
-	if id, ok := b.s.localPostID(b.q.host.ID, b.base, n.URL); ok {
+	if id, ok := b.s.localPostID(b.q.sp, b.base, n.URL); ok {
 		for _, c := range b.localChildren(id) {
 			idx[c.parent] = append(idx[c.parent], c)
 		}
