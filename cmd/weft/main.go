@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -21,7 +22,7 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0]
+  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081]
   weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW] USERNAME
   weft user set [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] USERNAME   (changes only the fields given; -avatar "" removes it)
   weft user passwd [-data weft] -password PW USERNAME
@@ -33,6 +34,7 @@ func usage() {
   weft split    -db OLD.db -data DIR     (convert a single-file database into the per-user layout in DIR; OLD.db is not changed)
   weft export   [-data weft] [-domain localhost] [-o FILE] USERNAME   (writes FILE, default USERNAME.weft.zip: the account, without sessions or API token)
   weft import   [-data weft] FILE        (creates the user in FILE; prints a new API token; refuses a name that is taken)
+  weft move     [-data weft] [-cancel] USERNAME NEWADDRESS   (USERNAME has moved to the server at NEWADDRESS, e.g. https://alice.example.org: every request to the old address, the feed too, gets a permanent redirect there, and the file goes to trash/ for 30 days; export and import it on the new server first; -cancel undoes a move while the file is still in the trash)
   weft backup   [-data weft] -to DIR [-full]   (consistent snapshots of instance.db and each changed user; safe while the server runs; then rsync DIR)
   weft restore  -from DIR -data DIR2     (build a data folder from a backup; DIR2 must not exist or be empty)`)
 	os.Exit(2)
@@ -52,10 +54,39 @@ func main() {
 		dev := fs.Bool("dev", false, "allow fetching feeds from loopback/private addresses (local development only)")
 		verbose := fs.Bool("v", false, "log every API call")
 		poll := fs.Duration("poll", 5*time.Minute, "how often to refresh followed feeds (0 turns the background refresh off)")
+		cname := fs.String("cname-target", "", "host name users point a custom domain's CNAME record at (shown on the profile page)")
+		internal := fs.String("internal", "", "private address for the reverse proxy's \"may I get a certificate for this host?\" question, e.g. 127.0.0.1:8081 (never a public address)")
 		fs.Parse(os.Args[2:])
-		if err := serve(*addr, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose}, *poll); err != nil {
+		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname}, *poll); err != nil {
 			log.Fatal(err)
 		}
+	case "move":
+		fs := flag.NewFlagSet("move", flag.ExitOnError)
+		db := fs.String("data", "weft", "data folder: instance.db and users/")
+		cancel := fs.Bool("cancel", false, "undo a move (possible while the file is still in the trash)")
+		fs.Parse(os.Args[2:])
+		want := 2
+		if *cancel {
+			want = 1
+		}
+		if fs.NArg() != want {
+			usage()
+		}
+		st, err := store.Open(*db)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer st.Close()
+		if *cancel {
+			if err := st.Unmove(fs.Arg(0)); err != nil {
+				log.Fatal(err)
+			}
+			return
+		}
+		if err := st.MarkMoved(fs.Arg(0), fs.Arg(1)); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%s now redirects to %s; a running server puts the file in %s within a minute\n", fs.Arg(0), fs.Arg(1), filepath.Join(*db, "trash"))
 	case "split":
 		fs := flag.NewFlagSet("split", flag.ExitOnError)
 		old := fs.String("db", "", "single-file database to read (never modified)")
@@ -207,12 +238,19 @@ func main() {
 				log.Fatal("avatar must be a full http:// or https:// address")
 			}
 		}
-		// space opens the named user's data, or exits
+		// space opens the named user's data, or exits; the data is released when the command ends
+		var releases []func()
+		defer func() {
+			for _, r := range releases {
+				r()
+			}
+		}()
 		space := func(name string) (*store.Space, *store.User) {
-			sp, _, err := st.Space(name)
+			sp, release, err := st.Space(name)
 			if err != nil {
 				log.Fatalf("no user %q", name)
 			}
+			releases = append(releases, release)
 			u, err := sp.User()
 			if err != nil {
 				log.Fatalf("no user %q", name)
@@ -316,7 +354,7 @@ func main() {
 // down in order: stop taking requests and let those in progress finish, stop the background refresh
 // and wait for it, and only then close the database, which writes out the write-ahead log and removes
 // the -wal and -shm files, in the shared database and in every user's.
-func serve(addr, dataDir string, cfg web.Config, poll time.Duration) error {
+func serve(addr, internal, dataDir string, cfg web.Config, poll time.Duration) error {
 	st, err := store.Open(dataDir)
 	if err != nil {
 		return err
@@ -330,8 +368,14 @@ func serve(addr, dataDir string, cfg web.Config, poll time.Duration) error {
 	pollDone := srv.StartPoller(bg, poll)
 
 	hs := &http.Server{Addr: addr, Handler: srv}
-	listenErr := make(chan error, 1)
+	listenErr := make(chan error, 2)
 	go func() { listenErr <- hs.ListenAndServe() }()
+	var is *http.Server
+	if internal != "" {
+		is = &http.Server{Addr: internal, Handler: srv.Internal()}
+		go func() { listenErr <- is.ListenAndServe() }()
+		log.Printf("answering the proxy's certificate questions on %s", internal)
+	}
 	log.Printf("listening on %s, users at <name>.%s (dev=%v)", addr, cfg.BaseDomain, cfg.AllowPrivate)
 
 	var result error
@@ -348,6 +392,9 @@ func serve(addr, dataDir string, cfg web.Config, poll time.Duration) error {
 	if err := hs.Shutdown(ctx); err != nil {
 		log.Printf("requests did not finish in time: %v", err)
 		hs.Close()
+	}
+	if is != nil {
+		is.Close()
 	}
 	cancelBackground()
 	select {

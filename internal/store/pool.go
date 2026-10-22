@@ -135,6 +135,25 @@ func (p *pool) sweep() {
 	}
 }
 
+// forget closes the named database if nobody is using it and reports whether it is no longer open. A
+// caller that is about to move the file away calls it first, and tries again later if it says false.
+func (p *pool) forget(name string) bool {
+	p.mu.Lock()
+	e := p.entries[name]
+	if e == nil {
+		p.mu.Unlock()
+		return true
+	}
+	if e.refs > 0 {
+		p.mu.Unlock()
+		return false
+	}
+	delete(p.entries, name)
+	p.mu.Unlock()
+	closeAll([]*entry{e})
+	return true
+}
+
 // size is how many databases are open.
 func (p *pool) size() int {
 	p.mu.Lock()

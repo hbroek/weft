@@ -38,6 +38,7 @@ type Instance struct {
 	db   *sql.DB
 	dir  string
 	pool *pool
+	dirs dirCache
 
 	closing  sync.Once
 	closeErr error
@@ -212,9 +213,9 @@ func (in *Instance) AddUser(name, display, bio string) (token string, err error)
 	return token, nil
 }
 
-// UserNames lists all user names, oldest first.
+// UserNames lists the names of the users who are served here, oldest first.
 func (in *Instance) UserNames() ([]string, error) {
-	rows, err := in.db.Query(`SELECT name FROM users ORDER BY created, name`)
+	rows, err := in.db.Query(`SELECT name FROM users WHERE status!='moved' ORDER BY created, name`)
 	if err != nil {
 		return nil, err
 	}

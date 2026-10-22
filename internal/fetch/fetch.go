@@ -77,6 +77,12 @@ func New(allowPrivate bool) *Client {
 			if len(via) >= 5 {
 				return errors.New("too many redirects")
 			}
+			if t, ok := r.Context().Value(trailKey{}).(*trail); ok {
+				t.hops++
+				if r.Response == nil || (r.Response.StatusCode != http.StatusMovedPermanently && r.Response.StatusCode != http.StatusPermanentRedirect) {
+					t.permanent = false
+				}
+			}
 			return nil
 		},
 	}}
@@ -93,7 +99,18 @@ type Result struct {
 	Body        []byte
 	ContentType string
 	URL         string // final URL after redirects
+	// Moved is set when the address was redirected, and every redirect on the way was permanent
+	// (301 or 308): the document now lives at URL, and a subscription should say so.
+	Moved bool
 }
+
+// trail records the redirects of one request.
+type trail struct {
+	hops      int
+	permanent bool
+}
+
+type trailKey struct{}
 
 const defaultAccept = "application/rss+xml, application/atom+xml;q=0.95, application/xml;q=0.9, text/html;q=0.8, */*;q=0.5"
 
@@ -107,7 +124,8 @@ func (c *Client) GetAs(ctx context.Context, rawurl, accept string) (*Result, err
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("not a http(s) URL: %q", rawurl)
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	tr := &trail{permanent: true}
+	req, err := http.NewRequestWithContext(context.WithValue(ctx, trailKey{}, tr), "GET", u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +146,8 @@ func (c *Client) GetAs(ctx context.Context, rawurl, accept string) (*Result, err
 	if len(body) > maxBody {
 		return nil, errors.New("response too large")
 	}
-	return &Result{Header: resp.Header, Body: body, ContentType: resp.Header.Get("Content-Type"), URL: resp.Request.URL.String()}, nil
+	return &Result{Header: resp.Header, Body: body, ContentType: resp.Header.Get("Content-Type"), URL: resp.Request.URL.String(),
+		Moved: tr.hops > 0 && tr.permanent}, nil
 }
 
 var (

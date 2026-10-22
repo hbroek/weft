@@ -8,6 +8,7 @@ import (
 	"html"
 	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -420,6 +421,11 @@ func (s *Server) Refresh(ctx context.Context, feedURL string) {
 	if err == nil {
 		var p *feed.Parsed
 		if p, err = feed.Parse(res.Body, time.Now()); err == nil {
+			if u := httpURL(res.URL); res.Moved && u != "" && u != feedURL {
+				// permanently redirected, and what it redirects to is a feed: it moved
+				s.followMove(ctx, feedURL, u)
+				return
+			}
 			if !s.st.HasItems(feedURL) {
 				s.readArchive(ctx, feedURL, p)
 			}
@@ -432,6 +438,41 @@ func (s *Server) Refresh(ctx context.Context, feedURL string) {
 	if err != nil {
 		s.st.SaveFeedError(feedURL, err.Error())
 	}
+}
+
+type hopsKey struct{}
+
+// maxMoveHops bounds how many moves one refresh follows.
+const maxMoveHops = 3
+
+// followMove acts on a feed that was permanently redirected (301 or 308) to another feed, which is how
+// a feed says it has moved: every user here who follows oldURL follows newURL instead, and the old
+// feed's cached posts are dropped, so each post is seen once. The old address is trusted to say where
+// its own feed went; that it leads to a feed was already checked, since the redirect was only
+// acted on after the feed there parsed. Feeds that send readers round in a circle stop after a few hops.
+func (s *Server) followMove(ctx context.Context, oldURL, newURL string) {
+	hops, _ := ctx.Value(hopsKey{}).(int)
+	if hops >= maxMoveHops {
+		return
+	}
+	ctx = context.WithValue(ctx, hopsKey{}, hops+1)
+	names, err := s.st.FollowersOf(oldURL)
+	if err != nil {
+		return
+	}
+	for _, n := range names {
+		sp, release, err := s.st.Space(n)
+		if err != nil {
+			continue
+		}
+		if err := sp.ReplaceFollow(sp.UID(), oldURL, newURL); err != nil {
+			log.Printf("moving %s from %s to %s: %v", n, oldURL, newURL, err)
+		}
+		release()
+	}
+	s.Refresh(ctx, newURL)
+	s.st.DropFeed(oldURL)
+	log.Printf("feed %s moved to %s: %d followers moved with it", oldURL, newURL, len(names))
 }
 
 // refreshLikes caches the likes of the person who publishes feedURL, from the likes feed their main feed
@@ -532,12 +573,24 @@ func (s *Server) StartPoller(ctx context.Context, every time.Duration) <-chan st
 				s.RefreshAll(ctx)
 			case <-queues.C:
 				s.ProcessQueues(ctx)
+				s.endMoves()
 			case <-s.wake:
 				s.ProcessQueues(ctx)
 			}
 		}
 	}()
 	return done
+}
+
+// endMoves puts the files of users who moved away into the trash, and empties the trash of old ones.
+func (s *Server) endMoves() {
+	now := time.Now()
+	if n, err := s.st.TrashMoved(now); err != nil {
+		log.Printf("trashing moved accounts: %v", err)
+	} else if n > 0 {
+		log.Printf("%d moved account(s): their files wait in the trash", n)
+	}
+	s.st.PurgeTrash(now)
 }
 
 // opml publishes the follow list (the public follow graph).

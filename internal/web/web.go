@@ -29,6 +29,13 @@ type Config struct {
 	AllowPrivate bool
 	// Verbose logs every API call (and inbound Webmention) with its status and timing.
 	Verbose bool
+	// CNAMETarget is the host name users point a custom domain's CNAME record at; shown on the profile
+	// page. Empty when the instance has no single name for it.
+	CNAMETarget string
+	// LookupTXT and LookupCNAME read DNS when a custom domain is verified. Nil means the system resolver;
+	// tests replace them.
+	LookupTXT   func(ctx context.Context, name string) ([]string, error)
+	LookupCNAME func(ctx context.Context, name string) (string, error)
 }
 
 type Server struct {
@@ -89,6 +96,9 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("GET /profile", s.user(s.profileForm))
 	s.mux.HandleFunc("POST /profile", s.user(s.profile))
 	s.mux.HandleFunc("POST /export", s.user(s.export))
+	s.mux.HandleFunc("POST /domain", s.user(s.domainSet))
+	s.mux.HandleFunc("POST /domain/check", s.user(s.domainCheck))
+	s.mux.HandleFunc("POST /domain/remove", s.user(s.domainRemove))
 	s.mux.HandleFunc("GET /following", s.user(s.followingPage))
 	s.mux.HandleFunc("POST /following", s.user(s.followForm))
 	s.mux.HandleFunc("POST /following/remove", s.user(s.unfollowForm))
@@ -145,17 +155,69 @@ func (s *Server) logged(w http.ResponseWriter, r *http.Request) {
 	log.Print(line)
 }
 
-// hostUser extracts the user name from the Host header, or "" if it is not a user host.
-func (s *Server) hostUser(host string) string {
+// splitHost separates a Host header into the lowercase host name and the ":port" suffix ("" if none).
+func splitHost(host string) (name, port string) {
 	if i := strings.LastIndex(host, ":"); i >= 0 && !strings.Contains(host[i:], "]") {
-		host = host[:i]
+		return strings.ToLower(host[:i]), host[i:]
 	}
-	host = strings.ToLower(host)
-	suffix := "." + s.cfg.BaseDomain
-	if strings.HasSuffix(host, suffix) {
-		return strings.TrimSuffix(host, suffix)
+	return strings.ToLower(host), ""
+}
+
+// hostUser extracts the user name from the Host header, or "" if it is not a user host: either
+// name.<BaseDomain>, or the verified custom domain of a user.
+func (s *Server) hostUser(host string) string {
+	h, _ := splitHost(host)
+	if suffix := "." + s.cfg.BaseDomain; strings.HasSuffix(h, suffix) {
+		return strings.TrimSuffix(h, suffix)
+	}
+	if name, ok := s.st.HostUser(h); ok {
+		return name
 	}
 	return ""
+}
+
+// originOf is the origin a user is served at: their verified custom domain, or name.<BaseDomain>. The port
+// of the request is kept, which only matters where the server is reached on one (development).
+func (s *Server) originOf(name string, r *http.Request) string {
+	_, port := splitHost(r.Host)
+	if d := s.st.Dir(name).Domain; d != "" {
+		return s.cfg.Scheme + "://" + d + port
+	}
+	return s.cfg.Scheme + "://" + name + "." + s.cfg.BaseDomain + port
+}
+
+// redirectCache is how long a browser may keep a redirect to a user's current address before it asks
+// again. The status says "permanent", which browsers otherwise keep for ever; an hour lets a mistake,
+// or a removed custom domain, be undone.
+const redirectCache = "max-age=3600"
+
+// moveRedirect sends a request to the same place at the origin to, with a permanent redirect: 301 for
+// GET and HEAD, which is the one every feed reader and old browser understands as "update your
+// address", and 308 for other methods, the only permanent redirect that keeps the method and the body.
+func moveRedirect(w http.ResponseWriter, r *http.Request, to string) {
+	code := http.StatusMovedPermanently
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		code = http.StatusPermanentRedirect
+	}
+	w.Header().Set("Cache-Control", redirectCache)
+	http.Redirect(w, r, to+r.URL.RequestURI(), code)
+}
+
+// route sends a request that is not for the user's current address — the old address of a user who
+// moved to another server, or the instance's address of one who has a verified custom domain — to
+// the current one, and reports false. Everything is redirected, the feed too: a feed reader that
+// sees a permanent redirect knows the feed moved.
+func (s *Server) route(w http.ResponseWriter, r *http.Request, name string) bool {
+	e := s.st.Dir(name)
+	if e.Status == store.StatusMoved {
+		moveRedirect(w, r, e.MovedTo)
+		return false
+	}
+	if h, port := splitHost(r.Host); e.Domain != "" && h != e.Domain {
+		moveRedirect(w, r, s.cfg.Scheme+"://"+e.Domain+port)
+		return false
+	}
+	return true
 }
 
 func (s *Server) base(r *http.Request) string { return s.cfg.Scheme + "://" + r.Host }
@@ -186,6 +248,9 @@ func (s *Server) user(h func(http.ResponseWriter, *http.Request, *req)) http.Han
 		name := s.hostUser(r.Host)
 		if name == "" {
 			http.NotFound(w, r)
+			return
+		}
+		if !s.route(w, r, name) {
 			return
 		}
 		sp, release, err := s.st.Space(name)

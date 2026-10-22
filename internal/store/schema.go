@@ -173,8 +173,7 @@ CREATE TABLE users (
   name TEXT PRIMARY KEY,
   status TEXT NOT NULL DEFAULT 'active',
   created INTEGER NOT NULL,
-  moved_to TEXT NOT NULL DEFAULT '',
-  moved_until INTEGER NOT NULL DEFAULT 0
+  moved_to TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE local_follows (
   feed_url TEXT NOT NULL,
@@ -195,3 +194,20 @@ INSERT INTO meta(key,value) VALUES ('shard_depth','2');
 
 func spaceV1(tx *sql.Tx) error    { _, err := tx.Exec(spaceSchema); return err }
 func instanceV1(tx *sql.Tx) error { _, err := tx.Exec(instanceSchema); return err }
+
+// instanceV2 adds custom domains.
+func instanceV2(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+-- anyone may claim a domain; the claim becomes theirs when their own token is found in the domain's DNS,
+-- and only one claim per domain can get that far
+CREATE TABLE domains (
+  domain TEXT NOT NULL,
+  name TEXT NOT NULL UNIQUE,
+  token TEXT NOT NULL,
+  verified INTEGER NOT NULL DEFAULT 0,
+  created INTEGER NOT NULL,
+  PRIMARY KEY (domain, name)
+);
+CREATE UNIQUE INDEX domains_verified ON domains(domain) WHERE verified=1;`)
+	return err
+}

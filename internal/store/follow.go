@@ -30,6 +30,18 @@ func (s *Space) Unfollow(userID int64, feedURL string) error {
 	return s.in.removeLocalFollow(s.name, feedURL)
 }
 
+// ReplaceFollow makes the user follow newURL where they followed oldURL, keeping when they started.
+func (s *Space) ReplaceFollow(userID int64, oldURL, newURL string) error {
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO follows(user_id,feed_url,added) SELECT user_id,?,added FROM follows WHERE user_id=? AND feed_url=?`,
+		newURL, userID, oldURL); err != nil {
+		return err
+	}
+	if err := s.Unfollow(userID, oldURL); err != nil {
+		return err
+	}
+	return s.in.addLocalFollow(s.name, newURL)
+}
+
 func (s *Space) IsFollowing(userID int64, feedURL string) (bool, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM follows WHERE user_id=? AND feed_url=?`, userID, feedURL).Scan(&n)
@@ -113,6 +125,37 @@ func (s *Instance) FollowedFeedURLs() ([]string, error) {
 		out = append(out, u)
 	}
 	return out, rows.Err()
+}
+
+// FollowersOf names the users of this instance who follow the feed.
+func (s *Instance) FollowersOf(feedURL string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT name FROM local_follows WHERE feed_url=? ORDER BY name`, feedURL)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+// DropFeed forgets a feed nobody follows any more: its cached items, likes and entry.
+func (s *Instance) DropFeed(feedURL string) error {
+	if s.Followed(feedURL) {
+		return nil
+	}
+	for _, q := range []string{`DELETE FROM items WHERE feed_url=?`, `DELETE FROM feed_likes WHERE feed_url=?`, `DELETE FROM feeds WHERE url=?`} {
+		if _, err := s.db.Exec(q, feedURL); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // HasItems reports whether any item of the feed is cached, i.e. whether it has been read before.

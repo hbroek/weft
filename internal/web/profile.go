@@ -36,6 +36,7 @@ func (s *Server) renderProfile(w http.ResponseWriter, r *http.Request, q *req, s
 	d := s.data(r, q, "Profile")
 	d.Error = msg
 	d.Profile.Display, d.Profile.Bio, d.Profile.Avatar = display, bio, avatar
+	d.Domain = s.domainView(r, q)
 	s.show(w, "profile", status, d)
 }
 

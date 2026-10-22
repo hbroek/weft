@@ -154,3 +154,27 @@ RSS 2.0 (what Weft publishes, and most blogs), RSS 1.0 (`rdf:RDF`, as Slashdot p
 **Data folder.** The server keeps its data in a folder (`-data DIR`, `weft` by default): `instance.db` holds the feeds everyone follows and the list of users, and each user has a file of their own, `users/ab/alice.db`, with their posts, replies, likes, follows and login. A database from before this layout (a single `weft.db`) is converted once with `weft split -db weft.db -data weft`; the old file is only read. See [docs/per-user-databases.md](docs/per-user-databases.md).
 
 **Your data, your move.** The profile page has *Download my data*: one zip with your posts, replies, likes, follows and login, without sessions or API token. `weft export USERNAME` does the same from the command line, and `weft import FILE` brings an export onto a server (it refuses a name that is taken, and prints a new API token). For backups, `weft backup -to DIR` writes consistent snapshots of the shared database and of each user who changed since the last run, while the server runs; copy `DIR` anywhere with rsync. `weft restore -from DIR -data NEW` builds a data folder from it.
+
+**Your own domain.** On the profile page, *Your address* lets you add a domain such as `weft.example.com`. You prove it is yours with a TXT record (`_weft.weft.example.com`, value `weft-verify=…`; a CNAME cannot prove it, because every user's CNAME names the same target), and point it at the server with a CNAME. Once verified the domain is your address: the old `name.<domain>` address, the feed included, redirects to it with a permanent redirect (301, or 308 for a POST), and readers that follow you switch over by themselves, because a feed that is permanently redirected has moved. Use a subdomain: a bare domain cannot be a CNAME. You sign in again at the new address.
+
+Run the server behind [Caddy](https://caddyserver.com), which gets a certificate for each host the first time it is asked for, but only if Weft says the host is real:
+
+```
+{
+    on_demand_tls {
+        ask http://127.0.0.1:8081/domain-ok
+    }
+}
+https:// {
+    tls { on_demand }
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+```
+weft serve -addr 127.0.0.1:8080 -internal 127.0.0.1:8081 -domain example.org -scheme https -cname-target custom.example.org
+```
+
+`-internal` is a second, private listener that answers only that one question (200 for `name.example.org` of a user and for verified domains, 404 for anything else); keep it on a loopback address. `-cname-target` is the name shown to users as the CNAME target; point it directly at the server (not through a proxy that cannot issue certificates for other domains, such as Cloudflare's orange cloud).
+
+**Moving to another server.** Export the account, import it on the new server, then on the old one run `weft move -data DIR USERNAME https://new.example.org`. From then on every request to the old address, the feed included, gets a permanent redirect to the same place on the new one (a 301, or a 308 for a POST), for good: the name stays reserved. A running server puts the account's file in `DIR/trash/` within a minute and deletes it after 30 days; until then `weft move -cancel USERNAME` brings everything back.

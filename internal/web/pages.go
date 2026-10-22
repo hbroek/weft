@@ -60,6 +60,17 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <h3>Your data</h3>
 <p><small>Everything you have here in one file: posts, replies, likes, who you follow and your login. It holds no sessions and no API token. Whoever runs a Weft server can import it to bring you there.</small></p>
 <form method="post" action="/export"><button>Download my data</button></form>
+{{with .Domain}}<h3>Your address</h3>
+<p>Your site is at <strong>{{.Address}}</strong>.</p>
+{{if .Error}}<p class="err">{{.Error}}</p>{{end}}{{if .Notice}}<p>{{.Notice}}</p>{{end}}
+{{if .Domain}}<p>Your own domain: <strong>{{.Domain}}</strong> {{if .Verified}}(verified; your old address redirects to it){{else}}(not verified yet){{end}}</p>
+{{if not .Verified}}<p><small>To show that the domain is yours, add this DNS record. It can take a while to appear.</small></p>
+<p><code>{{.TXTName}}</code> TXT <code>{{.TXTValue}}</code></p>
+{{if .Target}}<p><small>To have visitors reach your site, point the domain at us too: <code>{{.Domain}}</code> CNAME <code>{{.Target}}</code> {{if .Points}}(found){{else}}(not found yet){{end}}. Use a subdomain such as <code>weft.example.com</code>: a bare domain cannot be a CNAME.</small></p>{{end}}
+<form method="post" action="/domain/check"><button>Check now</button></form>{{end}}
+<form method="post" action="/domain/remove"><button>Remove this domain</button></form>
+{{else}}<form method="post" action="/domain"><label>Use your own domain <input type="text" name="domain" placeholder="weft.example.com" inputmode="url"></label> <button>Add</button></form>
+<p><small>Anyone who already follows you is moved to the new address by their reader. Once the domain works, you sign in again there.</small></p>{{end}}{{end}}
 {{template "foot"}}{{end}}
 {{define "ic-reply"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v3"/></svg>{{end}}
 {{define "ic-thread"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{{end}}
@@ -228,6 +239,7 @@ type pageData struct {
 	Modes                                        []modeLink // Bookmark, Reply and Like links for the page the bookmarklet sent
 	Avatar, Initial                              string     // the site owner's avatar address and fallback letter, for the header
 	Profile                                      struct{ Display, Bio, Avatar string }
+	Domain                                       *domainView
 	Likers                                       []likerRow
 	LikeTarget, LikeTitle, LikeNote              string
 	ClearKeyword                                 string

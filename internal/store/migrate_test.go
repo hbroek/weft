@@ -136,7 +136,7 @@ func TestNewerFilesRefused(t *testing.T) {
 		t.Errorf("instance.db version after refusal = %d, want 99 (untouched)", v)
 	}
 	db := openRaw(t, filepath.Join(dir, "instance.db"))
-	db.Exec(`PRAGMA user_version = 1`)
+	db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, InstanceSchemaVersion))
 	db.Close()
 	st, err = Open(dir)
 	if err != nil {

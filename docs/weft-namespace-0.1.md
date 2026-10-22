@@ -48,7 +48,6 @@ The author's profile uses standard RSS 2.0: `<title>` is the author or publicati
 | `<weft:webmention>` | Required | URL of the author's Webmention endpoint, where replies and likes are sent |
 | `<weft:following>` | Recommended | URL of an OPML file listing the feeds this author follows; the public follow graph used for trust weighting |
 | `<weft:likesFeed>` | Recommended | URL of the author's separate likes feed |
-| `<weft:movedTo>` | Optional | New feed URL when the feed has moved; readers update their subscription |
 | `<weft:key>` | Optional | URL of the author's public signing key, for verifiable snapshots |
 
 For update pings, publish either an RSS 2.0 `<cloud>` element (rssCloud) or `<atom:link rel="hub">` (WebSub). At least one is recommended.
@@ -218,7 +217,13 @@ The permalink returns HTTP 410 Gone, ideally with a small tombstone page. Remove
 
 ### Moving a feed
 
-Redirect the old feed URL with HTTP 301 and add `weft:movedTo` to the old feed. Keep both in place for at least 90 days. Permalinks should redirect too, so replies keep working.
+A feed moves when its address changes: the author moves to another server, or starts using a domain of their own. The author's `guid`s do not change (a Weft `guid` is `urn:uuid:…`, not a URL), so the posts are the same posts at a new address. The signal is the one HTTP already has; Weft adds no element for it.
+
+**The old address.** Answer every request, the feed included, with a permanent redirect to the same path at the new address: 301 for GET and HEAD, 308 for any other method (the only permanent redirect that keeps the method and the body, so a Webmention sent to the old endpoint still arrives). Keep doing so for at least 90 days; there is no reason to stop, and the name should stay reserved so nobody else can take it and receive the replies and likes still sent to the old permalinks. A short `Cache-Control: max-age` lets a mistake be undone.
+
+**Readers.** When a feed is fetched and the whole chain of redirects to it was permanent, and what it leads to is a feed, the reader replaces the subscription with the final address and drops the posts it cached for the old one, so each post is seen once. A temporary redirect (302, 307), or a permanent one to something that is not a feed, changes nothing. A reader follows at most a few moves in one refresh, so feeds that point at each other cannot loop it.
+
+Replies and likes already published refer to the old permalinks; they keep working through the redirect.
 
 ### Orphaned replies
 
