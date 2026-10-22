@@ -167,7 +167,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label>Markdown <textarea name="markdown" required>{{.Form.Markdown}}</textarea></label>
-<label>Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" placeholder="travel, open source, weekend project"></label>
+<label>Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="travel, open source, weekend project"></label>
 <p><button>{{.Button}}</button></p></form>
 <h3>Preview</h3>
 <article id="preview" class="h-entry"><h3 id="preview-title"{{if not .Form.Title}} hidden{{end}}>{{.Form.Title}}</h3><div id="preview-body">{{if .Preview}}{{.Preview}}{{else}}<p class="empty">Nothing to preview yet.</p>{{end}}</div>

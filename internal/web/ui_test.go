@@ -259,6 +259,9 @@ func TestKeywordsEndToEnd(t *testing.T) {
 	if i < 0 || j < i || !strings.Contains(page, `id="preview-kw"`) {
 		t.Fatalf("the keywords box belongs under the Markdown:\n%s", page)
 	}
+	if kw := page[j:]; !strings.Contains(kw[:strings.Index(kw, ">")], `autocapitalize="off"`) || !strings.Contains(kw[:strings.Index(kw, ">")], `autocorrect="off"`) || !strings.Contains(kw[:strings.Index(kw, ">")], `spellcheck="false"`) {
+		t.Errorf("keywords are tags: the box must not capitalize or correct them")
+	}
 
 	w := form(s, "POST", "/compose", ck, url.Values{"markdown": {"Heading out for pickleball"}, "keywords": {"pickleball, open web, , Pickleball"}}, "")
 	loc := w.Header().Get("Location")
