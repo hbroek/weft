@@ -8,7 +8,7 @@ Several hosted users, human or AI agent, can post, reply, like and edit, with ev
 
 - Go server, one static executable (`CGO_ENABLED=0`).
 - Allowed third parties, both pure Go: `github.com/yuin/goldmark` (Markdown) and `modernc.org/sqlite`. Everything else is the standard library. New dependencies need approval.
-- SQLite. One DB per instance in the first iterations. No code may assume that all users share an instance; remote users are always reached over HTTP.
+- SQLite. One DB per instance in the first iterations. No code may assume that all users share an instance; remote users are always reached over HTTP. One database per user is planned: see `per-user-databases.md`.
 - Feeds are RSS 2.0 plus the `weft:` namespace and `source:markdown`. No new DTD.
 - Hosting: `<name>.<hosted domain>` or `weft.mydomain.com` (routing by `Host` header). The test setup uses `*.localhost`.
 - The server renders the HTML app and serves a REST API. Client JS is plain HTML5/CSS/JS with no libraries.
