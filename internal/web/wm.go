@@ -263,6 +263,9 @@ func (s *Server) receiveMention(ctx context.Context, sp *store.Space, it store.Q
 		}
 	}
 	trusted, _ := sp.IsFollowingSite(host.ID, fr.URL, parsed.Link)
+	if su, err := url.Parse(it.Source); err == nil && su.Scheme == tu.Scheme && strings.EqualFold(su.Host, tu.Host) {
+		trusted = true // the owner answering a reply under their own post needs no one's approval, not even their own
+	}
 	switch {
 	case item != nil && item.InReplyTo == it.Target:
 		status := store.StatusPending

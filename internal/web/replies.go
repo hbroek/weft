@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -11,9 +12,14 @@ import (
 	"github.com/hbroek/weft/internal/store"
 )
 
+// replyRow is one reply under a post, with the replies to it.
 type replyRow struct {
 	Author, AuthorHref, Source, Title, Date string
+	ISO, Ago, Avatar, Initial               string
+	ReplyHref                               string // the owner's link to answer it
+	Edited                                  bool
 	HTML                                    template.HTML
+	Children                                []replyRow
 }
 
 type modRow struct {
@@ -23,13 +29,73 @@ type modRow struct {
 	MD                                     string // the reply as written, for the Markdown form of the page
 }
 
-// repliesFor returns a post's approved replies for display, and how many await approval.
-func (s *Server) repliesFor(q *req, postID int64) (rows []replyRow, pending int) {
+// repliesFor returns a post's approved replies for display, the replies to them nested under each, how many
+// there are in all, and how many await approval.
+func (s *Server) repliesFor(r *http.Request, q *req, postID int64) (rows []replyRow, total, pending int) {
 	approved, _ := q.sp.RepliesFor(postID, store.StatusApproved)
-	for _, r := range approved {
-		rows = append(rows, replyRow{Author: orStr(r.Author, r.FeedURL), AuthorHref: siteOf(r.FeedURL), Source: httpURL(r.Source), Title: r.Title,
-			Date: r.Published.Format("2 Jan 2006 15:04"), HTML: renderRemote(r.Markdown, r.Text)})
+	var subs []store.Subreply
+	if len(approved) > 0 {
+		subs, _ = q.sp.SubrepliesFor(postID)
 	}
+	direct := map[string]bool{}
+	var feeds []string
+	for _, rp := range approved {
+		direct[rp.Source] = true
+		feeds = append(feeds, rp.FeedURL)
+	}
+	var shown []store.Subreply // only the replies to replies the owner approved
+	for _, sr := range subs {
+		if direct[sr.Via] {
+			shown = append(shown, sr)
+			feeds = append(feeds, sr.FeedURL)
+		}
+	}
+	infos, _ := s.st.FeedInfos(feeds)
+	row := func(feedURL, source, author, title, text, markdown string, published time.Time, updated *time.Time) replyRow {
+		name := orStr(author, orStr(infos[feedURL].Title, feedURL))
+		rr := replyRow{Author: name, AuthorHref: siteOf(feedURL), Source: httpURL(source), Title: title, Avatar: httpURL(infos[feedURL].Image), Initial: initial(name),
+			Date: stampAt(published), ISO: published.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(published), Edited: updated != nil,
+			HTML: renderRemote(markdown, text)}
+		if q.owner && rr.Source != "" {
+			rr.ReplyHref = "/compose?reply_to=" + url.QueryEscape(rr.Source) + "&reply_feed=" + url.QueryEscape(feedURL)
+		}
+		return rr
+	}
+	// a tree is built from paths, as the rows are values: each reply knows the source of its parent
+	type node struct {
+		row      replyRow
+		parent   string
+		children []*node
+	}
+	byLink := map[string]*node{}
+	var top []*node
+	for _, rp := range approved {
+		n := &node{row: row(rp.FeedURL, rp.Source, rp.Author, rp.Title, rp.Text, rp.Markdown, rp.Published, rp.Updated)}
+		byLink[rp.Source] = n
+		top = append(top, n)
+	}
+	for _, sr := range shown {
+		n := &node{row: row(sr.FeedURL, sr.Source, sr.Author, sr.Title, sr.Text, "", sr.Published, nil)}
+		parent := byLink[sr.Parent]
+		if parent == nil {
+			parent = byLink[sr.Via]
+		}
+		byLink[sr.Source] = n
+		parent.children = append(parent.children, n)
+		total++
+	}
+	var build func(n *node) replyRow
+	build = func(n *node) replyRow {
+		out := n.row
+		for _, c := range n.children {
+			out.Children = append(out.Children, build(c))
+		}
+		return out
+	}
+	for _, n := range top {
+		rows = append(rows, build(n))
+	}
+	total += len(top)
 	if q.owner {
 		p, _ := q.sp.RepliesFor(postID, store.StatusPending)
 		pending = len(p)

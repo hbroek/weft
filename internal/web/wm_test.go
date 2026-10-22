@@ -220,3 +220,30 @@ func TestPlainMentionIsNotAReply(t *testing.T) {
 		t.Errorf("unlinked source stored: %s", got)
 	}
 }
+
+// The owner answering a reply under their own post needs no approval from anyone, not even themselves: the
+// reply is shown at once, in the thread's curated view too.
+func TestOwnersReplyUnderTheirOwnPostIsApproved(t *testing.T) {
+	alice := newInstance(t, "alice")
+	ctx := t.Context()
+	ua := alice.post(t, `{"markdown":"A post."}`)
+	ur := alice.post(t, `{"markdown":"Thanks, I appreciate it.","in_reply_to":"`+ua+`"}`)
+	settle(ctx, alice)
+
+	if pending := alice.call(t, "GET", "/api/replies?status=pending", "", 200); strings.Contains(pending, ur) {
+		t.Errorf("the owner's own reply awaits their approval: %s", pending)
+	}
+	if approved := alice.call(t, "GET", "/api/replies?status=approved", "", 200); !strings.Contains(approved, ur) {
+		t.Errorf("the owner's own reply is not approved: %s", approved)
+	}
+	if page := do(alice.s, "GET", alice.host, ua[strings.Index(ua, "/posts/"):], "", "").Body.String(); !strings.Contains(page, "Thanks, I appreciate it.") {
+		t.Errorf("the reply is not under the post")
+	}
+	// someone the owner does not follow still waits for approval
+	bob := newInstance(t, "bob")
+	ub := bob.post(t, `{"markdown":"Hi","in_reply_to":"`+ua+`"}`)
+	settle(ctx, alice, bob)
+	if pending := alice.call(t, "GET", "/api/replies?status=pending", "", 200); !strings.Contains(pending, ub) {
+		t.Errorf("a stranger's reply should wait: %s", pending)
+	}
+}

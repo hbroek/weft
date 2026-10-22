@@ -77,7 +77,7 @@ func (b *threadBuilder) fromFeed(u, hint string, p *feed.Parsed) *tnode {
 		if hint == "" {
 			hint = strings.TrimRight(p.Link, "/") + "/feed.xml"
 		}
-		return &tnode{URL: u, Author: orStr(p.Title, hint), Title: it.Title, Date: it.Published.Format("2 Jan 2006 15:04"),
+		return &tnode{URL: u, Author: orStr(p.Title, hint), Title: it.Title, Date: stamp(it.Published),
 			HTML: renderRemote(it.Markdown, it.Text), parent: it.InReplyTo, parentFeed: it.InReplyToFeed, published: it.Published,
 			feedHint: hint, repliesHref: it.RepliesHref, repliesCount: it.RepliesCount,
 			ReplyHref: b.reply(u) + "&reply_feed=" + url.QueryEscape(hint)}
@@ -112,7 +112,7 @@ func (b *threadBuilder) feedChild(it feed.ParsedItem) *tnode {
 	if name == "" {
 		name = it.FeedHref
 	}
-	return &tnode{URL: it.GUID, Author: name, Title: it.Title, Date: it.Published.Format("2 Jan 2006 15:04"),
+	return &tnode{URL: it.GUID, Author: name, Title: it.Title, Date: stamp(it.Published),
 		HTML: renderRemote("", it.Text), parent: it.InReplyTo, published: it.Published, feedHint: it.FeedHref,
 		repliesHref: it.RepliesHref, repliesCount: it.RepliesCount,
 		ReplyHref: b.reply(it.GUID) + "&reply_feed=" + url.QueryEscape(it.FeedHref)}

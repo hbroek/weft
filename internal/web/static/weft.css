@@ -69,7 +69,7 @@ html:not([data-theme]) .th .t-auto, html[data-theme="light"] .th .t-light, html[
 article, .node { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: .9rem 1.1rem; overflow-wrap: anywhere; }
 article { margin: 1rem 0; }
 time { color: var(--muted); font-size: .85em; }
-article img, .node img, #preview img { max-width: 100%; max-height: 28rem; height: auto; object-fit: contain; border-radius: 8px; }
+article img, .node img, .comment img, #preview img { max-width: 100%; max-height: 28rem; height: auto; object-fit: contain; border-radius: 8px; }
 ul.thread, ul.thread ul { list-style: none; padding-left: 1rem; border-left: 2px solid var(--border); }
 .node { margin: .75rem 0; }
 .note { display: block; color: var(--warn); }
@@ -141,3 +141,16 @@ footer img { vertical-align: -4px; border-radius: 4px; }
 .site .av { width: 1.7rem; height: 1.7rem; font-size: .8rem; margin-right: .5rem; }
 .site > span:last-child { overflow: hidden; text-overflow: ellipsis; }
 article.likeevent p, article.likeevent form { margin: .2rem 0; }
+
+/* replies under a post: a card for each, the replies to it nested beneath with a rule down the side */
+.replies h3 { margin: 1.75rem 0 .25rem; }
+ol.comments { list-style: none; margin: 0; padding: 0; }
+ol.comments ol.comments { margin-left: .9rem; padding-left: .9rem; border-left: 2px solid var(--border); }
+.comment { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: .7rem 1rem; margin: .75rem 0; overflow-wrap: anywhere; }
+.comment .card-top { align-items: center; }
+.comment .who a { text-decoration: none; color: var(--text); }
+.comment .who a:hover { text-decoration: underline; }
+.comment h4 { margin: .5rem 0 0; }
+.comment .p-content > :first-child { margin-top: .4rem; }
+.comment .p-content > :last-child { margin-bottom: 0; }
+@media (max-width: 30rem) { ol.comments ol.comments { margin-left: .4rem; padding-left: .5rem; } }

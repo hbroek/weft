@@ -75,6 +75,12 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{define "ic-reply"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v3"/></svg>{{end}}
 {{define "ic-thread"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{{end}}
 {{define "ic-edit"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>{{end}}
+{{define "comment"}}<li class="p-comment h-cite"><div class="comment">
+<div class="card-top"><p class="who">{{template "avatar" .}}{{if .AuthorHref}}<a class="p-author h-card" href="{{.AuthorHref}}"><strong class="p-name">{{.Author}}</strong></a>{{else}}<span class="p-author h-card"><strong class="p-name">{{.Author}}</strong></span>{{end}}</p>
+<span class="when">{{if .Source}}<a class="u-url" href="{{.Source}}"><time class="dt-published" datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{else}}<time class="dt-published" datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time>{{end}}{{if .Edited}} · edited{{end}}</span></div>
+{{if .Title}}<h4 class="p-name">{{.Title}}</h4>{{end}}<div class="p-content">{{.HTML}}</div>
+{{if .ReplyHref}}<div class="meta"><div class="m-l"></div><div class="m-r"><a class="ico" href="{{.ReplyHref}}" title="Reply" aria-label="Reply">{{template "ic-reply"}}</a></div></div>{{end}}</div>
+{{if .Children}}<ol class="comments">{{range .Children}}{{template "comment" .}}{{end}}</ol>{{end}}</li>{{end}}
 {{define "posts"}}{{template "head" .}}
 {{if .Keyword}}<p class="kwhead">Posts tagged <strong>{{.Keyword}}</strong> <small>· <a href="/">All posts</a> · <a href="{{.TopicFeed}}">Feed for this topic</a></small></p>{{end}}
 {{if .Bookmarklet}}<p class="bm"><small>Bookmark card: drag <a href="{{.Bookmarklet}}">Weft it</a> to your bookmarks bar, then click it on any page to compose a post from that page.</small></p>{{end}}
@@ -87,8 +93,8 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <div class="meta"><div class="m-l">{{if .Tally}}<small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.URL}}">{{.Tally}}</a></small>{{end}}</div>
 <div class="m-r">{{if $.Owner}}{{if .HasThread}}<a class="ico" href="{{.ThreadHref}}" title="Thread" aria-label="Thread">{{template "ic-thread"}}</a>{{end}}<a class="ico" href="{{.URL}}/edit" title="Edit" aria-label="Edit">{{template "ic-edit"}}</a>{{end}}</div></div>
 </article>{{else}}<p>No posts yet.</p>{{end}}
-{{if .Replies}}<section><h3>Replies</h3>{{range .Replies}}<div class="reply">
-<p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} <a href="{{.Source}}"><time>{{.Date}}</time></a></p>{{if .Title}}<h4>{{.Title}}</h4>{{end}}{{.HTML}}</div>{{end}}</section>{{end}}
+{{if .Replies}}<section class="replies" id="replies"><h3>{{.ReplyTotal}} {{if eq .ReplyTotal 1}}reply{{else}}replies{{end}}</h3>
+<ol class="comments">{{range .Replies}}{{template "comment" .}}{{end}}</ol></section>{{end}}
 {{if and .Owner .Pending}}<p><a href="/replies">{{.Pending}} reply(ies) awaiting your approval</a></p>{{end}}
 {{template "foot"}}{{end}}
 {{define "like"}}{{template "head" .}}<article class="h-entry">
@@ -220,6 +226,7 @@ type pageData struct {
 	Posts                                      []pagePost
 	Timeline                                   []tlRow
 	Replies                                    []replyRow
+	ReplyTotal                                 int // replies in all, with the ones to replies
 	Moderation                                 []modRow
 	Pending                                    int
 	Like                                       *likeData
@@ -295,13 +302,13 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 	for _, p := range posts {
 		d.Posts = append(d.Posts, pagePost{
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
-			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: p.Created.Format("2 Jan 2006 at 15:04"), Ago: ago(p.Created), Markdown: p.Markdown,
+			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: stampAt(p.Created), Ago: ago(p.Created), Markdown: p.Markdown,
 			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Parent: newParentCard(p.InReplyTo, p.Parent), Keywords: p.Keywords, Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
 			HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 		})
 	}
 	if len(posts) == 1 && !posts[0].Deleted {
-		d.Replies, d.Pending = s.repliesFor(q, posts[0].ID)
+		d.Replies, d.ReplyTotal, d.Pending = s.repliesFor(r, q, posts[0].ID)
 		// the same links the one-item feed carries, for readers that start from the page: the post
 		// as a feed item (same URL, Accept: application/rss+xml), its parent and its replies feed
 		u := s.postURL(r, posts[0].ID)

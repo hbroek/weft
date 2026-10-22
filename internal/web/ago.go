@@ -33,3 +33,9 @@ func agoAt(now, t time.Time) string {
 	}
 	return unit(int(d/(365*24*time.Hour)), "yr", "yrs")
 }
+
+// stamp and stampAt show a time the way every page does, in the server's time zone. A time read from a feed
+// is in the zone the feed wrote it in (often UTC), one read from the database is in the server's: without
+// this the same reply is 16:10 in one view of a thread and 20:10 in another.
+func stamp(t time.Time) string   { return t.Local().Format("2 Jan 2006 15:04") }
+func stampAt(t time.Time) string { return t.Local().Format("2 Jan 2006 at 15:04") }
