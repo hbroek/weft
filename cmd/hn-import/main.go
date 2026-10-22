@@ -198,7 +198,10 @@ func (im *importer) user(hn string) *user {
 		name = "u" + name
 	}
 	if len(name) > 28 {
-		name = name[:28]
+		name = strings.TrimRight(name[:28], "-")
+	}
+	if store.CheckName(name) != nil { // reserved, or not allowed for a new name: keep the HN name recognisable
+		name = "hn-" + name
 	}
 	base := name
 	for i := 2; im.taken[name]; i++ {

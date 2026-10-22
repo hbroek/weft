@@ -153,7 +153,7 @@ func TestImportRefusals(t *testing.T) {
 		{"not an export", map[string][]byte{"a.txt": []byte("x")}, "manifest.json and user.db are required"},
 		{"newer format", map[string][]byte{"manifest.json": manifestJSON(Manifest{Format: 99, Name: "alice"}), "user.db": good["user.db"]}, "format 99"},
 		{"newer schema", map[string][]byte{"manifest.json": manifestJSON(Manifest{Format: 1, Schema: 99, Name: "alice"}), "user.db": good["user.db"]}, "version 99"},
-		{"bad name", map[string][]byte{"manifest.json": manifestJSON(Manifest{Format: 1, Name: "../x"}), "user.db": good["user.db"]}, "not a valid user name"},
+		{"bad name", map[string][]byte{"manifest.json": manifestJSON(Manifest{Format: 1, Name: "../x"}), "user.db": good["user.db"]}, "is not a name"},
 		{"wrong name", map[string][]byte{"manifest.json": manifestJSON(Manifest{Format: 1, Schema: 1, Name: "mallory"}), "user.db": good["user.db"]}, "want exactly"},
 		{"garbage db", map[string][]byte{"manifest.json": manifestJSON(goodM), "user.db": bytes.Repeat([]byte("not sqlite "), 500)}, "user.db"},
 		{"truncated db", map[string][]byte{"manifest.json": manifestJSON(goodM), "user.db": good["user.db"][:len(good["user.db"])/2]}, "user.db"},

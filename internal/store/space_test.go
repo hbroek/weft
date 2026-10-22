@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -198,7 +199,7 @@ func TestAddUserIsExclusive(t *testing.T) {
 		t.Errorf("second alice: %v, want ErrNameTaken", err)
 	}
 	for _, bad := range []string{"", "../x", "a/b", "Alice", "a.b"} {
-		if _, err := in.AddUser(bad, "", ""); err != ErrInvalid {
+		if _, err := in.AddUser(bad, "", ""); !errors.Is(err, ErrInvalid) {
 			t.Errorf("AddUser(%q) = %v, want ErrInvalid", bad, err)
 		}
 		if _, _, err := in.Space(bad); err != ErrNotFound {

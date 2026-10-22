@@ -130,8 +130,8 @@ func (in *Instance) Import(zipPath string) (name, token string, err error) {
 	if m.Format != ExportFormat {
 		return "", "", fmt.Errorf("export format %d is not one this Weft can read (it reads %d)", m.Format, ExportFormat)
 	}
-	if !nameRE.MatchString(m.Name) {
-		return "", "", fmt.Errorf("manifest.json: %q is not a valid user name", m.Name)
+	if err := CheckName(m.Name); err != nil {
+		return "", "", fmt.Errorf("manifest.json: %w", err)
 	}
 	if m.Schema > SpaceSchemaVersion {
 		return "", "", fmt.Errorf("the export has schema version %d, but this Weft only knows up to %d: upgrade Weft", m.Schema, SpaceSchemaVersion)

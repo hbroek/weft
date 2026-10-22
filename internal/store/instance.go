@@ -185,8 +185,8 @@ func newToken() (string, error) {
 // AddUser creates a user and returns a fresh API token (shown once). The name is entered in the
 // directory first, which makes it unique, and then the user's file is created, exclusively.
 func (in *Instance) AddUser(name, display, bio string) (token string, err error) {
-	if !nameRE.MatchString(name) {
-		return "", ErrInvalid
+	if err := CheckName(name); err != nil {
+		return "", err
 	}
 	if token, err = newToken(); err != nil {
 		return "", err
