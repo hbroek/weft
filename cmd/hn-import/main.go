@@ -2,8 +2,8 @@
 // every story and comment becomes a post in its author's own feed, every comment a reply to its
 // parent, and every author a user. It exists to give the UI a large, real conversation to run on.
 //
-//	hn-import -db hackernews.db -port 8090
-//	weft serve -db hackernews.db -addr :8090 -dev -poll 30s
+//	hn-import -data hackernews -port 8090
+//	weft serve -data hackernews -addr :8090 -dev -poll 30s
 //
 // Hacker News does not publish who voted or what comments scored, so the only votes are each
 // story's point total, stored as anonymous trusted likes.
@@ -90,7 +90,7 @@ func getJSON(u string, v any) error {
 }
 
 func main() {
-	dbPath := flag.String("db", "hackernews.db", "new SQLite file to create")
+	dbPath := flag.String("data", "hackernews", "new data folder to create")
 	n := flag.Int("n", 20, "how many front-page stories to copy")
 	scheme := flag.String("scheme", "http", "scheme of the instance that will serve this database")
 	domain := flag.String("domain", "localhost", "base domain of that instance")
@@ -99,7 +99,7 @@ func main() {
 	password := flag.String("password", "hackernews", "the viewer's login password")
 	flag.Parse()
 	if _, err := os.Stat(*dbPath); err == nil {
-		log.Fatalf("%s already exists; delete it first (this tool only creates new databases)", *dbPath)
+		log.Fatalf("%s already exists; delete it first (this tool only creates new data folders)", *dbPath)
 	}
 	st, err := store.Open(*dbPath)
 	if err != nil {
@@ -170,7 +170,7 @@ func main() {
 	s := im.stats
 	fmt.Printf("\n%s: %d users, %d stories and comments (%d replies, deepest %d levels), %d votes, %d deleted comments kept as placeholders\n",
 		*dbPath, s.users, s.posts, s.replies, s.maxDepth, s.votes, s.deleted)
-	fmt.Printf("\nServe it:   make run-hn      (or: ./bin/weft serve -db %s -addr :%s -dev -poll 30s)\n", *dbPath, *port)
+	fmt.Printf("\nServe it:   make run-hn      (or: ./bin/weft serve -data %s -addr :%s -dev -poll 30s)\n", *dbPath, *port)
 	fmt.Printf("Browse as:  %s://%s.%s:%s/login   password %q\n", *scheme, *viewer, *domain, *port, *password)
 }
 

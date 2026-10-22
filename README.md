@@ -62,9 +62,9 @@ is re-sent up the chain so each ancestor's cached second level stays fresh.
 To try two separate instances on one machine:
 
 ```bash
-./bin/weft user add -db a.db alice && ./bin/weft user add -db b.db bob   # each prints a token
-./bin/weft serve -addr :8101 -db a.db -dev &   # http://alice.localhost:8101/
-./bin/weft serve -addr :8102 -db b.db -dev &   # http://bob.localhost:8102/
+./bin/weft user add -data a alice && ./bin/weft user add -data b bob   # each prints a token
+./bin/weft serve -addr :8101 -data a -dev &   # http://alice.localhost:8101/
+./bin/weft serve -addr :8102 -data b -dev &   # http://bob.localhost:8102/
 ```
 
 The server fetches the URLs users enter, so by default it refuses loopback and private addresses
@@ -76,7 +76,7 @@ If you run the binary yourself: `./bin/weft serve -dev`.
 `make follow NAME=dana TO='alice henry'` makes a user follow others (bare names on this instance, or feed URLs); the target servers must be running, since the feed is fetched.
 
 `make help` lists the other targets, including `token` to issue a fresh API token.
-Settings: `DB` (default `weft.db`; an existing `ttc.db` next to it is renamed on first start), `ADDR` (`:8080`), `DOMAIN` (`localhost`).
+Settings: `DATA` (default `weft`, the data folder), `ADDR` (`:8080`), `DOMAIN` (`localhost`).
 
 The build is a single static binary (`CGO_ENABLED=0`). Dependencies: `goldmark`, `modernc.org/sqlite`.
 
@@ -149,4 +149,6 @@ RSS 2.0 (what Weft publishes, and most blogs), RSS 1.0 (`rdf:RDF`, as Slashdot p
 
 ## Stopping the server
 
-`weft serve` stops cleanly on Ctrl-C or SIGTERM: it stops taking requests, lets the ones in progress finish (up to 15 seconds), stops the background refresh, and then closes the database. A database that was closed properly is a single file; the `-wal` and `-shm` files only exist while the server runs (or after a crash, when the next start recovers them). The write-ahead log is capped at 1 MiB after each checkpoint (`journal_size_limit`), so it does not stay at its largest size. To copy a database while the server runs, use `sqlite3 weft.db "VACUUM INTO 'copy.db'"` rather than copying the files.
+`weft serve` stops cleanly on Ctrl-C or SIGTERM: it stops taking requests, lets the ones in progress finish (up to 15 seconds), stops the background refresh, and then closes every database. Each database that was closed properly is a single file; the `-wal` and `-shm` files only exist while the server runs (or after a crash, when the next start recovers them). The write-ahead log is capped at 1 MiB after each checkpoint (`journal_size_limit`). To copy a database while the server runs, use `sqlite3 FILE "VACUUM INTO 'copy.db'"` rather than copying the files.
+
+**Data folder.** The server keeps its data in a folder (`-data DIR`, `weft` by default): `instance.db` holds the feeds everyone follows and the list of users, and each user has a file of their own, `users/ab/alice.db`, with their posts, replies, likes, follows and login. A database from before this layout (a single `weft.db`) is converted once with `weft split -db weft.db -data weft`; the old file is only read. See [docs/per-user-databases.md](docs/per-user-databases.md).

@@ -1,4 +1,9 @@
 *.db
+/weft/
+/hackernews/
+/data/
+/a/
+/b/
 *.db-*
 /bin/
 .env

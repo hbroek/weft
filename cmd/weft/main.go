@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -22,37 +21,17 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-db weft.db] [-dev] [-v] [-poll 5m|0]
-  weft user add [-db weft.db] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW] USERNAME
-  weft user set [-db weft.db] [-display NAME] [-bio TEXT] [-avatar URL] USERNAME   (changes only the fields given; -avatar "" removes it)
-  weft user passwd [-db weft.db] -password PW USERNAME
-  weft user token  [-db weft.db] USERNAME      (issues a new API token, invalidating the old one)
-  weft user follow [-db weft.db] [-domain localhost] [-scheme http] [-port 8080] USERNAME TARGET...
+  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0]
+  weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW] USERNAME
+  weft user set [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] USERNAME   (changes only the fields given; -avatar "" removes it)
+  weft user passwd [-data weft] -password PW USERNAME
+  weft user token  [-data weft] USERNAME      (issues a new API token, invalidating the old one)
+  weft user follow [-data weft] [-domain localhost] [-scheme http] [-port 8080] USERNAME TARGET...
                   TARGET is a feed or site URL, or a bare user name on this instance (alice -> http://alice.localhost:8080/).
                   The target's server must be running.
-  weft user list   [-db weft.db]`)
+  weft user list   [-data weft]
+  weft split    -db OLD.db -data DIR     (convert a single-file database into the per-user layout in DIR; OLD.db is not changed)`)
 	os.Exit(2)
-}
-
-// legacyDB renames a database file left from before the project was renamed, with its WAL files,
-// when the new file does not exist yet. Only the default name is touched.
-func legacyDB(path string) {
-	if filepath.Base(path) != "weft.db" {
-		return
-	}
-	if _, err := os.Stat(path); err == nil {
-		return
-	}
-	old := filepath.Join(filepath.Dir(path), "ttc.db")
-	if _, err := os.Stat(old); err != nil {
-		return
-	}
-	for _, suffix := range []string{"", "-wal", "-shm"} {
-		if err := os.Rename(old+suffix, path+suffix); err != nil && suffix == "" {
-			log.Fatal(err)
-		}
-	}
-	log.Printf("renamed %s to %s", old, path)
 }
 
 func main() {
@@ -65,13 +44,36 @@ func main() {
 		addr := fs.String("addr", ":8080", "listen address")
 		domain := fs.String("domain", "localhost", "hosted base domain; name.<domain> serves user name")
 		scheme := fs.String("scheme", "http", "http or https, used in absolute URLs")
-		db := fs.String("db", "weft.db", "SQLite file")
+		db := fs.String("data", "weft", "data folder: instance.db and users/")
 		dev := fs.Bool("dev", false, "allow fetching feeds from loopback/private addresses (local development only)")
 		verbose := fs.Bool("v", false, "log every API call")
 		poll := fs.Duration("poll", 5*time.Minute, "how often to refresh followed feeds (0 turns the background refresh off)")
 		fs.Parse(os.Args[2:])
-		legacyDB(*db)
 		if err := serve(*addr, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose}, *poll); err != nil {
+			log.Fatal(err)
+		}
+	case "split":
+		fs := flag.NewFlagSet("split", flag.ExitOnError)
+		old := fs.String("db", "", "single-file database to read (never modified)")
+		data := fs.String("data", "", "data folder to create (must not exist or be empty)")
+		fs.Parse(os.Args[2:])
+		if *old == "" || *data == "" {
+			usage()
+		}
+		rep, err := store.Split(*old, *data)
+		if rep != nil {
+			fmt.Printf("%d users written to %s\n", rep.Users, *data)
+			for _, t := range []string{"users", "sessions", "posts", "follows", "replies", "subreplies", "likes", "likes_in", "wm_queue"} {
+				fmt.Printf("  %-11s %6d\n", t, rep.Rows[t])
+			}
+			for _, t := range []string{"feeds", "items", "feed_likes"} {
+				fmt.Printf("  %-11s %6d  (instance.db)\n", t, rep.Shared[t])
+			}
+			for _, d := range rep.Dropped {
+				fmt.Println("  left behind:", d)
+			}
+		}
+		if err != nil {
 			log.Fatal(err)
 		}
 	case "user":
@@ -79,7 +81,7 @@ func main() {
 			usage()
 		}
 		fs := flag.NewFlagSet("user "+os.Args[2], flag.ExitOnError)
-		db := fs.String("db", "weft.db", "SQLite file")
+		db := fs.String("data", "weft", "data folder: instance.db and users/")
 		display := fs.String("display", "", "display name")
 		bio := fs.String("bio", "", "bio")
 		avatar := fs.String("avatar", "", "avatar image address (http:// or https://); without one the first letter of the name is shown")
@@ -99,7 +101,6 @@ func main() {
 		} else if fs.NArg() != want {
 			usage()
 		}
-		legacyDB(*db)
 		st, err := store.Open(*db)
 		if err != nil {
 			log.Fatal(err)
@@ -218,12 +219,13 @@ func main() {
 // serve runs the server until it is told to stop (Ctrl-C or SIGTERM) or cannot listen. It then shuts
 // down in order: stop taking requests and let those in progress finish, stop the background refresh
 // and wait for it, and only then close the database, which writes out the write-ahead log and removes
-// the -wal and -shm files.
-func serve(addr, dbPath string, cfg web.Config, poll time.Duration) error {
-	st, err := store.Open(dbPath)
+// the -wal and -shm files, in the shared database and in every user's.
+func serve(addr, dataDir string, cfg web.Config, poll time.Duration) error {
+	st, err := store.Open(dataDir)
 	if err != nil {
 		return err
 	}
+	log.Printf("data folder %s: up to %d user databases open at once", dataDir, st.PoolCap())
 	srv := web.New(cfg, st)
 
 	stopSignals, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -87,7 +87,7 @@ func replyCycle(t *testing.T, alice, bob *instance) (ua, ub string) {
 	t.Helper()
 	ua = alice.post(t, `{"markdown":"LOOP-A"}`)
 	ub = bob.post(t, `{"markdown":"LOOP-B","in_reply_to":"`+ua+`","in_reply_to_feed":"`+alice.base+`/feed.xml"}`)
-	_, err := alice.s.st.RawDBForTests().Exec(`UPDATE posts SET in_reply_to=?, in_reply_to_feed=?, root=?, root_feed=? WHERE id=1`,
+	_, err := alice.s.space("alice").RawDBForTests().Exec(`UPDATE posts SET in_reply_to=?, in_reply_to_feed=?, root=?, root_feed=? WHERE id=1`,
 		ub, bob.base+"/feed.xml", ua, alice.base+"/feed.xml")
 	if err != nil {
 		t.Fatal(err)
@@ -367,7 +367,7 @@ func TestPagedFeedGivesNewFollowersTheHistory(t *testing.T) {
 		alice.post(t, `{"markdown":"note number `+strings.Repeat("x", i%5)+` `+url.QueryEscape(strings.Repeat("n", i%11))+`"}`)
 	}
 	// spread the posts over time: the reader tells them apart by their publication second
-	if _, err := alice.s.st.RawDBForTests().Exec(`UPDATE posts SET created = 1700000000 + id*60`); err != nil {
+	if _, err := alice.s.space("alice").RawDBForTests().Exec(`UPDATE posts SET created = 1700000000 + id*60`); err != nil {
 		t.Fatal(err)
 	}
 	first := alice.get("/feed.xml")

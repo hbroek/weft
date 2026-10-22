@@ -80,20 +80,4 @@ func TestPostsKeepTheirIdentityAndOldPostsGetOne(t *testing.T) {
 	if _, err := sp.PostBySlug(u.ID+1, p.Slug); err == nil {
 		t.Error("slug leaked into another user's namespace")
 	}
-
-	// a post from before identities existed gets one when the database is opened; such a database also
-	// predates schema versions
-	st.RawDBForTests().Exec(`UPDATE posts SET uid='', slug='' WHERE id=?`, p.ID)
-	st.RawDBForTests().Exec(`PRAGMA user_version = 0`)
-	st.Close()
-	st, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	sp = st.SpaceForTests(t, "alice")
-	r, _ := sp.Post(u.ID, p.ID)
-	if r.UID == "" || !strings.HasPrefix(r.Slug, "a-completely-different-title.") {
-		t.Errorf("not backfilled: %+v", r)
-	}
 }

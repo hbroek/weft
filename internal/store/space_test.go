@@ -1,6 +1,7 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -149,20 +150,31 @@ func TestCredentialsStayInTheirSpace(t *testing.T) {
 	}
 }
 
-// The directory tables are filled from the follows and jobs a database already has.
-func TestDirectoryIsBackfilled(t *testing.T) {
+// The directory is rebuilt from the users' files when an old database is split.
+func TestSplitFillsTheDirectory(t *testing.T) {
 	path := fixture(t, "v0-current.sql")
 	db := openRaw(t, path)
 	for _, q := range []string{
 		`INSERT INTO follows(user_id,feed_url,added) VALUES (1,'http://x.example/feed',1)`,
 		`INSERT INTO wm_queue(dir,user_id,source,target,next_try) VALUES ('in',1,'http://s/1','http://alice/p',1700000000)`,
+		// a job queued to send before jobs had an owner: the host of its source names the user
+		`INSERT INTO wm_queue(dir,user_id,source,target,next_try) VALUES ('out',0,'http://alice.localhost:8080/posts/p','http://t/1',1700000000)`,
+		`INSERT INTO wm_queue(dir,user_id,source,target,next_try,done) VALUES ('out',0,'http://nobody.example/p','http://t/2',1,1)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatal(q, err)
 		}
 	}
 	db.Close()
-	in, err := Open(path)
+	data := filepath.Join(t.TempDir(), "data")
+	rep, err := Split(path, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Rows["wm_queue"] != 2 || len(rep.Dropped) != 1 {
+		t.Errorf("report: %+v", rep)
+	}
+	in, err := Open(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,5 +184,82 @@ func TestDirectoryIsBackfilled(t *testing.T) {
 	}
 	if names, _ := in.UsersWithWork(); len(names) != 1 || names[0] != "alice" {
 		t.Errorf("existing job missing from work: %v", names)
+	}
+	jobs, _ := in.SpaceForTests(t, "alice").DueQueue(QueueOut, 10)
+	if len(jobs) != 1 {
+		t.Errorf("alice's outgoing job: %+v", jobs)
+	}
+}
+
+// Two users cannot share a name, and a failed creation leaves nothing behind.
+func TestAddUserIsExclusive(t *testing.T) {
+	in, _, _ := twoUsers(t)
+	if _, err := in.AddUser("alice", "", ""); err != ErrNameTaken {
+		t.Errorf("second alice: %v, want ErrNameTaken", err)
+	}
+	for _, bad := range []string{"", "../x", "a/b", "Alice", "a.b"} {
+		if _, err := in.AddUser(bad, "", ""); err != ErrInvalid {
+			t.Errorf("AddUser(%q) = %v, want ErrInvalid", bad, err)
+		}
+		if _, _, err := in.Space(bad); err != ErrNotFound {
+			t.Errorf("Space(%q) = %v, want ErrNotFound", bad, err)
+		}
+	}
+	// a file in the way is never overwritten, and the name is not left in the directory
+	path := in.spacePath("carol")
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	os.WriteFile(path, []byte("not yours"), 0o644)
+	if _, err := in.AddUser("carol", "", ""); err == nil {
+		t.Error("AddUser over an existing file succeeded")
+	}
+	if b, _ := os.ReadFile(path); string(b) != "not yours" {
+		t.Errorf("existing file overwritten: %q", b)
+	}
+	if names, _ := in.UserNames(); len(names) != 2 {
+		t.Errorf("directory after the failure: %v", names)
+	}
+}
+
+// Only so many databases are open at once, and one that is in use is never closed under a request.
+func TestPoolCapAndInUse(t *testing.T) {
+	in, _, _ := twoUsers(t)
+	for _, n := range []string{"carol", "dave", "erin"} {
+		in.AddUser(n, "", "")
+	}
+	in.pool.cap = 2
+	held, release, err := in.Space("alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"bob", "carol", "dave", "erin"} {
+		sp, rel, err := in.Space(n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := sp.User(); err != nil {
+			t.Fatal(err)
+		}
+		rel()
+	}
+	if got := in.pool.size(); got > 2 {
+		t.Errorf("%d databases open with a cap of 2", got)
+	}
+	if _, err := held.User(); err != nil {
+		t.Errorf("the database in use was closed: %v", err)
+	}
+	release()
+}
+
+// A user's file uses small pages, so an account costs little disk; the shared file keeps the default.
+func TestSpaceFilesUseSmallPages(t *testing.T) {
+	in, _, _ := twoUsers(t)
+	var ps int
+	sp := in.SpaceForTests(t, "alice")
+	if err := sp.db.QueryRow(`PRAGMA page_size`).Scan(&ps); err != nil || ps != 1024 {
+		t.Errorf("alice.db page_size = %d (%v), want 1024", ps, err)
+	}
+	in.Close()
+	if fi, err := os.Stat(in.spacePath("alice")); err != nil || fi.Size() > 40*1024 {
+		t.Errorf("an empty user file takes %v bytes (%v), want under 40 KB", fi.Size(), err)
 	}
 }
