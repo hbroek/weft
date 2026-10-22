@@ -202,49 +202,10 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if err := migrateLikes(db); err != nil {
+	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, err
 	}
-	if _, err := db.Exec(schema); err != nil {
-		db.Close()
-		return nil, err
-	}
-	// Databases created by iteration 1 lack the password columns; errors mean they already exist.
-	db.Exec(`ALTER TABLE users ADD COLUMN pw_salt BLOB`)
-	db.Exec(`ALTER TABLE users ADD COLUMN pw_hash BLOB`)
-	db.Exec(`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`)
-	db.Exec(`ALTER TABLE feeds ADD COLUMN image TEXT NOT NULL DEFAULT ''`)
-	for _, t := range []string{"posts", "items", "likes", "feed_likes"} {
-		for _, c := range []string{"parent_title", "parent_desc", "parent_image"} {
-			db.Exec(`ALTER TABLE ` + t + ` ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
-		}
-	}
-	for _, c := range []string{"in_reply_to", "in_reply_to_feed", "root", "root_feed"} {
-		db.Exec(`ALTER TABLE posts ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
-	}
-	for _, c := range []string{"in_reply_to_feed", "root", "root_feed"} {
-		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
-	}
-	db.Exec(`ALTER TABLE items ADD COLUMN replies_href TEXT NOT NULL DEFAULT ''`)
-	db.Exec(`ALTER TABLE items ADD COLUMN replies_count INTEGER NOT NULL DEFAULT -1`) // -1: the feed did not say
-	for _, c := range []string{"uid", "slug"} {
-		db.Exec(`ALTER TABLE posts ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
-	}
-	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS posts_slug ON posts(user_id, slug) WHERE slug != ''`); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if err := backfillIdentity(db); err != nil {
-		db.Close()
-		return nil, err
-	}
-	for _, c := range []string{"root", "replies_href"} {
-		db.Exec(`ALTER TABLE replies ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
-	}
-	db.Exec(`ALTER TABLE items ADD COLUMN likes INTEGER NOT NULL DEFAULT 0`)
-	db.Exec(`ALTER TABLE items ADD COLUMN keywords TEXT NOT NULL DEFAULT ''`)
-	db.Exec(`ALTER TABLE posts ADD COLUMN keywords TEXT NOT NULL DEFAULT ''`)
 	return &Store{db: db}, nil
 }
 
@@ -608,4 +569,50 @@ func (s *Store) PostsInThread(userID int64, root string) ([]*Post, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// schemaV1 brings any database made before schema versions existed to version 1. Those databases were
+// built by this code adding columns as features arrived, so the statements are idempotent (an ALTER
+// that fails means the column is already there) and it is safe to run on a database of any age.
+func schemaV1(db *sql.DB) error {
+	if err := migrateLikes(db); err != nil {
+		return err
+	}
+	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
+	// Databases created by iteration 1 lack the password columns; errors mean they already exist.
+	db.Exec(`ALTER TABLE users ADD COLUMN pw_salt BLOB`)
+	db.Exec(`ALTER TABLE users ADD COLUMN pw_hash BLOB`)
+	db.Exec(`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`)
+	db.Exec(`ALTER TABLE feeds ADD COLUMN image TEXT NOT NULL DEFAULT ''`)
+	for _, t := range []string{"posts", "items", "likes", "feed_likes"} {
+		for _, c := range []string{"parent_title", "parent_desc", "parent_image"} {
+			db.Exec(`ALTER TABLE ` + t + ` ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
+		}
+	}
+	for _, c := range []string{"in_reply_to", "in_reply_to_feed", "root", "root_feed"} {
+		db.Exec(`ALTER TABLE posts ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
+	}
+	for _, c := range []string{"in_reply_to_feed", "root", "root_feed"} {
+		db.Exec(`ALTER TABLE items ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
+	}
+	db.Exec(`ALTER TABLE items ADD COLUMN replies_href TEXT NOT NULL DEFAULT ''`)
+	db.Exec(`ALTER TABLE items ADD COLUMN replies_count INTEGER NOT NULL DEFAULT -1`) // -1: the feed did not say
+	for _, c := range []string{"uid", "slug"} {
+		db.Exec(`ALTER TABLE posts ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS posts_slug ON posts(user_id, slug) WHERE slug != ''`); err != nil {
+		return err
+	}
+	if err := backfillIdentity(db); err != nil {
+		return err
+	}
+	for _, c := range []string{"root", "replies_href"} {
+		db.Exec(`ALTER TABLE replies ADD COLUMN ` + c + ` TEXT NOT NULL DEFAULT ''`)
+	}
+	db.Exec(`ALTER TABLE items ADD COLUMN likes INTEGER NOT NULL DEFAULT 0`)
+	db.Exec(`ALTER TABLE items ADD COLUMN keywords TEXT NOT NULL DEFAULT ''`)
+	db.Exec(`ALTER TABLE posts ADD COLUMN keywords TEXT NOT NULL DEFAULT ''`)
+	return nil
 }

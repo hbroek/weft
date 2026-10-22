@@ -80,8 +80,10 @@ func TestPostsKeepTheirIdentityAndOldPostsGetOne(t *testing.T) {
 		t.Error("slug leaked into another user's namespace")
 	}
 
-	// a post from before identities existed gets one when the database is opened
+	// a post from before identities existed gets one when the database is opened; such a database also
+	// predates schema versions
 	st.RawDBForTests().Exec(`UPDATE posts SET uid='', slug='' WHERE id=?`, p.ID)
+	st.RawDBForTests().Exec(`PRAGMA user_version = 0`)
 	st.Close()
 	st, err = Open(path)
 	if err != nil {
