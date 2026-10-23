@@ -120,7 +120,7 @@ func (s *Server) likeForm(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Redirect(w, r, "/timeline?likes=1", http.StatusSeeOther)
 		return
 	}
-	back(w, r, "/timeline")
+	back(w, r, "/timeline", httpURL(r.FormValue("target")))
 }
 
 func (s *Server) unlikeForm(w http.ResponseWriter, r *http.Request, q *req) {
@@ -131,7 +131,7 @@ func (s *Server) unlikeForm(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	back(w, r, "/timeline")
+	back(w, r, "/timeline", httpURL(r.FormValue("target")))
 }
 
 type likeReq struct {

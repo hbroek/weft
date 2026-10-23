@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -327,8 +328,8 @@ func TestLikeButtonUpdatesCount(t *testing.T) {
 		t.Fatalf("no likes yet:\n%s", tl)
 	}
 	w := formAs(bob, "/like", ck, "http://"+bob.host+"/timeline?keyword=go", vals)
-	if w.Code != 303 || w.Header().Get("Location") != "/timeline?keyword=go" {
-		t.Errorf("like should return to the page it came from: %d %q", w.Code, w.Header().Get("Location"))
+	if w.Code != 303 || w.Header().Get("Location") != "/timeline?keyword=go#"+anchorID(ua) {
+		t.Errorf("like should return to the page it came from, at the post: %d %q", w.Code, w.Header().Get("Location"))
 	}
 	if w := formAs(bob, "/like", ck, "http://evil.example/x", vals); w.Code != 403 {
 		t.Errorf("a like sent from another site must be refused: %d", w.Code)
@@ -581,10 +582,15 @@ func TestReplyToPageCarriesSnapshot(t *testing.T) {
 	}
 	w := formAs(alice, "/compose", ack, "", url.Values{"markdown": {"I disagree with the *premise*"}, "reply_to": {page},
 		"ptitle": {"About <the> web"}, "pdesc": {"A page about the web."}, "pimg": {"https://img.example/p.png"}})
-	if w.Code != 303 {
-		t.Fatalf("publish reply: %d %s", w.Code, w.Body)
+	if w.Code != 303 || w.Header().Get("Location") != "/timeline#"+anchorID(page) {
+		t.Fatalf("publish reply: %d %q", w.Code, w.Header().Get("Location"))
 	}
-	postURL := alice.base + w.Header().Get("Location")
+	sp := alice.s.space("alice")
+	mine, err := sp.RecentPosts(sp.UID(), 1)
+	if err != nil || len(mine) != 1 {
+		t.Fatal(err)
+	}
+	postURL := alice.base + "/posts/" + mine[0].Slug
 
 	// the feed says what the parent looked like, as optional attributes
 	fx := alice.get("/feed.xml")
@@ -887,5 +893,86 @@ func TestFeedsAsMarkdown(t *testing.T) {
 	}
 	if w := getAccept(alice, "/following.opml", "*/*"); !strings.HasPrefix(w.Header().Get("Content-Type"), "text/x-opml") {
 		t.Errorf("opml for */*: %q", w.Header().Get("Content-Type"))
+	}
+}
+
+func TestTimelineBack(t *testing.T) {
+	for in, want := range map[string]string{
+		"/timeline":                             "/timeline",
+		"/timeline?feed=http%3A%2F%2Fa.example": "/timeline?feed=http%3A%2F%2Fa.example",
+		"/timeline?likes=1#p-abc":               "/timeline?likes=1",
+		"":                                      "",
+		"//evil.example/timeline":               "",
+		"http://evil.example/timeline":          "",
+		"/timeline/../login":                    "",
+		"/following":                            "",
+		"/timeline\r\nSet-Cookie: x=1":          "",
+		"\\\\evil.example":                      "",
+	} {
+		if got := timelineBack(in); got != want {
+			t.Errorf("timelineBack(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A reply goes back to the timeline view it was written from, at the post it answers; likes and unlikes stay at
+// their post. The timeline rows carry the ids that make that work.
+func TestReplyAndLikeReturnToThePost(t *testing.T) {
+	alice, bob := newInstance(t, "alice"), newInstance(t, "bob")
+	ua := alice.post(t, `{"markdown":"Pickleball today?"}`)
+	bob.call(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
+	ck := loginCookie(t, bob)
+	view := "/timeline?feed=" + url.QueryEscape(alice.base+"/feed.xml")
+
+	tl := do4(bob, view, ck)
+	id := anchorID(ua)
+	if !strings.Contains(tl, `<article id="`+id+`">`) {
+		t.Fatalf("the row has no id:\n%s", tl)
+	}
+	m := regexp.MustCompile(`href="(/compose\?reply_to=[^"]+)"`).FindStringSubmatch(tl)
+	if m == nil || !strings.Contains(html.UnescapeString(m[1]), "&back="+url.QueryEscape(view)) {
+		t.Fatalf("the reply link does not remember the view: %v", m)
+	}
+	// the form carries it
+	cf := do4(bob, html.UnescapeString(m[1]), ck)
+	if !strings.Contains(cf, `name="back" value="`+html.EscapeString(view)+`"`) {
+		t.Errorf("the compose form lost the view:\n%s", cf)
+	}
+
+	reply := func(back string) string {
+		v := url.Values{"markdown": {"Count me in."}, "reply_to": {ua}, "reply_feed": {alice.base + "/feed.xml"}}
+		if back != "" {
+			v.Set("back", back)
+		}
+		w := formAs(bob, "/compose", ck, "", v)
+		if w.Code != 303 {
+			t.Fatalf("reply: %d", w.Code)
+		}
+		return w.Header().Get("Location")
+	}
+	if got := reply(view); got != view+"#"+id {
+		t.Errorf("reply from a view returned to %q, want %q", got, view+"#"+id)
+	}
+	if got := reply(""); got != "/timeline#"+id {
+		t.Errorf("reply without a view returned to %q", got)
+	}
+	for _, evil := range []string{"//evil.example/", "http://evil.example/timeline", "/login"} {
+		if got := reply(evil); got != "/timeline#"+id {
+			t.Errorf("back=%q returned to %q", evil, got)
+		}
+	}
+	// a post that is not a reply still opens its own page
+	w := formAs(bob, "/compose", ck, "", url.Values{"markdown": {"Not a reply."}})
+	if loc := w.Header().Get("Location"); !strings.HasPrefix(loc, "/posts/") {
+		t.Errorf("a plain post went to %q", loc)
+	}
+
+	// like and unlike keep the view and return to the post
+	vals := url.Values{"target": {ua}, "feed": {alice.base + "/feed.xml"}}
+	for _, path := range []string{"/like", "/unlike"} {
+		w := formAs(bob, path, ck, bob.base+view, vals)
+		if got := w.Header().Get("Location"); w.Code != 303 || got != view+"#"+id {
+			t.Errorf("%s returned to %q", path, got)
+		}
 	}
 }

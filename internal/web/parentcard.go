@@ -38,7 +38,7 @@ type modeLink struct {
 // replyContext says what the post at target is, for the "replying to …" line of a timeline row: whose post
 // it is and a card of its first lines. It looks only at what this server already has: one of the reader's
 // own posts, a post of another user on this server (the host names the user), a post cached from a
-// followed feed. Anything else is just its host, and the card is left to the snapshot the reply carries.
+// followed feed ("a post from NYT > Top Stories": a feed is as often a publication as a person). Anything else is just its host, and the card is left to the snapshot the reply carries.
 func (s *Server) replyContext(r *http.Request, q *req, target string) (who string, card *parentCard) {
 	target = httpURL(target)
 	if target == "" {
@@ -92,7 +92,7 @@ func (s *Server) replyContext(r *http.Request, q *req, target string) (who strin
 		return who, nil
 	}
 	if it, err := q.sp.ItemByTarget(q.host.ID, target); err == nil {
-		return orStr(it.FeedTitle, it.FeedURL) + "’s post", cardOf(it.Title, orStr(it.Markdown, it.Text), it.Markdown == "")
+		return "a post from " + orStr(it.FeedTitle, it.FeedURL), cardOf(it.Title, orStr(it.Markdown, it.Text), it.Markdown == "")
 	}
 	return who, nil
 }
@@ -124,4 +124,60 @@ func readMarkdown(markdown string) (text, img, alt string) {
 	}
 	text = strings.Join(strings.Fields(html.UnescapeString(tagRun.ReplaceAllString(blockEnd.ReplaceAllString(h, " "), ""))), " ")
 	return text, img, alt
+}
+
+// pageFeed is a feed the bookmarked page advertises, and whether the reader already follows it.
+type pageFeed struct {
+	URL, Title, Host string
+	Following        bool
+}
+
+// sameAddress compares two addresses as a reader would: not by scheme, case of the host, a trailing slash or
+// a fragment.
+func sameAddress(a, b string) bool { return addressKey(a) == addressKey(b) }
+
+func addressKey(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return raw
+	}
+	return strings.ToLower(u.Host) + strings.TrimSuffix(u.EscapedPath(), "/") + "?" + u.RawQuery
+}
+
+// pageFeeds reads the feeds the bookmarklet found on page (the feed and ftitle parameters, in order), keeping
+// the first five that are web addresses, and marks those the reader follows. A feed counts as followed when its
+// address is one of the reader's, or, when the page offers only that one feed, when the page is the home page
+// of a feed the reader follows (a follow keeps the address the feed answered from, which can differ).
+func pageFeeds(q *req, page string, urls, titles []string) []pageFeed {
+	var out []pageFeed
+	for i, raw := range urls {
+		u := httpURL(raw)
+		if u == "" || len(out) == 5 {
+			continue
+		}
+		dup := false
+		for _, f := range out {
+			dup = dup || sameAddress(f.URL, u)
+		}
+		if dup {
+			continue
+		}
+		title := ""
+		if i < len(titles) {
+			title = oneLine(titles[i], 80)
+		}
+		out = append(out, pageFeed{URL: u, Title: title, Host: siteHost(u)})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	follows, _ := q.sp.Follows(q.host.ID)
+	for i := range out {
+		for _, f := range follows {
+			if sameAddress(f.URL, out[i].URL) || (len(out) == 1 && f.Link != "" && sameAddress(f.Link, page)) {
+				out[i].Following = true
+			}
+		}
+	}
+	return out
 }

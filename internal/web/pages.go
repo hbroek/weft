@@ -40,8 +40,21 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <main>{{end}}
 {{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div></body></html>{{end}}
 {{define "modes"}}{{if .Modes}}<p class="modes">{{range .Modes}}{{if .Current}}<strong>{{.Label}}</strong>{{else}}<a href="{{.Href}}">{{.Label}}</a>{{end}}{{end}}</p>{{end}}{{end}}
+{{define "pagefeeds"}}{{if .PageFeeds}}<div class="pfeeds"><p><small>{{if gt (len .PageFeeds) 1}}This page offers these feeds{{else}}This page has a feed{{end}}</small></p>
+{{range .PageFeeds}}<p class="pfeed"><span class="pf-t"><strong>{{if .Title}}{{.Title}}{{else}}{{.Host}}{{end}}</strong><small>{{.URL}}</small></span>{{if .Following}}<span class="following">Following ✓</span>{{else}}<form method="post" action="/following" class="followform"><input type="hidden" name="url" value="{{.URL}}"><button>Follow</button></form>{{end}}</p>
+{{end}}<script>
+(function(){
+document.querySelectorAll('form.followform').forEach(function(f){
+ f.addEventListener('submit',function(e){
+  e.preventDefault();var b=f.querySelector('button'),old=b.textContent,m=f.querySelector('.err');if(m)m.remove();b.disabled=true;b.textContent='Following…';
+  fetch('/following',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'url='+encodeURIComponent(f.elements.url.value),credentials:'same-origin'})
+   .then(function(r){if(!r.ok)throw 0;var s=document.createElement('span');s.className='following';s.textContent='Following ✓';f.replaceWith(s)})
+   .catch(function(){b.disabled=false;b.textContent=old;f.insertAdjacentHTML('beforeend',' <small class="err">Could not follow that feed.</small>')})
+ })})
+})();
+</script></div>{{end}}{{end}}
 {{define "likepage"}}{{template "head" .}}<h2>Like this page</h2>
-{{template "modes" .}}
+{{template "modes" .}}{{template "pagefeeds" .}}
 {{if .Parent}}{{template "parentcard" .Parent}}{{else}}<p><a href="{{.ReplyTo}}">{{.ReplyTo}}</a></p>{{end}}
 <form method="post" action="/like"><input type="hidden" name="target" value="{{.ReplyTo}}"><input type="hidden" name="from" value="page">{{if not .PInfo.Empty}}<input type="hidden" name="ptitle" value="{{.PInfo.Title}}"><input type="hidden" name="pdesc" value="{{.PInfo.Description}}"><input type="hidden" name="pimg" value="{{.PInfo.Image}}">{{end}}
 <p><button>Like this page</button></p></form>
@@ -110,7 +123,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{define "timeline"}}{{template "head" .}}{{if .Keyword}}<p class="kwhead">Tagged <strong>{{.Keyword}}</strong>{{if .Only}} from <strong>{{.Heading}}</strong>{{end}} <small>· <a href="{{.ClearKeyword}}">Clear filter</a></small></p>{{end}}<h2>{{if .Only}}{{.Heading}}</h2><p><small>{{.Only}} · <a href="/timeline">All feeds</a> · <a href="/following">Following</a></small></p>{{else}}Timeline</h2>{{end}}
 <p><small>{{if not .Keyword}}<a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a>{{end}}{{if not .Only}}{{if not .Keyword}} · {{end}}<a href="{{.MineToggle}}">{{if .ShowMine}}Hide my posts{{else}}Show my posts{{end}}</a>{{end}}</small></p>
 {{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small></p>{{if .Mine}}<form method="post" action="/unlike"><input type="hidden" name="target" value="{{.Target}}"><button class="linkbtn">Unlike</button></form>{{end}}</article>
-{{else}}<article>
+{{else}}<article{{if .Anchor}} id="{{.Anchor}}"{{end}}>
 <div class="card-top"><p class="who">{{template "avatar" .}}{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">{{if .ReplyWho}}{{.ReplyWho}}{{else if .Parent}}{{.Parent.Host}}{{else}}a post{{end}}</a>{{end}}</p>
 <span class="when">{{if .Link}}<a href="{{.Link}}"><time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{else}}<time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time>{{end}}{{if .Edited}} · edited{{end}}</span></div>
 {{if .Parent}}{{template "parentcard" .Parent}}{{end}}
@@ -165,10 +178,9 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{if ne .Status "rejected"}}<button name="status" value="rejected">Reject</button>{{end}}</form>
 </article>{{else}}<p>No replies yet.</p>{{end}}
 {{template "foot"}}{{end}}
-{{define "editor"}}{{template "head" .}}<form method="post" action="{{.Action}}">
-<h2>{{.Heading}}</h2>
-{{template "modes" .}}
-{{if .ReplyTo}}{{if .Parent}}<p>Replying to</p>{{template "parentcard" .Parent}}{{else}}<p>Replying to <a href="{{.ReplyTo}}">{{.ReplyTo}}</a></p>{{end}}<input type="hidden" name="reply_to" value="{{.ReplyTo}}"><input type="hidden" name="reply_feed" value="{{.ReplyFeed}}">{{if not .PInfo.Empty}}<input type="hidden" name="ptitle" value="{{.PInfo.Title}}"><input type="hidden" name="pdesc" value="{{.PInfo.Description}}"><input type="hidden" name="pimg" value="{{.PInfo.Image}}">{{end}}{{end}}
+{{define "editor"}}{{template "head" .}}<h2>{{.Heading}}</h2>
+{{template "modes" .}}{{template "pagefeeds" .}}<form method="post" action="{{.Action}}">
+{{if .ReplyTo}}{{if .Parent}}<p>Replying to</p>{{template "parentcard" .Parent}}{{else}}<p>Replying to <a href="{{.ReplyTo}}">{{.ReplyTo}}</a></p>{{end}}<input type="hidden" name="reply_to" value="{{.ReplyTo}}"><input type="hidden" name="reply_feed" value="{{.ReplyFeed}}">{{if .Back}}<input type="hidden" name="back" value="{{.Back}}">{{end}}{{if not .PInfo.Empty}}<input type="hidden" name="ptitle" value="{{.PInfo.Title}}"><input type="hidden" name="pdesc" value="{{.PInfo.Description}}"><input type="hidden" name="pimg" value="{{.PInfo.Image}}">{{end}}{{end}}
 
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
@@ -226,7 +238,9 @@ type pageData struct {
 	Posts                                      []pagePost
 	Timeline                                   []tlRow
 	Replies                                    []replyRow
-	ReplyTotal                                 int // replies in all, with the ones to replies
+	ReplyTotal                                 int        // replies in all, with the ones to replies
+	PageFeeds                                  []pageFeed // feeds the bookmarked page advertises
+	Back                                       string     // the timeline view a reply returns to
 	Moderation                                 []modRow
 	Pending                                    int
 	Like                                       *likeData
@@ -306,6 +320,9 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Parent: newParentCard(p.InReplyTo, p.Parent), Keywords: p.Keywords, Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
 			HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 		})
+		if pp := &d.Posts[len(d.Posts)-1]; p.InReplyTo != "" && pp.Parent == nil {
+			_, pp.Parent = s.replyContext(r, q, p.InReplyTo) // no snapshot: what this server knows of the post
+		}
 	}
 	if len(posts) == 1 && !posts[0].Deleted {
 		d.Replies, d.ReplyTotal, d.Pending = s.repliesFor(r, q, posts[0].ID)

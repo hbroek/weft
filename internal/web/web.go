@@ -120,17 +120,40 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.logged(w, r)
 		return
 	}
+	if s.cfg.Verbose && r.Method == http.MethodPost {
+		s.loggedForm(w, r)
+		return
+	}
 	s.mux.ServeHTTP(w, r)
 }
 
 type statusWriter struct {
 	http.ResponseWriter
-	status int
+	status   int
+	location string
 }
 
 func (w *statusWriter) WriteHeader(c int) {
 	w.status = c
+	w.location = w.Header().Get("Location")
 	w.ResponseWriter.WriteHeader(c)
+}
+
+// loggedForm serves a form post and logs one line: host, path, status, where it redirected to and the page
+// it came from. The body is not logged: it can hold a password.
+func (s *Server) loggedForm(w http.ResponseWriter, r *http.Request) {
+	sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	s.mux.ServeHTTP(sw, r)
+	line := fmt.Sprintf("form %s POST %s -> %d", r.Host, r.URL.Path, sw.status)
+	if sw.location != "" {
+		line += " " + sw.location
+	}
+	if ref := r.Header.Get("Referer"); ref != "" {
+		line += " (from " + ref + ")"
+	} else {
+		line += " (no Referer)"
+	}
+	log.Print(line)
 }
 
 // logged serves r and logs one line: host, method, path, request body (cut short), status, time.

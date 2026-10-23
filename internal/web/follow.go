@@ -22,6 +22,7 @@ import (
 )
 
 type tlRow struct {
+	Anchor                                                      string // the row's id, for links back to it
 	Author, AuthorHref, Title, Link, Date, InReplyTo, ReplyHref string
 	ReplyWho                                                    string // whose post it replies to, for "replying to …"
 	Target, FeedURL, Tally, TallyTip, ThreadHref                string
@@ -91,12 +92,20 @@ func (s *Server) iLike(sp *store.Space, target string) bool {
 }
 
 // replyHref links to the compose form prefilled to reply to the item.
-func replyHref(it store.TimelineItem) string {
+func replyHref(it store.TimelineItem, back string) string {
 	target := itemTarget(it)
 	if target == "" {
 		return ""
 	}
-	return "/compose?reply_to=" + url.QueryEscape(target) + "&reply_feed=" + url.QueryEscape(it.FeedURL)
+	return "/compose?reply_to=" + url.QueryEscape(target) + "&reply_feed=" + url.QueryEscape(it.FeedURL) + backParam(back)
+}
+
+// backParam makes the reply link remember which timeline view it was clicked in, so that the reply returns there.
+func backParam(back string) string {
+	if back = timelineBack(back); back == "" {
+		return ""
+	}
+	return "&back=" + url.QueryEscape(back)
 }
 
 func (s *Server) rows(r *http.Request, q *req, feedURL string) ([]tlRow, []store.TimelineItem, error) {
@@ -125,9 +134,9 @@ func (s *Server) rows(r *http.Request, q *req, feedURL string) ([]tlRow, []store
 		if author == "" {
 			author = it.FeedURL
 		}
-		out = append(out, tlRow{Parent: newParentCard(it.InReplyTo, it.Parent), Avatar: httpURL(it.FeedImage), Initial: initial(author), Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
+		out = append(out, tlRow{Anchor: anchorID(itemTarget(it)), Parent: newParentCard(it.InReplyTo, it.Parent), Avatar: httpURL(it.FeedImage), Initial: initial(author), Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
 			Date: stampAt(it.Published), ISO: it.Published.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(it.Published), MD: orStr(it.Markdown, it.Text), HTML: remoteHTML(it), Edited: it.Updated != nil, Keywords: it.Keywords,
-			ReplyHref: replyHref(it), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(n), TallyTip: likedBy(names, n),
+			ReplyHref: replyHref(it, r.URL.RequestURI()), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(n), TallyTip: likedBy(names, n),
 			Mine: mine, when: it.Published})
 		if row := &out[len(out)-1]; row.InReplyTo != "" {
 			who, card := s.replyContext(r, q, row.InReplyTo)
@@ -207,10 +216,10 @@ func (s *Server) ownRows(r *http.Request, q *req) ([]tlRow, error) {
 	out := make([]tlRow, 0, len(posts))
 	for _, p := range posts {
 		pu := s.postURL(r, p.ID)
-		out = append(out, tlRow{Own: true, Parent: newParentCard(p.InReplyTo, p.Parent), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), Author: "You", AuthorHref: "/", Title: p.Title, Link: pu, InReplyTo: httpURL(p.InReplyTo),
+		out = append(out, tlRow{Anchor: anchorID(pu), Own: true, Parent: newParentCard(p.InReplyTo, p.Parent), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), Author: "You", AuthorHref: "/", Title: p.Title, Link: pu, InReplyTo: httpURL(p.InReplyTo),
 			Date: stampAt(p.Created), ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(p.Created), MD: p.Markdown, HTML: template.HTML(p.HTML), // goldmark safe mode
 			Edited: p.Updated != nil, Keywords: p.Keywords, EditHref: "/posts/" + p.Slug + "/edit",
-			ReplyHref: "/compose?reply_to=" + url.QueryEscape(pu), ThreadHref: threadHref(pu, ""), HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
+			ReplyHref: "/compose?reply_to=" + url.QueryEscape(pu) + backParam(r.URL.RequestURI()), ThreadHref: threadHref(pu, ""), HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 			Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), when: p.Created})
 		if row := &out[len(out)-1]; row.InReplyTo != "" {
 			who, card := s.replyContext(r, q, row.InReplyTo)
@@ -329,7 +338,7 @@ func (s *Server) followForm(w http.ResponseWriter, r *http.Request, q *req) {
 		s.renderFollowing(w, r, q, http.StatusBadRequest, err.Error())
 		return
 	}
-	back(w, r, "/following")
+	back(w, r, "/following", "")
 }
 
 func (s *Server) unfollowForm(w http.ResponseWriter, r *http.Request, q *req) {
@@ -340,7 +349,7 @@ func (s *Server) unfollowForm(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	back(w, r, "/following")
+	back(w, r, "/following", "")
 }
 
 func (s *Server) refreshForm(w http.ResponseWriter, r *http.Request, q *req) {

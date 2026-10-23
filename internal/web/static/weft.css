@@ -154,3 +154,15 @@ ol.comments ol.comments { margin-left: .9rem; padding-left: .9rem; border-left: 
 .comment .p-content > :first-child { margin-top: .4rem; }
 .comment .p-content > :last-child { margin-bottom: 0; }
 @media (max-width: 30rem) { ol.comments ol.comments { margin-left: .4rem; padding-left: .5rem; } }
+
+/* feeds the bookmarked page advertises */
+.pfeeds { margin: .5rem 0 1rem; }
+.pfeed { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin: .4rem 0; padding: .5rem .8rem; background: var(--soft); border: 1px solid var(--border); border-radius: 10px; }
+.pf-t { display: flex; flex-direction: column; min-width: 0; }
+.pf-t small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pfeed form { margin: 0; }
+.following { color: var(--muted); white-space: nowrap; }
+
+/* a link back to a post on the timeline scrolls to it, clear of the header, and marks it */
+article[id] { scroll-margin-top: 4.5rem; }
+article[id]:target { box-shadow: 0 0 0 2px #f08a4b99, var(--shadow); }

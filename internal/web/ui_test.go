@@ -337,7 +337,7 @@ func TestBookmarkletOnHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"http://` + host + `/compose"`, "og:title", "og:image", "twitter:image", "og:description", "encodeURIComponent", "webmention", "ptitle", "&wm="} {
+	for _, want := range []string{`"http://` + host + `/compose"`, "og:title", "og:image", "twitter:image", "og:description", "encodeURIComponent", "webmention", "ptitle", "&wm=", `rel~="alternate"`, `application\/(rss|atom)\+xml`, "&feed=", "&ftitle="} {
 		if !strings.Contains(js, want) {
 			t.Errorf("bookmarklet lacks %q:\n%s", want, js)
 		}

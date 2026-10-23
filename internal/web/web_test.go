@@ -177,3 +177,27 @@ func (s *Server) space(name string) *store.Space {
 	release() // the test pool is far below its cap, so nothing closes the database under the test
 	return sp
 }
+
+// With -v a form post leaves one line saying where it went and where it came from, and never its body.
+func TestVerboseLogsFormPostsWithoutTheirBody(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if _, err := st.AddUser("alice", "Alice", ""); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Config{BaseDomain: "localhost", Verbose: true}, st)
+	var buf strings.Builder
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	r := httptest.NewRequest("POST", "http://"+host+"/login", strings.NewReader("password=hunter2hunter2"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Referer", "http://"+host+"/timeline")
+	s.ServeHTTP(httptest.NewRecorder(), r)
+	got := buf.String()
+	if !strings.Contains(got, "form "+host+" POST /login -> ") || !strings.Contains(got, "(from http://"+host+"/timeline)") || strings.Contains(got, "hunter2") {
+		t.Errorf("log: %q", got)
+	}
+}

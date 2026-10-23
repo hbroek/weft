@@ -50,10 +50,13 @@ func (s *Server) nudgeTally(sp *store.Space, target string, d int) {
 }
 
 // back redirects to the page the form was sent from, so a like keeps the filter and feed in view.
-func back(w http.ResponseWriter, r *http.Request, fallback string) {
+func back(w http.ResponseWriter, r *http.Request, fallback, anchorTarget string) {
 	to := fallback
 	if u, err := url.Parse(r.Referer()); err == nil && u.Host == r.Host && strings.HasPrefix(u.Path, "/") && !strings.HasPrefix(u.Path, "//") {
 		to = u.RequestURI()
+	}
+	if anchorTarget != "" && strings.HasPrefix(to, "/timeline") {
+		to = withAnchor(to, anchorTarget)
 	}
 	http.Redirect(w, r, to, http.StatusSeeOther)
 }

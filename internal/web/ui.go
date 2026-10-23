@@ -57,6 +57,7 @@ func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request, q *req) bo
 func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status int, heading, action, button, del, title, markdown string, keywords []string, errMsg string, tweak ...func(*pageData)) {
 	d := s.data(r, q, heading)
 	d.ReplyTo, d.ReplyFeed = httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed"))
+	d.Back = timelineBack(r.FormValue("back"))
 	d.PInfo = parentFromForm(r)
 	if d.ReplyTo != "" {
 		d.Parent = newParentCard(d.ReplyTo, d.PInfo)
@@ -125,11 +126,12 @@ func (s *Server) composeForm(w http.ResponseWriter, r *http.Request, q *req) {
 			q2.Set("mode", m.key)
 			modes = append(modes, modeLink{Label: m.label, Href: "/compose?" + q2.Encode(), Current: m.key == mode})
 		}
-		d = func(d *pageData) { d.Modes = modes }
+		feeds := pageFeeds(q, page, v["feed"], v["ftitle"])
+		d = func(d *pageData) { d.Modes, d.PageFeeds = modes, feeds }
 		switch mode {
 		case "like":
 			dd := s.data(r, q, "Like this page")
-			dd.Modes, dd.ReplyTo, dd.PInfo, dd.Parent = modes, page, info, newParentCard(page, info)
+			dd.Modes, dd.ReplyTo, dd.PInfo, dd.Parent, dd.PageFeeds = modes, page, info, newParentCard(page, info), feeds
 			s.show(w, "likepage", http.StatusOK, dd)
 			return
 		case "reply":
@@ -167,6 +169,14 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request, q *req) {
 	p, msg := s.create(r, q.host, title, body, slug, kws, httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed")), parentFromForm(r))
 	if msg != "" {
 		s.editor(w, r, q, http.StatusBadRequest, "New post", "/compose", "Publish", "", title, body, kws, msg, func(d *pageData) { d.Form.Slug = slug })
+		return
+	}
+	if p.InReplyTo != "" { // a reply belongs to a conversation: back to the timeline, at the post it answers
+		dest := timelineBack(r.FormValue("back"))
+		if dest == "" {
+			dest = "/timeline"
+		}
+		http.Redirect(w, r, withAnchor(dest, p.InReplyTo), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/posts/"+p.Slug, http.StatusSeeOther)

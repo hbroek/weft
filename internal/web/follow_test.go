@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -293,5 +295,103 @@ func TestReplyCardFallbacks(t *testing.T) {
 	}
 	if strings.Contains(page, "![") || strings.Contains(page, "<strong>alice.localhost") {
 		t.Errorf("a card shows raw Markdown or the host as its title")
+	}
+}
+
+// The bookmarklet reports the feeds a page advertises; the compose form offers to follow them and says when
+// the reader already does.
+func TestComposeOffersTheFeedsOfThePage(t *testing.T) {
+	s, port, _, bobTok := twoUsers(t)
+	alice, bob := "alice.localhost:"+port, "bob.localhost:"+port
+	do(s, "POST", bob, "/api/posts", bobTok, `{"markdown":"A post."}`)
+	s.space("alice").SetPassword("correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", map[string][]string{"password": {"correct horse"}}, ""))
+	feed := "http://" + bob + "/feed.xml"
+	path := func(mode string, feeds ...string) string {
+		v := url.Values{"page": {"http://" + bob + "/"}, "ptitle": {"Bob"}, "wm": {"0"}}
+		if mode != "" {
+			v.Set("mode", mode)
+		}
+		for i, f := range feeds {
+			v.Add("feed", f)
+			v.Add("ftitle", "Feed "+strconv.Itoa(i))
+		}
+		return "/compose?" + v.Encode()
+	}
+	page := do3(s, "GET", alice, path("", feed), ck).Body.String()
+	for _, want := range []string{"This page has a feed", `class="followform"`, `name="url" value="` + feed + `"`, "<strong>Feed 0</strong>"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("compose lacks %q:\n%s", want, page)
+		}
+	}
+	if strings.Contains(page, "Following ✓</span>") {
+		t.Errorf("alice does not follow it yet")
+	}
+	// a form cannot sit inside another: browsers drop the inner one, and the Follow button would send the
+	// compose form instead
+	start := strings.Index(page, `<form method="post" action="/compose"`)
+	end := start + strings.Index(page[start:], "</form>")
+	if f := strings.Index(page, `class="followform"`); start < 0 || f < 0 || (f > start && f < end) {
+		t.Errorf("the Follow form (at %d) is inside the compose form (%d to %d)", f, start, end)
+	}
+	// the like view offers it too
+	if like := do3(s, "GET", alice, path("like", feed), ck).Body.String(); !strings.Contains(like, `class="followform"`) {
+		t.Errorf("the like view lacks the feed")
+	}
+	// following it (the form's button) turns the offer into a statement, and the same feed under another spelling is the same feed
+	if w := form(s, "POST", "/following", ck, map[string][]string{"url": {feed}}, ""); w.Code != 303 {
+		t.Fatalf("follow: %d", w.Code)
+	}
+	for _, f := range []string{feed, strings.ToUpper(feed[:len("http://")+len(bob)]) + feed[len("http://")+len(bob):], feed + "#x"} {
+		page = do3(s, "GET", alice, path("", f), ck).Body.String()
+		if !strings.Contains(page, "Following ✓</span>") || strings.Contains(page, `class="followform"`) {
+			t.Errorf("already following %q, but the form says otherwise:\n%s", f, page)
+		}
+	}
+	// a page with two feeds: one followed, one not; and only web addresses, at most five, no repeats
+	other := "http://" + bob + "/comments.xml"
+	page = do3(s, "GET", alice, path("", feed, other, "javascript:alert(1)", feed, "http://a.example/1", "http://a.example/2", "http://a.example/3", "http://a.example/4"), ck).Body.String()
+	if !strings.Contains(page, "This page offers these feeds") || strings.Count(page, `class="pfeed"`) != 5 || strings.Count(page, "Following ✓</span>") != 1 ||
+		strings.Count(page, `class="followform"`) != 4 || strings.Contains(page, "javascript:alert") {
+		t.Errorf("several feeds:\n%s", page)
+	}
+	// no feeds: nothing is offered
+	if page = do3(s, "GET", alice, path(""), ck).Body.String(); strings.Contains(page, "pfeed") {
+		t.Errorf("a feed block without feeds")
+	}
+}
+
+// A reply to an item of a feed the owner follows shows what it replies to on the owner's own pages as well as
+// in the timeline, though the reply carries no snapshot of its parent.
+func TestReplyToAFollowedFeedItemShowsItsCard(t *testing.T) {
+	s, tok := setup(t)
+	sp := s.space("alice")
+	const feedURL, item = "http://news.example/feed.xml", "https://news.example/2026/10/22/justice-inquiry.html"
+	raw := s.st.RawDBForTests()
+	if _, err := raw.Exec(`INSERT INTO feeds(url,title,fetched) VALUES(?,?,?)`, feedURL, "NYT > Top Stories", time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`INSERT INTO items(feed_url,guid,link,title,text,published) VALUES(?,?,?,?,?,?)`, feedURL, item, item,
+		"Justice Dept. Opens Inquiry", "A decade ago he served as the first campaign manager.", time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if err := sp.Follow(sp.UID(), feedURL); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(s, "POST", host, "/api/posts", tok, `{"markdown":"No pictures, NYT?","in_reply_to":"`+item+`"}`).Body.String()
+	permalink := resp[strings.Index(resp, "/posts/"):strings.LastIndex(resp, `"`)]
+
+	for _, path := range []string{"/", permalink} {
+		page := do(s, "GET", host, path, "", "").Body.String()
+		if !strings.Contains(page, `<a class="pcard" href="`+item+`"`) || !strings.Contains(page, "<strong>Justice Dept. Opens Inquiry</strong>") ||
+			!strings.Contains(page, "A decade ago he served") {
+			t.Errorf("%s shows no card for the post replied to:\n%s", path, page)
+		}
+	}
+	// the timeline header names the feed
+	sp.SetPassword("correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", map[string][]string{"password": {"correct horse"}}, ""))
+	if page := do3(s, "GET", host, "/timeline", ck).Body.String(); !strings.Contains(page, `replying to <a href="`+item+`">a post from NYT &gt; Top Stories</a>`) {
+		t.Errorf("timeline header:\n%s", page)
 	}
 }
