@@ -76,13 +76,16 @@ document.querySelectorAll('form.followform').forEach(function(f){
 {{with .Domain}}<h3>Your address</h3>
 <p>Your site is at <strong>{{.Address}}</strong>.</p>
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}{{if .Notice}}<p>{{.Notice}}</p>{{end}}
-{{if .Domain}}<p>Your own domain: <strong>{{.Domain}}</strong> {{if .Verified}}(verified; your old address redirects to it){{else}}(not verified yet){{end}}</p>
+{{if .Domain}}<p>Your own domain: <strong>{{.Domain}}</strong> {{if .Active}}(verified; your old address redirects to it){{else if .Verified}}(verified, but it does not reach this server yet){{else}}(not verified yet){{end}}</p>
 {{if not .Verified}}<p><small>To show that the domain is yours, add this DNS record. It can take a while to appear.</small></p>
-<p><code>{{.TXTName}}</code> TXT <code>{{.TXTValue}}</code></p>
-{{if .Target}}<p><small>To have visitors reach your site, point the domain at us too: <code>{{.Domain}}</code> CNAME <code>{{.Target}}</code> {{if .Points}}(found){{else}}(not found yet){{end}}. Use a subdomain such as <code>weft.example.com</code>: a bare domain cannot be a CNAME.</small></p>{{end}}
-<form method="post" action="/domain/check"><button>Check now</button></form>{{end}}
-<form method="post" action="/domain/remove"><button>Remove this domain</button></form>
-{{else}}<form method="post" action="/domain"><label>Use your own domain <input type="text" name="domain" placeholder="weft.example.com" inputmode="url"></label> <button>Add</button></form>
+<p><code>{{.TXTName}}</code> TXT <code>{{.TXTValue}}</code></p>{{end}}
+{{if not .Active}}{{if .Target}}<p><small>{{if .Verified}}The domain is yours. Now point it at this server{{else}}To have visitors reach your site, point the domain at us too{{end}}: <code>{{.Domain}}</code> CNAME <code>{{.Target}}</code> {{if .Points}}(found){{else}}(not found yet){{end}}. Use a subdomain such as <code>weft.example.com</code>: a bare domain cannot be a CNAME.</small></p>{{else}}<p><small>{{if .Verified}}The domain is yours. Now point it at this server{{else}}To have visitors reach your site, point the domain at this server too{{end}} with a CNAME record whose value is this server's host name, for example <code>weft.example.net</code>: a host name only, without <code>http://</code> or a port.
+{{if .Dev}}This server is in development mode and can only be reached from this computer, so a real domain cannot point at it.{{else}}Ask whoever runs this server which name to use.{{end}}</small></p>{{end}}
+<p><small>Until the domain reaches this server your site stays at {{.Address}}, and nothing is redirected.</small></p>{{end}}
+<form method="post" action="/domain/check"><p><button>{{if .Active}}Check that it still works{{else if .Verified}}Check again{{else}}Check now{{end}}</button></p></form>
+<form method="post" action="/domain/remove"><p><button>Remove this domain</button></p></form>
+{{else}}<form method="post" action="/domain"><label>Use your own domain <input type="text" name="domain" placeholder="weft.example.com" inputmode="url"></label>
+<p><button>Add</button></p></form>
 <p><small>Anyone who already follows you is moved to the new address by their reader. Once the domain works, you sign in again there.</small></p>{{end}}{{end}}
 {{template "foot"}}{{end}}
 {{define "ic-reply"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v3"/></svg>{{end}}
@@ -178,25 +181,34 @@ document.querySelectorAll('form.followform').forEach(function(f){
 {{if ne .Status "rejected"}}<button name="status" value="rejected">Reject</button>{{end}}</form>
 </article>{{else}}<p>No replies yet.</p>{{end}}
 {{template "foot"}}{{end}}
+{{define "cheatrows"}}<dl>{{range .}}<dt><code>{{.Syntax}}</code></dt><dd>{{.Shown}}</dd>{{end}}</dl>{{end}}
+{{define "cheats"}}{{if .}}<div class="cheats">
+<aside class="cheat cheat-l" aria-label="Markdown: text"><h3>Text</h3>{{template "cheatrows" .Left}}<p><small>A blank line starts a new paragraph. End a line with two spaces to break it there.</small></p></aside>
+<aside class="cheat cheat-r" aria-label="Markdown: links, pictures and code"><h3>Links, pictures, code</h3>{{template "cheatrows" .Right}}<p><small>Web addresses become links by themselves. HTML you type is not shown.</small></p></aside>
+</div>{{end}}{{end}}
 {{define "editor"}}{{template "head" .}}<h2>{{.Heading}}</h2>
-{{template "modes" .}}{{template "pagefeeds" .}}<form method="post" action="{{.Action}}">
+{{template "modes" .}}{{template "pagefeeds" .}}<div class="ed"><form method="post" action="{{.Action}}">
 {{if .ReplyTo}}{{if .Parent}}<p>Replying to</p>{{template "parentcard" .Parent}}{{else}}<p>Replying to <a href="{{.ReplyTo}}">{{.ReplyTo}}</a></p>{{end}}<input type="hidden" name="reply_to" value="{{.ReplyTo}}"><input type="hidden" name="reply_feed" value="{{.ReplyFeed}}">{{if .Back}}<input type="hidden" name="back" value="{{.Back}}">{{end}}{{if not .PInfo.Empty}}<input type="hidden" name="ptitle" value="{{.PInfo.Title}}"><input type="hidden" name="pdesc" value="{{.PInfo.Description}}"><input type="hidden" name="pimg" value="{{.PInfo.Image}}">{{end}}{{end}}
 
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
-<label>Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
-<label>Markdown <textarea name="markdown" required>{{.Form.Markdown}}</textarea></label>
-<label>Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="travel, open source, weekend project"></label>
-{{if not .Delete}}<label>Address <input type="text" name="slug" id="slug" value="{{.Form.Slug}}" maxlength="80"{{if .SlugAuto}} data-auto="1"{{end}} autocapitalize="off" autocorrect="off" spellcheck="false"></label>
-<p><small>The end of the post's link. It follows your title or first sentence until you change it, and cannot be changed once the post is published. A short code is added to make it yours alone.</small></p>{{end}}
+<label class="adv">Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
+<label><span class="adv">Markdown</span> <textarea name="markdown" aria-label="Markdown" required>{{.Form.Markdown}}</textarea></label>
+<label class="adv">Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="travel, open source, weekend project"></label>
+{{if not .Delete}}<label class="adv">Address <input type="text" name="slug" id="slug" value="{{.Form.Slug}}" maxlength="80"{{if .SlugAuto}} data-auto="1"{{end}} autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+<p class="adv"><small>The end of the post's link. It follows your title or first sentence until you change it, and cannot be changed once the post is published. A short code is added to make it yours alone.</small></p>{{end}}
+<p class="advrow"><label><input type="checkbox" id="adv"{{if .Advanced}} checked{{end}}> Advanced</label> <small>title, keywords, address and Markdown help</small></p>
 <p><button>{{.Button}}</button></p></form>
+{{template "cheats" .Cheat}}</div>
 <h3>Preview</h3>
 <article id="preview" class="h-entry"><h3 id="preview-title"{{if not .Form.Title}} hidden{{end}}>{{.Form.Title}}</h3><div id="preview-body">{{if .Preview}}{{.Preview}}{{else}}<p class="empty">Nothing to preview yet.</p>{{end}}</div>
 <p class="kw" id="preview-kw"{{if not .PreviewKeywords}} hidden{{end}}>{{range .PreviewKeywords}}<span>{{.}}</span>{{end}}</p></article>
 <script>
 (function(){
 var md=document.querySelector('textarea[name=markdown]'),ti=document.querySelector('input[name=title]'),kw=document.querySelector('input[name=keywords]'),kwbox=document.getElementById('preview-kw'),
- body=document.getElementById('preview-body'),head=document.getElementById('preview-title'),sl=document.getElementById('slug'),timer,seq=0,shown=0,auto=!!(sl&&sl.dataset.auto);
+ body=document.getElementById('preview-body'),head=document.getElementById('preview-title'),sl=document.getElementById('slug'),adv=document.getElementById('adv'),timer,seq=0,shown=0,auto=!!(sl&&sl.dataset.auto);
 if(!md||!body)return;
+if(adv){try{if(!adv.checked&&localStorage.getItem('weft-advanced')==='1')adv.checked=true}catch(e){}
+ adv.addEventListener('change',function(){try{localStorage.setItem('weft-advanced',adv.checked?'1':'0')}catch(e){}})}
 function title(){head.textContent=ti.value.trim();head.hidden=!ti.value.trim()}
 function chips(){
  var seen={},out=[];
@@ -238,9 +250,11 @@ type pageData struct {
 	Posts                                      []pagePost
 	Timeline                                   []tlRow
 	Replies                                    []replyRow
-	ReplyTotal                                 int        // replies in all, with the ones to replies
-	PageFeeds                                  []pageFeed // feeds the bookmarked page advertises
-	Back                                       string     // the timeline view a reply returns to
+	ReplyTotal                                 int         // replies in all, with the ones to replies
+	PageFeeds                                  []pageFeed  // feeds the bookmarked page advertises
+	Back                                       string      // the timeline view a reply returns to
+	Cheat                                      *cheatSheet // the Markdown help beside the editor
+	Advanced                                   bool        // the editor opens with title, keywords, address and the Markdown help
 	Moderation                                 []modRow
 	Pending                                    int
 	Like                                       *likeData

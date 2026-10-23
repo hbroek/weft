@@ -17,8 +17,9 @@ import (
 
 // Where a user is served from, and what happens to the old address when that changes.
 //
-// A user has at most one custom domain. While it is verified it is the user's address, and every
-// other host answers with a permanent redirect to it. A user who has moved to another server
+// A user has at most one custom domain. Once it is verified (the TXT record) it serves the user, and once it is
+// also active (it reaches this instance) it is the user's address, and every other host answers with a
+// permanent redirect to it. A user who has moved to another server
 // (MarkMoved) is redirected there for good: the directory remembers the new address, the file goes to
 // the trash for a while in case the move is undone, and the name stays taken. The web layer asks
 // Instance.Dir about every request, so the answers are cached in memory.
@@ -61,13 +62,16 @@ func CleanDomain(s string) (string, error) {
 	return s, nil
 }
 
-// Domain is a user's custom domain. It becomes theirs once the owner has shown control of it, by
-// putting Token in a TXT record or pointing a CNAME at the instance.
+// Domain is a user's custom domain. It becomes theirs (Verified) once the owner has shown control of it, by
+// putting Token in a TXT record. It becomes their address (Active) once it also reaches this instance: until
+// then the user is still served, and found, at the instance's address, so a domain whose DNS is not ready
+// cannot lock them out.
 type Domain struct {
 	Domain   string
 	Name     string
 	Token    string
 	Verified bool
+	Active   bool
 	Created  time.Time
 }
 
@@ -115,20 +119,20 @@ func (in *Instance) SetDomain(name, domain string) (*Domain, error) {
 // DomainOf returns the user's custom domain, verified or not, or ErrNotFound.
 func (in *Instance) DomainOf(name string) (*Domain, error) {
 	d := &Domain{Name: name}
-	var v, c int64
-	err := in.rdb.QueryRow(`SELECT domain,token,verified,created FROM domains WHERE name=?`, name).Scan(&d.Domain, &d.Token, &v, &c)
+	var v, a, c int64
+	err := in.rdb.QueryRow(`SELECT domain,token,verified,active,created FROM domains WHERE name=?`, name).Scan(&d.Domain, &d.Token, &v, &a, &c)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	d.Verified, d.Created = v != 0, time.Unix(c, 0)
+	d.Verified, d.Active, d.Created = v != 0, a != 0, time.Unix(c, 0)
 	return d, nil
 }
 
-// VerifyDomain marks the user's domain verified: from now on the domain serves the user, and the
-// other addresses redirect to it.
+// VerifyDomain marks the user's domain verified: a request that arrives on the domain is served as the user, and
+// the proxy may get a certificate for it. The user's address does not change until ActivateDomain.
 func (in *Instance) VerifyDomain(name string) error {
 	res, err := in.db.Exec(`UPDATE domains SET verified=1 WHERE name=?`, name)
 	if err != nil {
@@ -139,6 +143,30 @@ func (in *Instance) VerifyDomain(name string) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
+	}
+	in.dirs.drop()
+	return nil
+}
+
+// ActivateDomain makes a verified domain the user's address: the other addresses redirect to it. Call it only
+// once requests to the domain are known to reach this instance.
+func (in *Instance) ActivateDomain(name string) error {
+	res, err := in.db.Exec(`UPDATE domains SET active=1 WHERE name=? AND verified=1`, name)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	in.dirs.drop()
+	return nil
+}
+
+// DeactivateDomain takes the address back from a domain that stopped reaching this instance. The domain stays
+// verified, so it can become the address again without a new record in its DNS.
+func (in *Instance) DeactivateDomain(name string) error {
+	if _, err := in.db.Exec(`UPDATE domains SET active=0 WHERE name=?`, name); err != nil {
+		return err
 	}
 	in.dirs.drop()
 	return nil
@@ -166,7 +194,7 @@ func (in *Instance) UserExists(name string) bool {
 type Entry struct {
 	Status  string
 	MovedTo string // origin of the new home, while Status is moved
-	Domain  string // the verified custom domain, if any
+	Domain  string // the active custom domain, if any
 }
 
 // dirCache holds the entries of the few users who have one, and the hosts of verified domains. A
@@ -209,23 +237,27 @@ func (in *Instance) loadDirs() (map[string]Entry, map[string]string, error) {
 		byName[n] = e
 	}
 	rows.Close()
-	rows, err = in.rdb.Query(`SELECT domain,name FROM domains WHERE verified=1`)
+	rows, err = in.rdb.Query(`SELECT domain,name,active FROM domains WHERE verified=1`)
 	if err != nil {
 		return nil, nil, err
 	}
 	for rows.Next() {
 		var d, n string
-		if err := rows.Scan(&d, &n); err != nil {
+		var active int
+		if err := rows.Scan(&d, &n, &active); err != nil {
 			rows.Close()
 			return nil, nil, err
+		}
+		hosts[d] = n // a verified domain serves the user, active or not
+		if active == 0 {
+			continue
 		}
 		e := byName[n]
 		if e.Status == "" {
 			e.Status = StatusActive
 		}
-		e.Domain = d
+		e.Domain = d // only an active one is the address the others redirect to
 		byName[n] = e
-		hosts[d] = n
 	}
 	rows.Close()
 	c.byName, c.hosts, c.loaded = byName, hosts, time.Now()
@@ -245,7 +277,7 @@ func (in *Instance) Dir(name string) Entry {
 	return e
 }
 
-// HostUser returns the user a verified custom domain belongs to.
+// HostUser returns the user a verified custom domain belongs to, active or not.
 func (in *Instance) HostUser(host string) (string, bool) {
 	_, hosts, err := in.loadDirs()
 	if err != nil {

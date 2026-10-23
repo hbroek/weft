@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -24,6 +25,9 @@ func hosts(t *testing.T, cfg Config, users ...string) (s *Server, port string, t
 	t.Cleanup(func() { st.Close() })
 	cfg.BaseDomain, cfg.AllowPrivate = "base.localhost", true
 	s = New(cfg, st)
+	if s.cfg.ReachDomain == nil {
+		s.cfg.ReachDomain = reachSelf(s)
+	}
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 	port = ts.URL[strings.LastIndex(ts.URL, ":")+1:]
@@ -34,6 +38,19 @@ func hosts(t *testing.T, cfg Config, users ...string) (s *Server, port string, t
 		}
 	}
 	return
+}
+
+// reachSelf stands in for the network: a request to the domain is answered by the server itself, as it would be
+// if the domain's DNS pointed here.
+func reachSelf(s *Server) func(context.Context, string) (string, error) {
+	return func(_ context.Context, domain string) (string, error) {
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, httptest.NewRequest("GET", "http://"+domain+"/.well-known/weft-domain", nil))
+		if w.Code != http.StatusOK {
+			return "", fmt.Errorf("status %d", w.Code)
+		}
+		return w.Body.String(), nil
+	}
 }
 
 func ownerCookie(t *testing.T, s *Server, name string) string {
@@ -128,7 +145,7 @@ func TestCustomDomain(t *testing.T) {
 	if w := send(s, "POST", old, "/webmention", "", nil); w.Code != 308 {
 		t.Fatalf("a POST to the old address must keep its method: %d", w.Code)
 	}
-	if cc := w.Header().Get("Cache-Control"); cc != redirectCache {
+	if cc := w.Header().Get("Cache-Control"); cc != domainRedirectCache {
 		t.Errorf("Cache-Control on a redirect: %q", cc)
 	}
 	oldFeed := send(s, "GET", old, "/feed.xml?page=2", "", nil)
@@ -212,6 +229,9 @@ func TestMovedAccount(t *testing.T) {
 	if w.Code != 301 || w.Header().Get("Location") != "https://alice.example.org/posts/x?a=1" {
 		t.Fatalf("page: %d %s", w.Code, w.Header().Get("Location"))
 	}
+	if cc := w.Header().Get("Cache-Control"); cc != redirectCache { // a move to another server is for good: an hour
+		t.Errorf("Cache-Control on the redirect of a moved account: %q", cc)
+	}
 	if w := send(s, "POST", host, "/api/posts", "", nil); w.Code != 308 {
 		t.Fatalf("post: %d", w.Code)
 	}
@@ -274,6 +294,9 @@ func TestReaderFollowsAFeedThatMoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.st.VerifyDomain("alice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.st.ActivateDomain("alice"); err != nil {
 		t.Fatal(err)
 	}
 	s.Refresh(ctx, oldFeed)
@@ -361,5 +384,120 @@ func TestMetrics(t *testing.T) {
 	// the public side has no such page
 	if w := do(s, "GET", "alice.base.localhost:"+port, "/metrics", "", ""); w.Code != 404 {
 		t.Errorf("/metrics on the public listener: %d", w.Code)
+	}
+}
+
+// A domain whose TXT record is in place but whose DNS does not reach this server yet must not take the
+// address from the user: nothing redirects, and the owner keeps the pages that manage the domain even
+// after it has gone live and then stopped working.
+func TestUnreachableDomainDoesNotLockTheOwnerOut(t *testing.T) {
+	var token string
+	s, port, toks := hosts(t, Config{
+		LookupTXT: func(_ context.Context, n string) ([]string, error) { return []string{"weft-verify=" + token}, nil },
+	}, "alice")
+	self := s.cfg.ReachDomain
+	s.cfg.ReachDomain = func(context.Context, string) (string, error) { return "", fmt.Errorf("no route to host") }
+	old, custom := "alice.base.localhost:"+port, "alice.custom.localhost"
+	do(s, "POST", old, "/api/posts", toks["alice"], `{"title":"Hello","markdown":"first"}`)
+	cookie := ownerCookie(t, s, "alice")
+	d, err := s.st.SetDomain("alice", "alice.custom.localhost")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token = d.Token
+
+	// TXT record found, domain unreachable: verified, not active, and the owner stays where they are
+	w := send(s, "POST", old, "/domain/check", cookie, nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "does not reach this server yet") {
+		t.Fatalf("check, unreachable: %d\n%s", w.Code, w.Body)
+	}
+	if d, _ := s.st.DomainOf("alice"); !d.Verified || d.Active {
+		t.Fatalf("domain %+v", d)
+	}
+	for _, path := range []string{"/", "/feed.xml", "/posts/anything", "/api/posts", "/login"} {
+		if w := send(s, "GET", old, path, "", nil); w.Code >= 300 && w.Code < 400 {
+			t.Errorf("%s redirects before the domain is active: %d %s", path, w.Code, w.Header().Get("Location"))
+		}
+	}
+	profile := send(s, "GET", old, "/profile", cookie, nil).Body.String()
+	for _, want := range []string{"(verified, but it does not reach this server yet)", "Check again", "nothing is redirected"} {
+		if !strings.Contains(profile, want) {
+			t.Errorf("profile lacks %q", want)
+		}
+	}
+	// the proof a domain is asked for: only on the domain itself
+	if w := send(s, "GET", custom, "/.well-known/weft-domain", "", nil); w.Code != 200 || strings.TrimSpace(w.Body.String()) != "weft-domain="+d.Token {
+		t.Errorf("proof on the domain: %d %q", w.Code, w.Body)
+	}
+	if w := send(s, "GET", old, "/.well-known/weft-domain", "", nil); w.Code != 404 {
+		t.Errorf("proof on the old address: %d", w.Code)
+	}
+	if w := send(s, "GET", "nobody.example", "/.well-known/weft-domain", "", nil); w.Code != 404 {
+		t.Errorf("proof on a stranger's host: %d", w.Code)
+	}
+
+	// DNS arrives: "Check again" makes it the address
+	s.cfg.ReachDomain = self
+	w = send(s, "POST", old, "/domain/check", cookie, nil)
+	if w.Code != 303 || w.Header().Get("Location") != "http://alice.custom.localhost:"+port+"/login" {
+		t.Fatalf("check, reachable: %d %s", w.Code, w.Header().Get("Location"))
+	}
+	if w := send(s, "GET", old, "/feed.xml", "", nil); w.Code != 301 {
+		t.Fatalf("the old feed once active: %d", w.Code)
+	}
+	// the domain later stops working: "Check" gives the address back, and the claim stays verified
+	s.cfg.ReachDomain = func(context.Context, string) (string, error) { return "", fmt.Errorf("no route to host") }
+	if w := send(s, "POST", old, "/domain/check", cookie, nil); w.Code != 200 || !strings.Contains(w.Body.String(), "no longer reaches this server") {
+		t.Fatalf("check of a domain that stopped working: %d\n%s", w.Code, w.Body)
+	}
+	if d, _ := s.st.DomainOf("alice"); !d.Verified || d.Active {
+		t.Fatalf("after falling back: %+v", d)
+	}
+	if w := send(s, "GET", old, "/feed.xml", "", nil); w.Code != 200 {
+		t.Fatalf("the old feed after falling back: %d", w.Code)
+	}
+	s.cfg.ReachDomain = self
+	if w := send(s, "POST", old, "/domain/check", cookie, nil); w.Code != 303 {
+		t.Fatalf("check once it works again: %d", w.Code)
+	}
+	if w := send(s, "POST", old, "/domain/check", cookie, nil); w.Code != 200 || !strings.Contains(w.Body.String(), "The domain reaches this server.") {
+		t.Fatalf("check of a working domain: %d", w.Code)
+	}
+	// and the pages that manage it answer at the old address even while the domain is the address
+	for _, path := range []string{"/profile", "/login"} {
+		if w := send(s, "GET", old, path, cookie, nil); w.Code != 200 {
+			t.Errorf("%s at the old address once active: %d %s", path, w.Code, w.Header().Get("Location"))
+		}
+	}
+	if w := send(s, "POST", old, "/domain/remove", cookie, nil); w.Code != 303 || !strings.HasPrefix(w.Header().Get("Location"), "http://alice.base.localhost:") {
+		t.Fatalf("remove from the old address: %d %s", w.Code, w.Header().Get("Location"))
+	}
+	if w := send(s, "GET", old, "/", "", nil); w.Code != 200 {
+		t.Fatalf("old address after removing: %d", w.Code)
+	}
+}
+
+// With no host name configured, the profile page still says what a CNAME value is, and says when this server
+// is one that no domain can reach.
+func TestProfileExplainsTheCNAMEValue(t *testing.T) {
+	for _, dev := range []bool{true, false} {
+		s, port, _ := hosts(t, Config{}, "alice")
+		s.cfg.AllowPrivate = dev
+		cookie := ownerCookie(t, s, "alice")
+		if _, err := s.st.SetDomain("alice", "alice.custom.localhost"); err != nil {
+			t.Fatal(err)
+		}
+		page := send(s, "GET", "alice.base.localhost:"+port, "/profile", cookie, nil).Body.String()
+		for _, want := range []string{"CNAME record whose value is this server's host name", "without <code>http://</code> or a port"} {
+			if !strings.Contains(page, want) {
+				t.Errorf("dev=%v: profile lacks %q", dev, want)
+			}
+		}
+		if got := strings.Contains(page, "development mode and can only be reached from this computer"); got != dev {
+			t.Errorf("dev=%v: the development note is shown: %v", dev, got)
+		}
+		if got := strings.Contains(page, "Ask whoever runs this server"); got == dev {
+			t.Errorf("dev=%v: the 'ask' note is shown: %v", dev, got)
+		}
 	}
 }

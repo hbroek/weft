@@ -166,3 +166,43 @@ ol.comments ol.comments { margin-left: .9rem; padding-left: .9rem; border-left: 
 /* a link back to a post on the timeline scrolls to it, clear of the header, and marks it */
 article[id] { scroll-margin-top: 4.5rem; }
 article[id]:target { box-shadow: 0 0 0 2px #f08a4b99, var(--shadow); }
+
+/* the Markdown cheatsheet: below the editor, or in the margins beside it when the window is wide enough for both */
+.ed { position: relative; }
+.cheats { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; margin-top: 1rem; }
+.cheat { font-size: .85rem; color: var(--muted); background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .6rem .8rem; box-sizing: border-box; overflow-wrap: anywhere; }
+.cheat h3 { margin: 0 0 .4rem; font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.cheat dl { margin: 0; }
+.cheat dt { margin: .6rem 0 .15rem; }
+.cheat dt:first-child { margin-top: 0; }
+.cheat dd { margin: 0 0 0 .2rem; }
+.cheat dd { color: var(--text); }
+.cheat dd > :first-child { margin-top: 0; }
+.cheat dd > :last-child { margin-bottom: 0; }
+.cheat dd h2 { font-size: 1.05rem; margin: 0; }
+.cheat dd ul, .cheat dd ol { margin: 0; padding-left: 1.2rem; }
+.cheat dd blockquote { margin: 0; padding-left: .6rem; border-left: 3px solid var(--border); }
+.cheat dd pre { margin: 0; padding: .3rem .5rem; background: var(--soft); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; }
+.cheat dd pre code { background: none; padding: 0; }
+.cheat dd hr { margin: .4rem 0; }
+.cheat code { white-space: pre-wrap; background: var(--chip); border-radius: 4px; padding: 0 .3rem; font-size: .95em; color: var(--text); }
+.cheat p { margin: .5rem 0 0; }
+@media (max-width: 40rem) { .cheats { grid-template-columns: 1fr; gap: 1rem 0; } }
+@media (min-width: 72rem) {
+  .cheats { display: block; margin: 0; }
+  .cheat { position: absolute; top: 0; width: 14rem; }
+  .cheat-l { right: 100%; margin-right: 1.25rem; }
+  .cheat-r { left: 100%; margin-left: 1.25rem; }
+}
+
+/* code in posts, replies and the preview: a block scrolls sideways inside its card instead of spilling out */
+article pre, .node pre, .comment pre, #preview pre { overflow-x: auto; margin: .75rem 0; padding: .7rem .9rem; background: var(--soft); border: 1px solid var(--border); border-radius: 8px; font: .88rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 4; white-space: pre; overflow-wrap: normal; }
+article code, .node code, .comment code, #preview code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+article :not(pre) > code, .node :not(pre) > code, .comment :not(pre) > code, #preview :not(pre) > code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; }
+article pre code, .node pre code, .comment pre code, #preview pre code { background: none; padding: 0; font-size: inherit; }
+
+/* the editor starts with the Markdown box alone; "Advanced" adds the title, keywords, address and Markdown help */
+.ed:not(:has(#adv:checked)) .adv, .ed:not(:has(#adv:checked)) .cheats { display: none; }
+.advrow { margin: 1rem 0 .25rem; }
+.advrow label { display: inline-flex; align-items: center; gap: .4rem; margin: 0; }
+.advrow small { color: var(--muted); }

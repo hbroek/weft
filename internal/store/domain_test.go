@@ -64,8 +64,21 @@ func TestDomainLifecycle(t *testing.T) {
 	if n, ok := in.HostUser("weft.alice.com"); !ok || n != "alice" {
 		t.Fatalf("HostUser = %q, %v", n, ok)
 	}
+	// verified is not yet the address: the domain serves the user, and nothing redirects
+	if e := in.Dir("alice"); e.Domain != "" || e.Status != StatusActive {
+		t.Fatalf("a verified domain that is not active is already the address: %+v", e)
+	}
+	if err := in.ActivateDomain("bob"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("activating an unverified domain: %v", err)
+	}
+	if err := in.ActivateDomain("alice"); err != nil {
+		t.Fatal(err)
+	}
 	if e := in.Dir("alice"); e.Domain != "weft.alice.com" || e.Status != StatusActive {
 		t.Fatalf("Dir = %+v", e)
+	}
+	if d, err := in.DomainOf("alice"); err != nil || !d.Verified || !d.Active {
+		t.Fatalf("DomainOf = %+v, %v", d, err)
 	}
 	if err := in.VerifyDomain("bob"); !errors.Is(err, ErrDomainTaken) {
 		t.Fatalf("Bob verified a verified domain: %v", err)
@@ -212,5 +225,54 @@ func TestInstanceUpgradesFromV1(t *testing.T) {
 	}
 	if _, err := in.SetDomain("alice", "a.example.com"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A domain verified before domains could be inactive was already the address, so the migration makes it active;
+// one that was not verified stays so.
+func TestDomainsActiveMigration(t *testing.T) {
+	dir := t.TempDir()
+	in, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"alice", "bob"} {
+		if _, err := in.AddUser(n, "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := in.SetDomain("alice", "a.example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.SetDomain("bob", "b.example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.VerifyDomain("alice"); err != nil {
+		t.Fatal(err)
+	}
+	in.Close()
+
+	// back to the schema before the change
+	raw := openRaw(t, filepath.Join(dir, "instance.db"))
+	for _, q := range []string{`ALTER TABLE domains DROP COLUMN active`, `PRAGMA user_version=2`} {
+		if _, err := raw.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	raw.Close()
+
+	in, err = Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if d, err := in.DomainOf("alice"); err != nil || !d.Verified || !d.Active {
+		t.Errorf("a verified domain after the migration: %+v, %v", d, err)
+	}
+	if d, err := in.DomainOf("bob"); err != nil || d.Verified || d.Active {
+		t.Errorf("an unverified domain after the migration: %+v, %v", d, err)
+	}
+	if e := in.Dir("alice"); e.Domain != "a.example.com" {
+		t.Errorf("Dir = %+v", e)
 	}
 }

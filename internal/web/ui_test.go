@@ -619,3 +619,24 @@ func TestChoosingAnAddress(t *testing.T) {
 		t.Errorf("an edit created an address: %d", w.Code)
 	}
 }
+
+// The buttons of the profile page's address section sit in a paragraph of their own, so there is space between
+// an input and its button.
+func TestDomainButtonsHaveSpace(t *testing.T) {
+	s, _ := setup(t)
+	s.space("alice").SetPassword("correct horse")
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+	page := do3(s, "GET", host, "/profile", ck).Body.String()
+	if !strings.Contains(page, `name="domain"`) || !strings.Contains(page, "<p><button>Add</button></p>") {
+		t.Errorf("the Add button is not in a paragraph of its own:\n%s", page)
+	}
+	if w := form(s, "POST", "/domain", ck, url.Values{"domain": {"weft.example.org"}}, ""); w.Code != 200 && w.Code != 303 {
+		t.Fatalf("claim: %d", w.Code)
+	}
+	page = do3(s, "GET", host, "/profile", ck).Body.String()
+	for _, want := range []string{"<p><button>Check now</button></p>", "<p><button>Remove this domain</button></p>"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("profile lacks %q", want)
+		}
+	}
+}

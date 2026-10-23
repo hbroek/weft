@@ -36,6 +36,9 @@ type Config struct {
 	// tests replace them.
 	LookupTXT   func(ctx context.Context, name string) ([]string, error)
 	LookupCNAME func(ctx context.Context, name string) (string, error)
+	// ReachDomain fetches /.well-known/weft-domain from a custom domain, to see that requests to it arrive
+	// here. Nil means a real request; tests replace it.
+	ReachDomain func(ctx context.Context, domain string) (string, error)
 }
 
 type Server struct {
@@ -96,6 +99,7 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("GET /profile", s.user(s.profileForm))
 	s.mux.HandleFunc("POST /profile", s.user(s.profile))
 	s.mux.HandleFunc("POST /export", s.user(s.export))
+	s.mux.HandleFunc("GET /.well-known/weft-domain", s.user(s.domainProof))
 	s.mux.HandleFunc("POST /domain", s.user(s.domainSet))
 	s.mux.HandleFunc("POST /domain/check", s.user(s.domainCheck))
 	s.mux.HandleFunc("POST /domain/remove", s.user(s.domainRemove))
@@ -120,8 +124,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.logged(w, r)
 		return
 	}
-	if s.cfg.Verbose && r.Method == http.MethodPost {
-		s.loggedForm(w, r)
+	if s.cfg.Verbose && (r.Method == http.MethodPost || !strings.HasPrefix(r.URL.Path, "/static/")) {
+		s.loggedForm(w, r) // every page request but the static files: it is how a redirect is traced
 		return
 	}
 	s.mux.ServeHTTP(w, r)
@@ -139,12 +143,12 @@ func (w *statusWriter) WriteHeader(c int) {
 	w.ResponseWriter.WriteHeader(c)
 }
 
-// loggedForm serves a form post and logs one line: host, path, status, where it redirected to and the page
-// it came from. The body is not logged: it can hold a password.
+// loggedForm serves a page request or form post and logs one line: host, method, path, status, where it
+// redirected to and the page it came from. The query and the body are not logged: they can hold a password.
 func (s *Server) loggedForm(w http.ResponseWriter, r *http.Request) {
 	sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 	s.mux.ServeHTTP(sw, r)
-	line := fmt.Sprintf("form %s POST %s -> %d", r.Host, r.URL.Path, sw.status)
+	line := fmt.Sprintf("form %s %s %s -> %d", r.Host, r.Method, r.URL.Path, sw.status)
 	if sw.location != "" {
 		line += " " + sw.location
 	}
@@ -214,15 +218,20 @@ func (s *Server) originOf(name string, r *http.Request) string {
 // or a removed custom domain, be undone.
 const redirectCache = "max-age=3600"
 
+// domainRedirectCache is the same for the redirect from the instance's address to a custom domain, kept short
+// because that is the redirect that goes wrong: a domain whose DNS or certificate stops working strands anyone
+// whose browser remembers it, and five minutes is how long that lasts.
+const domainRedirectCache = "max-age=300"
+
 // moveRedirect sends a request to the same place at the origin to, with a permanent redirect: 301 for
 // GET and HEAD, which is the one every feed reader and old browser understands as "update your
 // address", and 308 for other methods, the only permanent redirect that keeps the method and the body.
-func moveRedirect(w http.ResponseWriter, r *http.Request, to string) {
+func moveRedirect(w http.ResponseWriter, r *http.Request, to, cache string) {
 	code := http.StatusMovedPermanently
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		code = http.StatusPermanentRedirect
 	}
-	w.Header().Set("Cache-Control", redirectCache)
+	w.Header().Set("Cache-Control", cache)
 	http.Redirect(w, r, to+r.URL.RequestURI(), code)
 }
 
@@ -233,14 +242,25 @@ func moveRedirect(w http.ResponseWriter, r *http.Request, to string) {
 func (s *Server) route(w http.ResponseWriter, r *http.Request, name string) bool {
 	e := s.st.Dir(name)
 	if e.Status == store.StatusMoved {
-		moveRedirect(w, r, e.MovedTo)
+		moveRedirect(w, r, e.MovedTo, redirectCache)
 		return false
 	}
-	if h, port := splitHost(r.Host); e.Domain != "" && h != e.Domain {
-		moveRedirect(w, r, s.cfg.Scheme+"://"+e.Domain+port)
+	if h, port := splitHost(r.Host); e.Domain != "" && h != e.Domain && !keepsOldAddress(r.URL.Path) {
+		moveRedirect(w, r, s.cfg.Scheme+"://"+e.Domain+port, domainRedirectCache)
 		return false
 	}
 	return true
+}
+
+// keepsOldAddress is true for the owner's own pages for signing in and managing the address. They are never
+// redirected to a custom domain: if the domain stops reaching this server (its DNS changed, a certificate
+// failed), the owner can still sign in at the instance's address and remove it, instead of being sent after it.
+func keepsOldAddress(path string) bool {
+	switch path {
+	case "/login", "/logout", "/profile", "/domain", "/domain/check", "/domain/remove":
+		return true
+	}
+	return false
 }
 
 func (s *Server) base(r *http.Request) string { return s.cfg.Scheme + "://" + r.Host }

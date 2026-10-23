@@ -151,8 +151,11 @@ func TestVerboseLogsAPICallsWithoutTokens(t *testing.T) {
 			t.Errorf("log lacks %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, tok) || strings.Contains(out, "bad-token") || strings.Contains(out, "/feed.xml") {
-		t.Errorf("log leaks a token or logs a non-API request:\n%s", out)
+	if strings.Contains(out, tok) || strings.Contains(out, "bad-token") {
+		t.Errorf("log leaks a token:\n%s", out)
+	}
+	if !strings.Contains(out, "form alice.localhost:8080 GET /feed.xml -> 200") { // a page request is logged too, without a body
+		t.Errorf("log lacks the page request:\n%s", out)
 	}
 	buf.Reset()
 	s2 := New(Config{BaseDomain: "localhost"}, st)
@@ -197,6 +200,12 @@ func TestVerboseLogsFormPostsWithoutTheirBody(t *testing.T) {
 	r.Header.Set("Referer", "http://"+host+"/timeline")
 	s.ServeHTTP(httptest.NewRecorder(), r)
 	got := buf.String()
+	buf.Reset()
+	s.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "http://"+host+"/posts/nothing?secret=1", nil))
+	s.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "http://"+host+"/static/weft.css", nil))
+	if pages := buf.String(); !strings.Contains(pages, "form "+host+" GET /posts/nothing -> 404") || strings.Contains(pages, "secret") || strings.Contains(pages, "/static/") {
+		t.Errorf("page log: %q", pages)
+	}
 	if !strings.Contains(got, "form "+host+" POST /login -> ") || !strings.Contains(got, "(from http://"+host+"/timeline)") || strings.Contains(got, "hunter2") {
 		t.Errorf("log: %q", got)
 	}

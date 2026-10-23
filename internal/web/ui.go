@@ -58,6 +58,7 @@ func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status i
 	d := s.data(r, q, heading)
 	d.ReplyTo, d.ReplyFeed = httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed"))
 	d.Back = timelineBack(r.FormValue("back"))
+	d.Cheat = &cheats
 	d.PInfo = parentFromForm(r)
 	if d.ReplyTo != "" {
 		d.Parent = newParentCard(d.ReplyTo, d.PInfo)
@@ -78,6 +79,9 @@ func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status i
 	if del == "" && d.Form.Slug == "" { // a new post: suggest the words of its address, which the author may reword
 		d.Form.Slug, d.SlugAuto = store.SlugBase(title, markdown), true
 	}
+	// the advanced fields are folded away unless they hold something: a title or keywords (from the
+	// bookmarklet, an edit or a form sent back with a message) or an address the author wrote
+	d.Advanced = d.Form.Title != "" || d.Form.Keywords != "" || (del == "" && !d.SlugAuto && d.Form.Slug != "")
 	s.show(w, "editor", status, d)
 }
 

@@ -190,6 +190,16 @@ CREATE TABLE work (
 func spaceV1(tx *sql.Tx) error    { _, err := tx.Exec(spaceSchema); return err }
 func instanceV1(tx *sql.Tx) error { _, err := tx.Exec(instanceSchema); return err }
 
+// instanceV3 separates a domain that is verified (the TXT record proves it is the user's) from one that is
+// active (it reaches this server, so it can be the user's address). A domain that was verified before this
+// existed was already the address, so it is active.
+func instanceV3(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+ALTER TABLE domains ADD COLUMN active INTEGER NOT NULL DEFAULT 0;
+UPDATE domains SET active=verified;`)
+	return err
+}
+
 // instanceV2 adds custom domains.
 func instanceV2(tx *sql.Tx) error {
 	_, err := tx.Exec(`
