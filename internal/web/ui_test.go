@@ -640,3 +640,81 @@ func TestDomainButtonsHaveSpace(t *testing.T) {
 		}
 	}
 }
+
+// An account whose password an administrator set must replace it before doing anything else: the sign-in leads
+// to the page that changes it, every other page leads back to it, and afterwards the account works as usual.
+func TestTemporaryPasswordMustBeChanged(t *testing.T) {
+	s, tok := setup(t)
+	if err := s.space("alice").SetTemporaryPassword("temporary one"); err != nil {
+		t.Fatal(err)
+	}
+	w := form(s, "POST", "/login", "", url.Values{"password": {"temporary one"}}, "")
+	ck := cookieOf(w)
+	if w.Code != 303 || w.Header().Get("Location") != "/password" || ck == "" {
+		t.Fatalf("sign in with a temporary password: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	for _, path := range []string{"/", "/compose", "/timeline", "/following", "/profile", "/replies"} {
+		if w := do3(s, "GET", host, path, ck); w.Code != 303 || w.Header().Get("Location") != "/password" {
+			t.Errorf("GET %s with a temporary password: %d %q", path, w.Code, w.Header().Get("Location"))
+		}
+	}
+	if w := form(s, "POST", "/compose", ck, url.Values{"markdown": {"sneaking past"}}, ""); w.Code != 303 || w.Header().Get("Location") != "/password" {
+		t.Errorf("POST /compose: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if c := do(s, "GET", host, "/api/timeline", tok, "").Code; c != 200 { // the API has its own token and is not held back
+		t.Errorf("the API is held back")
+	}
+	if w := do(s, "GET", host, "/static/weft.css", "", ""); w.Code != 200 {
+		t.Errorf("the stylesheet: %d", w.Code)
+	}
+	page := do3(s, "GET", host, "/password", ck)
+	body := page.Body.String()
+	if page.Code != 200 || !strings.Contains(body, "Choose a new password") || !strings.Contains(body, "Temporary password") || strings.Contains(body, `class="menu"`) {
+		t.Fatalf("the page that changes it: %d\n%s", page.Code, body)
+	}
+
+	post := func(cur, next, again string) *httptest.ResponseRecorder {
+		return form(s, "POST", "/password", ck, url.Values{"current": {cur}, "new": {next}, "again": {again}}, "")
+	}
+	for _, c := range []struct{ cur, next, again, want string }{
+		{"not it at all", "a brand new one", "a brand new one", "temporary password is not right"},
+		{"temporary one", "a brand new one", "something else", "not the same"},
+		{"temporary one", "short", "short", "at least 8 characters"},
+		{"temporary one", "temporary one", "temporary one", "different from the old one"},
+	} {
+		if w := post(c.cur, c.next, c.again); w.Code != 400 || !strings.Contains(w.Body.String(), c.want) {
+			t.Errorf("%+v: %d\n%s", c, w.Code, w.Body)
+		}
+	}
+	if w := do3(s, "GET", host, "/compose", ck); w.Code != 303 {
+		t.Errorf("a refused change opened the account: %d", w.Code)
+	}
+	if w := post("temporary one", "a brand new one", "a brand new one"); w.Code != 303 || w.Header().Get("Location") != "/" {
+		t.Fatalf("the change: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := do3(s, "GET", host, "/compose", ck); w.Code != 200 {
+		t.Errorf("the account after the change: %d", w.Code)
+	}
+	if w := form(s, "POST", "/login", "", url.Values{"password": {"temporary one"}}, ""); w.Code != 401 {
+		t.Errorf("the temporary password still signs in: %d", w.Code)
+	}
+	w = form(s, "POST", "/login", "", url.Values{"password": {"a brand new one"}}, "")
+	if w.Code != 303 || w.Header().Get("Location") != "/" {
+		t.Errorf("sign in with the new password: %d %q", w.Code, w.Header().Get("Location"))
+	}
+
+	// anyone can change it later from the profile page, and a visitor cannot
+	ck = cookieOf(w)
+	if p := do3(s, "GET", host, "/profile", ck).Body.String(); !strings.Contains(p, `href="/password"`) {
+		t.Errorf("the profile page does not offer to change the password")
+	}
+	if p := do3(s, "GET", host, "/password", ck).Body.String(); !strings.Contains(p, "<h2>Change password</h2>") || !strings.Contains(p, "Current password") {
+		t.Errorf("the plain form:\n%s", p)
+	}
+	if w := form(s, "POST", "/password", ck, url.Values{"current": {"a brand new one"}, "new": {"yet another one"}, "again": {"yet another one"}}, ""); w.Code != 303 || w.Header().Get("Location") != "/profile" {
+		t.Errorf("a voluntary change: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := do(s, "GET", host, "/password", "", ""); w.Code != 303 || w.Header().Get("Location") != "/login" {
+		t.Errorf("a visitor at /password: %d %q", w.Code, w.Header().Get("Location"))
+	}
+}

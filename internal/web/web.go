@@ -99,6 +99,8 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("GET /profile", s.user(s.profileForm))
 	s.mux.HandleFunc("POST /profile", s.user(s.profile))
 	s.mux.HandleFunc("POST /export", s.user(s.export))
+	s.mux.HandleFunc("GET /password", s.user(s.passwordForm))
+	s.mux.HandleFunc("POST /password", s.user(s.password))
 	s.mux.HandleFunc("GET /.well-known/weft-domain", s.user(s.domainProof))
 	s.mux.HandleFunc("POST /domain", s.user(s.domainSet))
 	s.mux.HandleFunc("POST /domain/check", s.user(s.domainCheck))
@@ -257,7 +259,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request, name string) bool
 // failed), the owner can still sign in at the instance's address and remove it, instead of being sent after it.
 func keepsOldAddress(path string) bool {
 	switch path {
-	case "/login", "/logout", "/profile", "/domain", "/domain/check", "/domain/remove":
+	case "/login", "/logout", "/password", "/profile", "/domain", "/domain/check", "/domain/remove":
 		return true
 	}
 	return false
@@ -312,6 +314,10 @@ func (s *Server) user(h func(http.ResponseWriter, *http.Request, *req)) http.Han
 			if su, err := sp.UserBySession(c.Value); err == nil && su.ID == u.ID {
 				q.owner = true
 			}
+		}
+		if q.owner && !openWithTemporaryPassword(r.URL.Path) && sp.MustChangePassword() {
+			http.Redirect(w, r, "/password", http.StatusSeeOther)
+			return
 		}
 		if r.Method == http.MethodPost && !strings.HasPrefix(r.URL.Path, "/api/") && !sameOrigin(r) {
 			http.Error(w, "cross-origin request refused", http.StatusForbidden)

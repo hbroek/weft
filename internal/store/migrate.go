@@ -11,7 +11,7 @@ import (
 //
 // There are two lists because there are two kinds of file: one per user, and the instance's own.
 var (
-	spaceMigrations    = []func(tx *sql.Tx) error{spaceV1}
+	spaceMigrations    = []func(tx *sql.Tx) error{spaceV1, spaceV2}
 	instanceMigrations = []func(tx *sql.Tx) error{instanceV1, instanceV2, instanceV3}
 )
 

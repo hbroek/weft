@@ -187,7 +187,13 @@ CREATE TABLE work (
 );
 `
 
-func spaceV1(tx *sql.Tx) error    { _, err := tx.Exec(spaceSchema); return err }
+func spaceV1(tx *sql.Tx) error { _, err := tx.Exec(spaceSchema); return err }
+
+// spaceV2SQL adds the flag for a temporary password: an administrator set it, and the user must replace it at
+// the first sign-in. It is separate from spaceSchema because a file made before it has to get it too.
+const spaceV2SQL = `ALTER TABLE users ADD COLUMN must_change INTEGER NOT NULL DEFAULT 0;`
+
+func spaceV2(tx *sql.Tx) error    { _, err := tx.Exec(spaceV2SQL); return err }
 func instanceV1(tx *sql.Tx) error { _, err := tx.Exec(instanceSchema); return err }
 
 // instanceV3 separates a domain that is verified (the TXT record proves it is the user's) from one that is

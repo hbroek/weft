@@ -7,10 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/hbroek/weft/internal/store"
 )
 
 // The real server, told to stop with SIGTERM, finishes cleanly: it exits with status 0 and leaves a
@@ -130,5 +133,103 @@ func TestSecondServerOnTheSameFolderRefuses(t *testing.T) {
 	out, err := exec.Command(bin, "serve", "-addr", "127.0.0.1:0", "-data", data, "-poll", "0").CombinedOutput()
 	if err == nil || !strings.Contains(string(out), "in use by another weft server") {
 		t.Fatalf("second server: err=%v\n%s", err, out)
+	}
+}
+
+// The password of a user made or reset from the command line is temporary: the account is marked, so that the web
+// UI makes the user choose their own at the first sign-in. With none given one is generated and shown on the
+// console. -permanent opts out, and then needs a password to be given.
+func TestUserAddAndPasswdMakeTemporaryPasswords(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "weft")
+	if out, err := exec.Command("go", "build", "-o", bin, "../cmd/weft").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	data := filepath.Join(dir, "data")
+	run := func(args ...string) (stdout, stderr string, err error) {
+		t.Helper()
+		cmd := exec.Command(bin, append([]string{"user"}, args...)...)
+		var o, e strings.Builder
+		cmd.Stdout, cmd.Stderr = &o, &e
+		err = cmd.Run()
+		return o.String(), e.String(), err
+	}
+	must := func(args ...string) (string, string) {
+		t.Helper()
+		o, e, err := run(args...)
+		if err != nil {
+			t.Fatalf("weft user %v: %v\n%s%s", args, err, o, e)
+		}
+		return o, e
+	}
+	state := func(name, pw string) (marked, signsIn bool) {
+		t.Helper()
+		in, err := store.Open(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer in.Close()
+		sp, release, err := in.Space(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer release()
+		_, err = sp.CheckPassword(pw)
+		return sp.MustChangePassword(), err == nil
+	}
+
+	// a given password is temporary, and not echoed
+	out, errs := must("add", "-data", data, "-password", "temporary one", "bob")
+	if !strings.Contains(errs, "bob must choose a new password at the first sign-in") || strings.Contains(out+errs, "temporary one") {
+		t.Errorf("add with a password printed %q %q", out, errs)
+	}
+	if m, ok := state("bob", "temporary one"); !m || !ok {
+		t.Errorf("bob: marked %v, signs in %v", m, ok)
+	}
+	// none given: one is made and shown, it works, and it is temporary
+	out, errs = must("add", "-data", data, "dana")
+	m := regexp.MustCompile(`temporary password for dana: ([a-z0-9]{5}-[a-z0-9]{5})\n`).FindStringSubmatch(errs)
+	if m == nil || len(strings.TrimSpace(out)) != 48 { // stdout is still just the API token
+		t.Fatalf("add without a password printed %q %q", out, errs)
+	}
+	if mk, ok := state("dana", m[1]); !mk || !ok {
+		t.Errorf("dana with the shown password: marked %v, signs in %v", mk, ok)
+	}
+	// -permanent keeps the user's own password, and needs one
+	must("add", "-data", data, "-password", "her own password", "-permanent", "carol")
+	if mk, ok := state("carol", "her own password"); mk || !ok {
+		t.Errorf("carol: marked %v, signs in %v", mk, ok)
+	}
+	if _, errs, err := run("add", "-data", data, "-permanent", "erin"); err == nil || !strings.Contains(errs, "-permanent needs -password") {
+		t.Errorf("-permanent without a password: %v %q", err, errs)
+	}
+	if in, err := store.Open(data); err == nil {
+		if in.UserExists("erin") {
+			t.Errorf("a refused add left the user behind")
+		}
+		in.Close()
+	}
+	// passwd is temporary by default too, generates when asked for nothing, and -permanent opts out
+	must("passwd", "-data", data, "-password", "reset by admin", "carol")
+	if mk, ok := state("carol", "reset by admin"); !mk || !ok {
+		t.Errorf("carol after passwd: marked %v, signs in %v", mk, ok)
+	}
+	_, errs = must("passwd", "-data", data, "bob")
+	m = regexp.MustCompile(`temporary password for bob: (\S+)\n`).FindStringSubmatch(errs)
+	if m == nil {
+		t.Fatalf("passwd without a password printed %q", errs)
+	}
+	if mk, ok := state("bob", m[1]); !mk || !ok {
+		t.Errorf("bob with the generated password: marked %v, signs in %v", mk, ok)
+	}
+	if _, ok := state("bob", "temporary one"); ok {
+		t.Errorf("the old password still works")
+	}
+	must("passwd", "-data", data, "-password", "kept for good", "-permanent", "bob")
+	if mk, ok := state("bob", "kept for good"); mk || !ok {
+		t.Errorf("bob after passwd -permanent: marked %v, signs in %v", mk, ok)
+	}
+	if _, _, err := run("passwd", "-data", data, "-password", "short", "bob"); err == nil {
+		t.Errorf("a short password was accepted")
 	}
 }

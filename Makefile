@@ -12,8 +12,9 @@ help:
 	@echo "make test                          run all tests"
 	@echo "make run                           build and serve on $(ADDR), users at <name>.$(DOMAIN)"
 	@echo "make users                         list users in $(DATA)"
-	@echo "make user NAME=bob PASSWORD=...    create a user; prints the API token once"
-	@echo "make passwd NAME=bob PASSWORD=...  set a login password"
+	@echo "make user NAME=bob [PASSWORD=...]  create a user; prints the API token once. The password (made and shown if none is given) is temporary:"
+	@echo "                                   bob must change it at the first sign-in (PERMANENT=1 keeps it)"
+	@echo "make passwd NAME=bob [PASSWORD=...]  set a temporary login password (made and shown if none is given)"
 	@echo "make token NAME=bob                issue a new API token (the old one stops working)"
 	@echo "make follow NAME=dana TO='alice henry'  make a user follow others (bare names or feed URLs)"
 	@echo "make all                            vet, run the tests, then build all binaries"
@@ -40,11 +41,11 @@ users: build
 
 user: build
 	@test -n "$(NAME)" || (echo "usage: make user NAME=bob PASSWORD=at-least-8-chars"; exit 2)
-	./bin/weft user add -data $(DATA) $(if $(PASSWORD),-password '$(PASSWORD)') $(NAME)
+	./bin/weft user add -data $(DATA) $(if $(PASSWORD),-password '$(PASSWORD)') $(if $(PERMANENT),-permanent) $(NAME)
 
 passwd: build
-	@test -n "$(NAME)" -a -n "$(PASSWORD)" || (echo "usage: make passwd NAME=bob PASSWORD=at-least-8-chars"; exit 2)
-	./bin/weft user passwd -data $(DATA) -password '$(PASSWORD)' $(NAME)
+	@test -n "$(NAME)" || (echo "usage: make passwd NAME=bob [PASSWORD=at-least-8-chars] [PERMANENT=1]"; exit 2)
+	./bin/weft user passwd -data $(DATA) $(if $(PASSWORD),-password '$(PASSWORD)') $(if $(PERMANENT),-permanent) $(NAME)
 
 token: build
 	@test -n "$(NAME)" || (echo "usage: make token NAME=bob"; exit 2)

@@ -16,6 +16,9 @@ make user NAME=alice PASSWORD='a long password'   # prints alice's API token onc
 make run                                          # serves on :8080
 ```
 
+The password for a user made or reset on the command line is temporary: the account is marked, and the first time the user signs in on the web they are taken to a page where they must choose their own before doing anything else (the API token is not affected). Without `PASSWORD=` (`-password`) one is made and shown on the console, such as `kx4mq-9bnrt`; hand it to the user. `make passwd NAME=bob` (`weft user passwd`) resets one the same way. Add `PERMANENT=1` (`-permanent`) to give a password the user keeps, which needs one to be given. Anyone can change their password later with *Change password* on the profile page, which also signs out their other sessions.
+
+
 Open http://alice.localhost:8080/ and log in with the password. Each user is served at
 `<name>.localhost`; `*.localhost` resolves to 127.0.0.1 in most browsers and curl.
 (If yours doesn't, add the host names to `/etc/hosts`.)

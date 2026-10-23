@@ -57,7 +57,7 @@ var emptyDB = sync.OnceValue(func() *sql.DB {
 		panic(err)
 	}
 	db.SetMaxOpenConns(1) // one connection is the database: a second would be another, empty, one
-	if _, err := db.Exec(spaceSchema + lazySchema); err != nil {
+	if _, err := db.Exec(spaceSchema + spaceV2SQL + lazySchema); err != nil {
 		panic(err)
 	}
 	return db

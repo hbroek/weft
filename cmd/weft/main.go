@@ -23,9 +23,11 @@ import (
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081]
-  weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW] USERNAME
+  weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW [-permanent]] USERNAME
+                  (the password is temporary: the user must change it at the first sign-in, unless -permanent;
+                  without -password one is made and shown)
   weft user set [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] USERNAME   (changes only the fields given; -avatar "" removes it)
-  weft user passwd [-data weft] -password PW USERNAME
+  weft user passwd [-data weft] [-password PW [-permanent]] USERNAME   (temporary like add: the user changes it at the next sign-in; without -password one is made and shown)
   weft user token  [-data weft] USERNAME      (issues a new API token, invalidating the old one)
   weft user follow [-data weft] [-domain localhost] [-scheme http] [-port 8080] USERNAME TARGET...
                   TARGET is a feed or site URL, or a bare user name on this instance (alice -> http://alice.localhost:8080/).
@@ -271,6 +273,7 @@ func main() {
 		bio := fs.String("bio", "", "bio")
 		avatar := fs.String("avatar", "", "avatar image address (http:// or https://); without one the first letter of the name is shown")
 		pw := fs.String("password", "", "login password for the web UI (min 8 characters)")
+		permanent := fs.Bool("permanent", false, "add, passwd: the password is the user's own, not a temporary one to be changed at the first sign-in")
 		domain := fs.String("domain", "localhost", "follow: base domain for bare user names")
 		scheme := fs.String("scheme", "http", "follow: scheme for bare user names")
 		port := fs.String("port", "8080", "follow: port for bare user names (empty for none)")
@@ -377,26 +380,23 @@ func main() {
 			fmt.Println(tok)
 			return
 		}
+		if (os.Args[2] == "passwd" || os.Args[2] == "add") && *permanent && *pw == "" {
+			log.Fatal("-permanent needs -password: a generated password is always temporary")
+		}
+		if (os.Args[2] == "passwd" || os.Args[2] == "add") && *pw != "" && len(*pw) < store.MinPassword {
+			log.Fatal("password must be at least 8 characters")
+		}
 		if os.Args[2] == "passwd" {
 			sp, _ := space(fs.Arg(0))
-			if err := sp.SetPassword(*pw); err != nil {
-				log.Fatal(err)
-			}
+			setUserPassword(sp, fs.Arg(0), *pw, *permanent)
 			return
-		}
-		if *pw != "" && len(*pw) < 8 {
-			log.Fatal("password must be at least 8 characters")
 		}
 		tok, err := st.AddUser(fs.Arg(0), *display, *bio)
 		if err != nil {
 			log.Fatal(err)
 		}
 		sp, u := space(fs.Arg(0))
-		if *pw != "" {
-			if err := sp.SetPassword(*pw); err != nil {
-				log.Fatal(err)
-			}
-		}
+		setUserPassword(sp, fs.Arg(0), *pw, *permanent)
 		if *avatar != "" {
 			if err := sp.UpdateProfile(u.ID, u.Display, u.Bio, *avatar); err != nil {
 				log.Fatal(err)
@@ -405,6 +405,30 @@ func main() {
 		fmt.Println(tok)
 	default:
 		usage()
+	}
+}
+
+// setUserPassword gives a user a password the user must replace at the next sign-in, since whoever runs the
+// command knows it. With none given it makes one and shows it, because nobody else has seen it; that goes to
+// the console (stderr) so that what a script reads from stdout, the API token, stays just that. With
+// permanent the password is the user's own, and one must have been given.
+func setUserPassword(sp *store.Space, name, pw string, permanent bool) {
+	generated := pw == ""
+	if generated {
+		pw = store.GeneratePassword()
+	}
+	set := sp.SetTemporaryPassword
+	if permanent {
+		set = sp.SetPassword
+	}
+	if err := set(pw); err != nil {
+		log.Fatal(err)
+	}
+	if generated {
+		fmt.Fprintf(os.Stderr, "temporary password for %s: %s\n", name, pw)
+	}
+	if !permanent {
+		fmt.Fprintf(os.Stderr, "%s must choose a new password at the first sign-in\n", name)
 	}
 }
 

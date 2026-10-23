@@ -35,7 +35,75 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: tok, Path: "/", HttpOnly: true,
 		SameSite: http.SameSiteLaxMode, Secure: s.cfg.Scheme == "https", MaxAge: int(store.SessionTTL.Seconds())})
+	if q.sp.MustChangePassword() { // a temporary password opens only the page that replaces it
+		http.Redirect(w, r, "/password", http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// openWithTemporaryPassword reports whether the path is one a user with a temporary password may use: the page that
+// changes it, signing in and out, and the API, which has its own token.
+func openWithTemporaryPassword(path string) bool {
+	switch path {
+	case "/password", "/login", "/logout":
+		return true
+	}
+	return strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/static/")
+}
+
+// passwordForm shows the form that replaces the password. It is the only page open to someone who signed in
+// with a temporary one, and is offered to anyone else from the profile page.
+func (s *Server) passwordForm(w http.ResponseWriter, r *http.Request, q *req) {
+	if !s.requireOwner(w, r, q) {
+		return
+	}
+	s.showPassword(w, r, q, http.StatusOK, "")
+}
+
+func (s *Server) showPassword(w http.ResponseWriter, r *http.Request, q *req, status int, msg string) {
+	d := s.data(r, q, "Password")
+	d.Forced, d.Error = q.sp.MustChangePassword(), msg
+	s.show(w, "password", status, d)
+}
+
+// password changes the owner's password: the old one is asked for, the new one typed twice. It ends the other
+// sessions, and clears the mark of a temporary password.
+func (s *Server) password(w http.ResponseWriter, r *http.Request, q *req) {
+	if !s.requireOwner(w, r, q) {
+		return
+	}
+	forced := q.sp.MustChangePassword()
+	cur, next, again := r.FormValue("current"), r.FormValue("new"), r.FormValue("again")
+	var keep string
+	if c, err := r.Cookie(cookieName); err == nil {
+		keep = c.Value
+	}
+	if next != again {
+		s.showPassword(w, r, q, http.StatusBadRequest, "The two new passwords are not the same.")
+		return
+	}
+	err := q.sp.ChangePassword(cur, next, keep)
+	switch {
+	case err == nil:
+		if forced {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, "/profile", http.StatusSeeOther)
+		}
+	case errors.Is(err, store.ErrBadLogin):
+		msg := "The current password is not right."
+		if forced {
+			msg = "The temporary password is not right."
+		}
+		s.showPassword(w, r, q, http.StatusBadRequest, msg)
+	case errors.Is(err, store.ErrWeakPassword):
+		s.showPassword(w, r, q, http.StatusBadRequest, "The new password must be at least 8 characters.")
+	case errors.Is(err, store.ErrSamePassword):
+		s.showPassword(w, r, q, http.StatusBadRequest, "The new password must be different from the old one.")
+	default:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request, q *req) {

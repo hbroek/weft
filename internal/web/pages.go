@@ -30,7 +30,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 </head><body>
 <header class="top"><div class="top-in">
 <div class="top-l"><a class="brand" href="/" title="{{.Author}}"><img src="/static/weft-icon.svg" alt="" width="36" height="36"><span>Weft</span></a></div>
-{{if .Owner}}<nav class="menu"><a href="/compose"{{if eq .Nav "compose"}} class="on" aria-current="page"{{end}}>Compose</a><a href="/timeline"{{if eq .Nav "timeline"}} class="on" aria-current="page"{{end}}>Timeline</a><a href="/following"{{if eq .Nav "following"}} class="on" aria-current="page"{{end}}>Following</a><a href="/replies"{{if eq .Nav "replies"}} class="on" aria-current="page"{{end}}>Replies</a></nav>{{end}}
+{{if and .Owner (not .Forced)}}<nav class="menu"><a href="/compose"{{if eq .Nav "compose"}} class="on" aria-current="page"{{end}}>Compose</a><a href="/timeline"{{if eq .Nav "timeline"}} class="on" aria-current="page"{{end}}>Timeline</a><a href="/following"{{if eq .Nav "following"}} class="on" aria-current="page"{{end}}>Following</a><a href="/replies"{{if eq .Nav "replies"}} class="on" aria-current="page"{{end}}>Replies</a></nav>{{end}}
 <div class="top-r"><a class="site" href="/">{{template "avatar" .}}<span>{{.Author}}</span></a>
 <button type="button" class="th" id="theme" title="Theme: auto" aria-label="Theme: auto"><svg class="t-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg><svg class="t-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="t-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
 {{if .Owner}}<form method="post" action="/logout"><button class="btn">Log out</button></form>{{else}}<a class="btn" href="/login">Log in</a>{{end}}</div></div></header>
@@ -63,6 +63,15 @@ document.querySelectorAll('form.followform').forEach(function(f){
 {{define "parentcard"}}<a class="pcard" href="{{.Href}}">{{if .Image}}<img src="{{.Image}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">{{end}}<span class="pc-t"><strong>{{.Title}}</strong>{{if .Description}}<span class="pc-d">{{.Description}}</span>{{end}}<small>{{.Host}}</small></span></a>{{end}}
 {{define "authorcard"}}<span class="p-author h-card" hidden><a class="u-url p-name" href="{{.SiteURL}}">{{.Author}}</a>{{if .Avatar}}<img class="u-photo" src="{{.Avatar}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}</span>{{end}}
 {{define "avatar"}}<span class="av">{{if .Avatar}}<img src="{{.Avatar}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>{{.Initial}}</span>{{else}}<span>{{.Initial}}</span>{{end}}</span>{{end}}
+{{define "password"}}{{template "head" .}}<h2>{{if .Forced}}Choose a new password{{else}}Change password{{end}}</h2>
+{{if .Forced}}<p>You signed in with a temporary password. Choose your own to go on.</p>{{end}}
+{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+<form method="post" action="/password">
+<label>{{if .Forced}}Temporary password{{else}}Current password{{end}} <input type="password" name="current" autocomplete="current-password" required autofocus></label>
+<label>New password (at least 8 characters) <input type="password" name="new" autocomplete="new-password" minlength="8" required></label>
+<label>New password again <input type="password" name="again" autocomplete="new-password" minlength="8" required></label>
+<p><button>Change password</button></p></form>
+{{template "foot"}}{{end}}
 {{define "profile"}}{{template "head" .}}<h2>Profile</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <form method="post" action="/profile">
 <label>Name <input type="text" name="display" value="{{.Profile.Display}}" maxlength="80"></label>
@@ -70,6 +79,7 @@ document.querySelectorAll('form.followform').forEach(function(f){
 <label>Avatar image address (optional, an http:// or https:// link; the first letter of your name is shown without one) <input type="text" name="avatar" value="{{.Profile.Avatar}}" placeholder="https://example.com/me.jpg" inputmode="url"></label>
 <p>{{template "avatar" .}}<small> preview of your current avatar</small></p>
 <p><button>Save</button></p></form>
+<p><a href="/password">Change password</a></p>
 <h3>Your data</h3>
 <p><small>Everything you have here in one file: posts, replies, likes, who you follow and your login. It holds no sessions and no API token. Whoever runs a Weft server can import it to bring you there.</small></p>
 <form method="post" action="/export"><button>Download my data</button></form>
@@ -255,6 +265,7 @@ type pageData struct {
 	Back                                       string      // the timeline view a reply returns to
 	Cheat                                      *cheatSheet // the Markdown help beside the editor
 	Advanced                                   bool        // the editor opens with title, keywords, address and the Markdown help
+	Forced                                     bool        // the owner signed in with a temporary password and must replace it
 	Moderation                                 []modRow
 	Pending                                    int
 	Like                                       *likeData
