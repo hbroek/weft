@@ -175,7 +175,7 @@ func (s *Instance) SaveFeed(feedURL string, p *feed.Parsed) error {
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(`INSERT INTO feeds(url,title,link,fetched,error,image) VALUES(?,?,?,?,'',?)
-		ON CONFLICT(url) DO UPDATE SET title=excluded.title, link=excluded.link, fetched=excluded.fetched, error='', image=excluded.image`,
+		ON CONFLICT(url) DO UPDATE SET title=excluded.title, link=excluded.link, fetched=excluded.fetched, error='', image=excluded.image, fails=0, next_try=0`,
 		feedURL, p.Title, p.Link, time.Now().Unix(), p.Image); err != nil {
 		return err
 	}
@@ -230,9 +230,81 @@ func (s *Instance) SaveFeed(feedURL string, p *feed.Parsed) error {
 
 // SaveFeedError records a failed fetch without discarding cached items.
 func (s *Instance) SaveFeedError(feedURL, msg string) error {
-	_, err := s.db.Exec(`INSERT INTO feeds(url,error,fetched) VALUES(?,?,?)
-		ON CONFLICT(url) DO UPDATE SET error=excluded.error, fetched=excluded.fetched`, feedURL, msg, time.Now().Unix())
+	return s.SaveFeedErrorRetry(feedURL, msg, 0)
+}
+
+// MaxBackoff is the longest a failing feed is left alone.
+const MaxBackoff = 24 * time.Hour
+
+// Backoff is how long to wait after the given number of failures in a row: 15 minutes, doubling each time.
+func Backoff(fails int) time.Duration {
+	d := 15 * time.Minute
+	for i := 1; i < fails && d < MaxBackoff; i++ {
+		d *= 2
+	}
+	if d > MaxBackoff {
+		d = MaxBackoff
+	}
+	return d
+}
+
+// SaveFeedErrorRetry records a failed fetch and when the poller may try again: after the longer of
+// the server's own request (wait, e.g. from Retry-After) and the backoff for the failures so far.
+func (s *Instance) SaveFeedErrorRetry(feedURL, msg string, wait time.Duration) error {
+	now := time.Now()
+	var fails int
+	s.rdb.QueryRow(`SELECT fails FROM feeds WHERE url=?`, feedURL).Scan(&fails)
+	fails++
+	d := Backoff(fails)
+	if wait > d {
+		d = wait
+	}
+	if d > MaxBackoff {
+		d = MaxBackoff
+	}
+	_, err := s.db.Exec(`INSERT INTO feeds(url,error,fetched,fails,next_try) VALUES(?,?,?,?,?)
+		ON CONFLICT(url) DO UPDATE SET error=excluded.error, fetched=excluded.fetched, fails=excluded.fails, next_try=excluded.next_try`,
+		feedURL, msg, now.Unix(), fails, now.Add(d).Unix())
 	return err
+}
+
+// Validators returns what the feed's server sent with the cached copy, for a conditional request. They
+// are empty when nothing is cached, since a "not modified" answer is only useful beside the copy.
+func (s *Instance) Validators(feedURL string) (etag, lastModified string) {
+	if !s.HasItems(feedURL) {
+		return "", ""
+	}
+	s.rdb.QueryRow(`SELECT etag, last_modified FROM feeds WHERE url=?`, feedURL).Scan(&etag, &lastModified)
+	return
+}
+
+// SaveValidators remembers the validators the server sent with the copy just saved.
+func (s *Instance) SaveValidators(feedURL, etag, lastModified string) error {
+	_, err := s.db.Exec(`UPDATE feeds SET etag=?, last_modified=? WHERE url=?`, etag, lastModified, feedURL)
+	return err
+}
+
+// FeedUnchanged records that the server said the cached copy is still current.
+func (s *Instance) FeedUnchanged(feedURL string) error {
+	_, err := s.db.Exec(`UPDATE feeds SET fetched=?, error='', fails=0, next_try=0 WHERE url=?`, time.Now().Unix(), feedURL)
+	return err
+}
+
+// DueFeedURLs is FollowedFeedURLs without the feeds that are waiting out a backoff.
+func (s *Instance) DueFeedURLs(now time.Time) ([]string, error) {
+	urls, err := s.FollowedFeedURLs()
+	if err != nil {
+		return nil, err
+	}
+	var due []string
+	for _, u := range urls {
+		var next int64
+		s.rdb.QueryRow(`SELECT next_try FROM feeds WHERE url=?`, u).Scan(&next)
+		if next <= now.Unix() {
+			due = append(due, u)
+		}
+	}
+	return due, nil
 }
 
 type TimelineItem struct {

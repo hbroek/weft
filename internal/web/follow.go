@@ -442,7 +442,12 @@ func (s *Server) Follow(ctx context.Context, name, raw string) (string, error) {
 
 // Refresh re-fetches one feed and replaces its cached items. Failures are recorded, not returned.
 func (s *Server) Refresh(ctx context.Context, feedURL string) {
-	res, err := s.web.Get(ctx, feedURL)
+	etag, modified := s.st.Validators(feedURL)
+	res, err := s.web.GetIf(ctx, feedURL, etag, modified)
+	if err == nil && res.NotModified {
+		s.st.FeedUnchanged(feedURL)
+		return
+	}
 	if err == nil {
 		var p *feed.Parsed
 		if p, err = feed.Parse(res.Body, time.Now()); err == nil {
@@ -456,12 +461,18 @@ func (s *Server) Refresh(ctx context.Context, feedURL string) {
 			}
 			err = s.st.SaveFeed(feedURL, p)
 			if err == nil {
+				s.st.SaveValidators(feedURL, res.Header.Get("ETag"), res.Header.Get("Last-Modified"))
 				s.refreshLikes(ctx, feedURL, p)
 			}
 		}
 	}
 	if err != nil {
-		s.st.SaveFeedError(feedURL, err.Error())
+		var se *fetch.StatusError
+		var wait time.Duration
+		if errors.As(err, &se) {
+			wait = se.RetryAfter
+		}
+		s.st.SaveFeedErrorRetry(feedURL, err.Error(), wait)
 	}
 }
 
@@ -557,9 +568,10 @@ func (s *Server) readArchive(ctx context.Context, feedURL string, p *feed.Parsed
 	}
 }
 
-// RefreshAll refreshes every followed feed once.
+// RefreshAll refreshes every followed feed once, except those waiting out a backoff after failures.
+// "Refresh now" does not wait.
 func (s *Server) RefreshAll(ctx context.Context) {
-	urls, err := s.st.FollowedFeedURLs()
+	urls, err := s.st.DueFeedURLs(time.Now())
 	if err != nil {
 		return
 	}

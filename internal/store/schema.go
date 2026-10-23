@@ -196,6 +196,17 @@ const spaceV2SQL = `ALTER TABLE users ADD COLUMN must_change INTEGER NOT NULL DE
 func spaceV2(tx *sql.Tx) error    { _, err := tx.Exec(spaceV2SQL); return err }
 func instanceV1(tx *sql.Tx) error { _, err := tx.Exec(instanceSchema); return err }
 
+// instanceV4 remembers what a feed's server said about the copy fetched (to ask "has it changed?" next
+// time) and how many fetches in a row failed (to wait longer before trying again).
+func instanceV4(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+ALTER TABLE feeds ADD COLUMN etag TEXT NOT NULL DEFAULT '';
+ALTER TABLE feeds ADD COLUMN last_modified TEXT NOT NULL DEFAULT '';
+ALTER TABLE feeds ADD COLUMN fails INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE feeds ADD COLUMN next_try INTEGER NOT NULL DEFAULT 0;`)
+	return err
+}
+
 // instanceV3 separates a domain that is verified (the TXT record proves it is the user's) from one that is
 // active (it reaches this server, so it can be the user's address). A domain that was verified before this
 // existed was already the address, so it is active.

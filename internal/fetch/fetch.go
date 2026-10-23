@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,6 +22,7 @@ const maxBody = 5 << 20
 type StatusError struct {
 	Code       int
 	Op, Status string
+	RetryAfter time.Duration // what the server asked for in Retry-After, or 0
 }
 
 func (e *StatusError) Error() string { return e.Op + ": " + e.Status }
@@ -102,6 +104,8 @@ type Result struct {
 	// Moved is set when the address was redirected, and every redirect on the way was permanent
 	// (301 or 308): the document now lives at URL, and a subscription should say so.
 	Moved bool
+	// NotModified is set when a conditional request was answered 304: the copy the caller has is current.
+	NotModified bool
 }
 
 // trail records the redirects of one request.
@@ -120,6 +124,27 @@ func (c *Client) Get(ctx context.Context, rawurl string) (*Result, error) {
 
 // GetAs is Get with an explicit Accept header, for asking a URL for one particular representation.
 func (c *Client) GetAs(ctx context.Context, rawurl, accept string) (*Result, error) {
+	return c.get(ctx, rawurl, accept, "", "")
+}
+
+// GetIf asks for the document only if it changed since the copy that came with etag and lastModified. When
+// it did not, the result has NotModified set and no body.
+func (c *Client) GetIf(ctx context.Context, rawurl, etag, lastModified string) (*Result, error) {
+	return c.get(ctx, rawurl, defaultAccept, etag, lastModified)
+}
+
+// retryAfter reads a Retry-After header, in seconds or as a date.
+func retryAfter(v string, now time.Time) time.Duration {
+	if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
+		return time.Duration(n) * time.Second
+	}
+	if t, err := http.ParseTime(v); err == nil && t.After(now) {
+		return t.Sub(now)
+	}
+	return 0
+}
+
+func (c *Client) get(ctx context.Context, rawurl, accept, etag, lastModified string) (*Result, error) {
 	u, err := url.Parse(rawurl)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("not a http(s) URL: %q", rawurl)
@@ -131,13 +156,23 @@ func (c *Client) GetAs(ctx context.Context, rawurl, accept string) (*Result, err
 	}
 	req.Header.Set("User-Agent", "Weft/0.1 (+https://weftseed.com)")
 	req.Header.Set("Accept", accept)
+	if etag != "" {
+		req.Header.Set("If-None-Match", etag)
+	}
+	if lastModified != "" {
+		req.Header.Set("If-Modified-Since", lastModified)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotModified && (etag != "" || lastModified != "") {
+		return &Result{Header: resp.Header, URL: resp.Request.URL.String(), NotModified: true}, nil
+	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, &StatusError{Code: resp.StatusCode, Op: "GET " + rawurl, Status: resp.Status}
+		return nil, &StatusError{Code: resp.StatusCode, Op: "GET " + rawurl, Status: resp.Status,
+			RetryAfter: retryAfter(resp.Header.Get("Retry-After"), time.Now())}
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {

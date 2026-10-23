@@ -32,7 +32,9 @@ curl -XPOST -H "Authorization: Bearer $TOKEN" \
 
 Following and the timeline: log in, open Following, paste another user's address (for example
 `http://bob.localhost:8080/`) and the feed is discovered from the page. Followed feeds refresh
-every 5 minutes (`-poll`) or on "Refresh now".
+every 5 minutes (`-poll`) or on "Refresh now". A refresh asks the feed's server whether anything changed
+(`ETag` / `Last-Modified`) and a `304` costs almost nothing. A feed that fails is left alone for 15 minutes,
+then 30, doubling up to a day (longer if the server sends `Retry-After`); "Refresh now" always tries.
 
 Replying: on the Timeline click "Reply" under a post, or use the API with `in_reply_to`
 (and optionally `in_reply_to_feed`). The reply is published in your own feed and a Webmention is

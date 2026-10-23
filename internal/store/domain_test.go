@@ -254,7 +254,8 @@ func TestDomainsActiveMigration(t *testing.T) {
 
 	// back to the schema before the change
 	raw := openRaw(t, filepath.Join(dir, "instance.db"))
-	for _, q := range []string{`ALTER TABLE domains DROP COLUMN active`, `PRAGMA user_version=2`} {
+	for _, q := range []string{`ALTER TABLE domains DROP COLUMN active`, `ALTER TABLE feeds DROP COLUMN etag`, `ALTER TABLE feeds DROP COLUMN last_modified`,
+		`ALTER TABLE feeds DROP COLUMN fails`, `ALTER TABLE feeds DROP COLUMN next_try`, `PRAGMA user_version=2`} {
 		if _, err := raw.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}
