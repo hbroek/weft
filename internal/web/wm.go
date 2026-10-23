@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -134,7 +135,12 @@ func (s *Server) webmention(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "target post not found", http.StatusBadRequest)
 		return
 	}
-	if err := q.sp.Enqueue(store.QueueIn, q.host.ID, source, target); err != nil {
+	if err := q.sp.EnqueueCapped(store.QueueIn, q.host.ID, source, target, maxInboxJobs, maxInboxJobsPerHost); err != nil {
+		if errors.Is(err, store.ErrQueueFull) { // a flood, or a sender that is far ahead of what can be checked
+			w.Header().Set("Retry-After", "300")
+			http.Error(w, "too many Webmentions are waiting; try again later", http.StatusServiceUnavailable)
+			return
+		}
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -142,6 +148,13 @@ func (s *Server) webmention(w http.ResponseWriter, r *http.Request, q *req) {
 	w.WriteHeader(http.StatusAccepted)
 	fmt.Fprintln(w, "queued")
 }
+
+// A user's inbox of Webmentions still to be checked holds this many, and this many from one host: each is
+// fetched from the sender later, so a stranger can make the server do work only up to these.
+const (
+	maxInboxJobs        = 500
+	maxInboxJobsPerHost = 50
+)
 
 // ProcessQueues runs all due Webmention jobs once, for the users the directory says have some.
 func (s *Server) ProcessQueues(ctx context.Context) {

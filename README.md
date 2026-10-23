@@ -194,6 +194,14 @@ weft serve -addr 127.0.0.1:8080 -internal 127.0.0.1:8081 -domain example.org -sc
 
 **Looking after a server.** `weft fsck` checks `instance.db` and every user's file and that the directory matches the files; `-full` checks more, `-fix` rebuilds the directory when that is all that is wrong, and it exits 1 if anything is left. It only reads, so it can run beside a server (it takes about a millisecond a user). `weft reindex` rebuilds the directory on its own, which is also how a restored folder gets its follows back. `weft serve` locks the data folder, so a second server on it refuses to start, warns at startup if the limit on open files is low or if the directory and the files disagree, and with `-internal` also serves `/metrics` (pool, `instance.db` waits, users, trash) in the Prometheus text format; keep that address private.
 
+**Limits.** The server keeps one caller from using it up. Each limit answers `429 Too Many Requests` with `Retry-After`, in memory, per caller (the address, a whole /64 for IPv6):
+- **Wrong passwords:** 5 per address and user, and 100 per user from everywhere, in 15 minutes; then that user's sign-in (and the Change password form) is refused, a right password included, until the window is over. A right password clears that address's count.
+- **API:** 600 calls a minute (a burst of 120) per address and user, 60 writes a minute (30 at once), and 10 follows a minute. After 20 wrong or missing tokens in a minute an address is refused for a while, even with the right token.
+- **Webmentions:** 30 a minute per address (20 at once). Each user also has an inbox of at most 500 Webmentions waiting to be checked, and 50 from one host; past that the server answers `503` with `Retry-After: 300`, since each one makes it fetch the sender's page.
+- **Connections:** 10 seconds to send the headers, 30 to send the request, 60 to answer, 2 minutes idle.
+
+Behind a reverse proxy every request comes from the proxy, so start the server with `-trust-proxy` and the limits use the address in `X-Forwarded-For`, the last entry, which Caddy sets to the client. Do that only behind a proxy that sets it: otherwise anyone can claim to be any address. `-no-rate-limits` turns the limits off, for load tests. Reading public pages (the feed, permalinks) is not limited by the server: put a limit on those at the proxy or a CDN (the standard Caddy has none; the `caddy-ratelimit` module adds one, and Cloudflare has rate limiting rules).
+
 To watch the numbers over time, point a [Prometheus](https://prometheus.io) server at the private address (the format is plain text, so `curl http://127.0.0.1:8081/metrics` shows it too). In `prometheus.yml`:
 
 ```yaml

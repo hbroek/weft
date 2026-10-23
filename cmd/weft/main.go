@@ -22,7 +22,7 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081]
+  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits]
   weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW [-permanent]] USERNAME
                   (the password is temporary: the user must change it at the first sign-in, unless -permanent;
                   without -password one is made and shown)
@@ -59,9 +59,11 @@ func main() {
 		verbose := fs.Bool("v", false, "log every API call")
 		poll := fs.Duration("poll", 5*time.Minute, "how often to refresh followed feeds (0 turns the background refresh off)")
 		cname := fs.String("cname-target", "", "host name users point a custom domain's CNAME record at (shown on the profile page)")
+		trustProxy := fs.Bool("trust-proxy", false, "take the caller's address from X-Forwarded-For, for the rate limits (only behind a reverse proxy that sets it)")
+		noLimits := fs.Bool("no-rate-limits", false, "turn the rate limits off (load tests)")
 		internal := fs.String("internal", "", "private address for the reverse proxy's \"may I get a certificate for this host?\" question, e.g. 127.0.0.1:8081 (never a public address)")
 		fs.Parse(os.Args[2:])
-		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname}, *poll); err != nil {
+		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname, TrustProxy: *trustProxy, NoLimits: *noLimits}, *poll); err != nil {
 			log.Fatal(err)
 		}
 	case "fsck":
@@ -469,12 +471,12 @@ func serve(addr, internal, dataDir string, cfg web.Config, poll time.Duration) e
 	bg, cancelBackground := context.WithCancel(context.Background())
 	pollDone := srv.StartPoller(bg, poll)
 
-	hs := &http.Server{Addr: addr, Handler: srv}
+	hs := web.NewHTTPServer(addr, srv, web.DefaultTimeouts)
 	listenErr := make(chan error, 2)
 	go func() { listenErr <- hs.ListenAndServe() }()
 	var is *http.Server
 	if internal != "" {
-		is = &http.Server{Addr: internal, Handler: srv.Internal()}
+		is = web.NewHTTPServer(internal, srv.Internal(), web.DefaultTimeouts)
 		go func() { listenErr <- is.ListenAndServe() }()
 		log.Printf("answering the proxy's certificate questions on %s", internal)
 	}

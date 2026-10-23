@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -209,10 +210,31 @@ type QueueItem struct {
 
 // Enqueue adds a Webmention job unless an identical one is already waiting.
 func (s *Space) Enqueue(dir string, userID int64, source, target string) error {
+	return s.EnqueueCapped(dir, userID, source, target, 0, 0)
+}
+
+// ErrQueueFull is returned by EnqueueCapped when the queue holds too much already.
+var ErrQueueFull = errors.New("queue full")
+
+// EnqueueCapped is Enqueue for jobs that strangers can ask for: a job not already waiting is refused with
+// ErrQueueFull when maxTotal jobs (of the user's, for this direction) are waiting, or maxPerHost from the same
+// host as source. A cap of 0 means none.
+func (s *Space) EnqueueCapped(dir string, userID int64, source, target string, maxTotal, maxPerHost int) error {
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM wm_queue WHERE dir=? AND user_id=? AND source=? AND target=? AND done=0`,
 		dir, userID, source, target).Scan(&n); err != nil || n > 0 {
 		return err
+	}
+	if maxTotal > 0 || maxPerHost > 0 {
+		var total, fromHost int
+		prefix := sourceOrigin(source)
+		if err := s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(CASE WHEN substr(source,1,?)=? THEN 1 ELSE 0 END),0)
+			FROM wm_queue WHERE dir=? AND user_id=? AND done=0`, len(prefix), prefix, dir, userID).Scan(&total, &fromHost); err != nil {
+			return err
+		}
+		if (maxTotal > 0 && total >= maxTotal) || (maxPerHost > 0 && fromHost >= maxPerHost) {
+			return ErrQueueFull
+		}
 	}
 	if _, err := s.db.Exec(`INSERT INTO wm_queue(dir,user_id,source,target,next_try) VALUES(?,?,?,?,?)`,
 		dir, userID, source, target, time.Now().Unix()); err != nil {
@@ -343,4 +365,16 @@ func (s *Space) subreplies(where string, args ...any) ([]Subreply, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// sourceOrigin is the start of every address on source's host: "https://example.org/".
+func sourceOrigin(source string) string {
+	i := strings.Index(source, "://")
+	if i < 0 {
+		return source
+	}
+	if j := strings.IndexAny(source[i+3:], "/?#"); j >= 0 {
+		return source[:i+3+j] + "/"
+	}
+	return source + "/"
 }

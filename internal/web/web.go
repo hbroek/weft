@@ -39,6 +39,11 @@ type Config struct {
 	// ReachDomain fetches /.well-known/weft-domain from a custom domain, to see that requests to it arrive
 	// here. Nil means a real request; tests replace it.
 	ReachDomain func(ctx context.Context, domain string) (string, error)
+	// TrustProxy takes the caller's address from X-Forwarded-For, which the reverse proxy in front of the server
+	// appends. Set it only behind one: otherwise anyone can claim to be any address.
+	TrustProxy bool
+	// NoLimits turns the rate limits off, for load tests.
+	NoLimits bool
 }
 
 type Server struct {
@@ -51,6 +56,8 @@ type Server struct {
 	// adj holds the user's own likes and unlikes not yet in the authors' published counts.
 	adjMu sync.Mutex
 	adj   map[adjKey]likeAdj
+	// lim holds the rate limits; nil when they are off.
+	lim *limits
 }
 
 func New(cfg Config, st *store.Instance) *Server {
@@ -58,6 +65,9 @@ func New(cfg Config, st *store.Instance) *Server {
 		cfg.Scheme = "http"
 	}
 	s := &Server{cfg: cfg, st: st, mux: http.NewServeMux(), web: fetch.New(cfg.AllowPrivate), wake: make(chan struct{}, 1)}
+	if !cfg.NoLimits && !limitsOffInTests {
+		s.lim = newLimits()
+	}
 	// public pages
 	s.mux.Handle("GET /static/", s.staticHandler())
 	s.mux.Handle("GET /favicon.ico", s.staticHandler())
@@ -122,6 +132,21 @@ func New(cfg Config, st *store.Instance) *Server {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.admit(w, r) {
+		return
+	}
+	if s.lim != nil && strings.HasPrefix(r.URL.Path, "/api/") { // a wrong token counts against the caller
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		s.serve(sw, r)
+		if sw.status == http.StatusUnauthorized {
+			s.lim.badToken.take(s.clientIP(r))
+		}
+		return
+	}
+	s.serve(w, r)
+}
+
+func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Verbose && (strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/webmention") {
 		s.logged(w, r)
 		return

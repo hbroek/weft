@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"html/template"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,8 +22,47 @@ func (s *Server) loginForm(w http.ResponseWriter, r *http.Request, q *req) {
 	s.show(w, "login", http.StatusOK, s.data(r, q, "Log in"))
 }
 
+// guessBlocked reports whether too many wrong passwords have been tried for this user from this address, and
+// if so has the caller answer 429 with the time to wait. It answers whether the password is right or not.
+func (s *Server) guessBlocked(w http.ResponseWriter, r *http.Request, q *req) (bool, time.Duration) {
+	if s.lim == nil {
+		return false, 0
+	}
+	blocked, wait := s.lim.logins.blocked(q.host.Name, s.clientIP(r))
+	if blocked {
+		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+	}
+	return blocked, wait
+}
+
+// guessed records the outcome of a password check for the limit above.
+func (s *Server) guessed(r *http.Request, q *req, right bool) {
+	if s.lim == nil {
+		return
+	}
+	if right {
+		s.lim.logins.ok(q.host.Name, s.clientIP(r))
+	} else {
+		s.lim.logins.fail(q.host.Name, s.clientIP(r))
+	}
+}
+
+func waitText(wait time.Duration) string {
+	if wait >= time.Minute {
+		return strconv.Itoa(int(math.Ceil(wait.Minutes()))) + " minutes"
+	}
+	return "a minute"
+}
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request, q *req) {
+	if blocked, wait := s.guessBlocked(w, r, q); blocked {
+		d := s.data(r, q, "Log in")
+		d.Error = "Too many wrong passwords. Try again in " + waitText(wait) + "."
+		s.show(w, "login", http.StatusTooManyRequests, d)
+		return
+	}
 	u, err := q.sp.CheckPassword(r.FormValue("password"))
+	s.guessed(r, q, err == nil)
 	if err != nil {
 		d := s.data(r, q, "Log in")
 		d.Error = "Wrong password."
@@ -73,6 +114,10 @@ func (s *Server) password(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.requireOwner(w, r, q) {
 		return
 	}
+	if blocked, wait := s.guessBlocked(w, r, q); blocked {
+		s.showPassword(w, r, q, http.StatusTooManyRequests, "Too many wrong passwords. Try again in "+waitText(wait)+".")
+		return
+	}
 	forced := q.sp.MustChangePassword()
 	cur, next, again := r.FormValue("current"), r.FormValue("new"), r.FormValue("again")
 	var keep string
@@ -84,6 +129,9 @@ func (s *Server) password(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	err := q.sp.ChangePassword(cur, next, keep)
+	if err == nil || errors.Is(err, store.ErrBadLogin) { // only a wrong current password is a guess
+		s.guessed(r, q, err == nil)
+	}
 	switch {
 	case err == nil:
 		if forced {
