@@ -46,7 +46,7 @@ Keywords: an optional comma-separated box under the Markdown editor (`travel, we
 
 Your own posts appear in your timeline, marked "You" with an Edit link; "Hide my posts" (`/timeline?mine=0`) takes them out. One person's page (`?feed=`) never has them.
 
-The like count is a link to a list of who liked the post, with Follow and Unfollow behind each name (`/liked-by?target=<post URL>`): on your own posts it lists everyone whose like arrived, marking the ones that are not counted because you don't follow them (following someone counts the likes they already gave, and unfollowing drops them); on a post in a feed you follow it lists the people you follow who liked it.
+The like count is a link to a list of who liked the post, with Follow and Unfollow behind each name (`/liked-by?target=<post URL>`): every like received counts, whoever sent it. On your own posts it lists everyone whose like arrived. On a post in a feed you follow it lists you and the people you follow who liked it, and an "Also liked by" section with everyone else on the author's public liked-by list (`<post URL>/likes.xml`), each with a Follow button.
 
 Chips are links. On a site, `/?keyword=pickleball` lists that author's posts with the keyword, and `/feed.xml?category=pickleball` is a topic feed of just those posts (paged like the main feed), so someone can follow one topic from one person; following the `?keyword=` page address finds that feed. A chip filters the view it is in: in your timeline it filters everything you follow (`/timeline?keyword=pickleball`), and when you are looking at one person's feed (`/timeline?feed=…`) it filters just that feed. Matching is on the whole keyword, ignoring case.
 

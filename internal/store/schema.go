@@ -196,6 +196,12 @@ const spaceV2SQL = `ALTER TABLE users ADD COLUMN must_change INTEGER NOT NULL DE
 func spaceV2(tx *sql.Tx) error    { _, err := tx.Exec(spaceV2SQL); return err }
 func instanceV1(tx *sql.Tx) error { _, err := tx.Exec(instanceSchema); return err }
 
+// instanceV5 remembers where a followed post lists everyone who liked it.
+func instanceV5(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE items ADD COLUMN likes_href TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
 // instanceV4 remembers what a feed's server said about the copy fetched (to ask "has it changed?" next
 // time) and how many fetches in a row failed (to wait longer before trying again).
 func instanceV4(tx *sql.Tx) error {

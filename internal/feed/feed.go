@@ -62,9 +62,10 @@ type LikeRef struct {
 	Image       string `xml:"image,attr,omitempty"`
 }
 
-// Likes is weft:likes: a post's count of verified likes from trusted senders.
+// Likes is weft:likes: a post's count of verified likes from trusted senders, and where all the likes are listed.
 type Likes struct {
-	Count int `xml:"count,attr"`
+	Count int    `xml:"count,attr"`
+	Href  string `xml:"href,attr,omitempty"` // the post's liked-by feed: everyone whose like it received
 }
 
 // Replies is weft:replies: the URL of a post's replies feed and the approved count.

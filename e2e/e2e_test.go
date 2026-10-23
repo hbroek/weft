@@ -185,7 +185,7 @@ func TestRoundTripWithAgent(t *testing.T) {
 
 	// Alice's feed counts the two likes (Carol's and Dana's).
 	feed := get(t, alice, "/feed.xml")
-	if !strings.Contains(feed, `<weft:likes count="2">`) || !strings.Contains(feed, `<weft:replies href="`) {
+	if !strings.Contains(feed, `<weft:likes count="2" href="`) || !strings.Contains(feed, `<weft:replies href="`) {
 		t.Fatalf("alice's feed lacks the tallies:\n%s", feed)
 	}
 

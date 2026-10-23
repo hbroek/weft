@@ -154,6 +154,10 @@ document.querySelectorAll('form.followform').forEach(function(f){
 {{if eq .State "unfollow"}}<form method="post" action="/following/remove" style="display:inline"><input type="hidden" name="url" value="{{.FeedURL}}"><button class="linkbtn">Unfollow</button></form>
 {{else if eq .State "follow"}}<form method="post" action="/following" style="display:inline"><input type="hidden" name="url" value="{{.FeedURL}}"><button class="linkbtn">Follow</button></form>
 {{else if eq .State "following"}}<small>Following</small>{{end}}</li>{{end}}</ul>{{else}}<p>No likes to show.</p>{{end}}
+{{if .Others}}<h3>Also liked by</h3>
+<p><small>People you don't follow.</small></p>
+<ul>{{range .Others}}<li><a href="{{.Site}}">{{.Name}}</a> <small>{{.FeedURL}}</small>
+<form method="post" action="/following" style="display:inline"><input type="hidden" name="url" value="{{.FeedURL}}"><button class="linkbtn">Follow</button></form></li>{{end}}</ul>{{end}}
 {{if .LikeNote}}<p><small>{{.LikeNote}}</small></p>{{end}}
 {{template "foot"}}{{end}}
 {{define "following"}}{{template "head" .}}<h2>Following</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
@@ -289,7 +293,7 @@ type pageData struct {
 	Avatar, Initial                              string     // the site owner's avatar address and fallback letter, for the header
 	Profile                                      struct{ Display, Bio, Avatar string }
 	Domain                                       *domainView
-	Likers                                       []likerRow
+	Likers, Others                               []likerRow
 	LikeTarget, LikeTitle, LikeNote              string
 	ClearKeyword                                 string
 	Keyword, TopicFeed                           string       // a keyword filter on the home page, and the feed of just those posts
@@ -551,7 +555,7 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 		it := feed.Item{Title: p.Title, GUID: feed.GUID{Value: "urn:uuid:" + p.UID}, Link: url,
 			Description: p.HTML, Markdown: p.Markdown, PubDate: feed.RFC822(p.Created)}
 		it.Replies = &feed.Replies{Href: url + "/replies.xml", Count: counts[p.ID]}
-		it.Likes = &feed.Likes{Count: tallies[p.ID]}
+		it.Likes = &feed.Likes{Count: tallies[p.ID], Href: url + "/likes.xml"}
 		it.Categories = p.Keywords
 		if p.InReplyTo != "" {
 			it.InReplyTo = &feed.Ref{Href: p.InReplyTo, Feed: p.InReplyToFeed}

@@ -288,3 +288,41 @@ func (in likeReq) info() feed.ParentInfo {
 	}
 	return feed.ParentInfo{Title: in.Context.Title, Description: in.Context.Description, Image: in.Context.Image}
 }
+
+// postLikesFeed lists everyone whose like of a post was received, counted or not, so a reader who follows
+// only some of them can see who the others are. The likers already publish these likes in their own likes
+// feeds, so this makes nothing public that was not.
+func (s *Server) postLikesFeed(w http.ResponseWriter, r *http.Request, q *req) {
+	p, err := q.sp.PostBySlug(q.host.ID, r.PathValue("slug"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if p.Deleted {
+		http.Error(w, "This post was removed.", http.StatusGone)
+		return
+	}
+	xs, err := q.sp.LikesInFor(p.ID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	purl := s.postURL(r, p.ID)
+	name := orStr(p.Title, q.host.Display+"'s post")
+	ch := feed.Channel{
+		Title: "Likes of: " + name, Link: purl, Description: "Everyone who liked this post",
+		Links: []feed.AtomLink{{Href: purl + "/likes.xml", Rel: "self", Type: "application/rss+xml"}},
+	}
+	last := p.Created
+	for _, x := range xs {
+		who := orStr(x.Author, orStr(x.FeedURL, siteHost(x.Source)))
+		it := feed.Item{GUID: feed.GUID{IsPermaLink: true, Value: x.Source}, Link: x.Source, PubDate: feed.RFC822(x.Created),
+			LikeOf: &feed.LikeRef{Href: purl}, Feed: &feed.FeedRef{Href: personFeed(x.FeedURL), Name: who}}
+		ch.Items = append(ch.Items, it)
+		if x.Created.After(last) {
+			last = x.Created
+		}
+	}
+	ch.LastBuildDate = feed.RFC822(last)
+	s.writeChannel(w, r, ch)
+}

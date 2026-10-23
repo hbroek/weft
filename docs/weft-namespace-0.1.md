@@ -124,7 +124,7 @@ A like is a single positive signal: no polarity and no emoji. It names who liked
 ### Reply and like count elements
 
 - `<weft:replies href="…" count="7"/>` (recommended): the URL of this post's replies feed and the number of approved replies.
-- `<weft:likes count="12"/>` (optional): the number of verified likes received. Only likes from senders the post's author follows are counted by default. It is a cache; the likes themselves live in the likers' feeds and can be recounted.
+- `<weft:likes count="12" href="…"/>` (optional): the number of verified likes received. `href` (optional) is the post's liked-by feed, `<permalink>/likes.xml`: an RSS 2.0 feed with one item per like received, each with `<weft:likeOf href="…"/>` the permalink and `<weft:feed href="…">Name</weft:feed>` the liker. A reader that follows only some of the likers uses it to show who the others are and offer to follow them. The likers already publish these likes in their own likes feeds. It is a cache; the likes themselves live in the likers' feeds and can be recounted.
 
 ## Replies feed
 
@@ -203,7 +203,7 @@ Recommended for IndieWeb compatibility: microformats2 markup (`h-entry`, with `u
 
 1. Fetch the source URL and confirm it links to the target post. If not, reject it.
 2. Read the source's feed item. If it has `weft:inReplyTo` matching the target, treat it as a reply; if it has `weft:likeOf` matching the target, treat it as a like; otherwise it is a plain mention and is ignored.
-3. Apply moderation: auto-approve senders the author follows (from `weft:following`), queue others, drop blocked domains. Likes are recorded once verified, but only those from followed senders count in the public count.
+3. Apply moderation: auto-approve senders the author follows (from `weft:following`), queue others, drop blocked domains. Likes are recorded once verified and all of them count.
 4. On approval, add the reply to the post's replies feed and update the `weft:replies` and `weft:likes` counts.
 5. **Bubble up.** If this post is itself a reply, re-send its own Webmention to its parent. Under the Webmention spec, a re-sent Webmention means the source changed, so the parent refreshes its cached subtree. Repeat up to the root, or stop at the parent's `weft:depth`.
 

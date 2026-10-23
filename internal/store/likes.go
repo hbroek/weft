@@ -214,10 +214,10 @@ func (s *Space) SetLikeInTrust(postID int64, source string, trusted bool) error 
 	return err
 }
 
-// Tallies returns, for each of the user's posts that has any, the number of likes from trusted senders.
+// Tallies returns, for each of the user's posts that has any, the number of likes received.
 func (s *Space) Tallies(userID int64) (map[int64]int, error) {
 	rows, err := s.db.Query(`SELECT l.post_id, COUNT(*) FROM likes_in l JOIN posts p ON p.id=l.post_id
-		WHERE p.user_id=? AND l.trusted=1 GROUP BY l.post_id`, userID)
+		WHERE p.user_id=? GROUP BY l.post_id`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -235,10 +235,10 @@ func (s *Space) Tallies(userID int64) (map[int64]int, error) {
 }
 
 // Likers returns, for each of the user's posts that has any, the names of the senders whose likes
-// count (the ones the user follows), oldest like first. A sender without a name is shown by its feed.
+// arrived, oldest like first. A sender without a name is shown by its feed.
 func (s *Space) Likers(userID int64) (map[int64][]string, error) {
 	rows, err := s.db.Query(`SELECT l.post_id, COALESCE(NULLIF(l.author,''), l.feed_url) FROM likes_in l JOIN posts p ON p.id=l.post_id
-		WHERE p.user_id=? AND l.trusted=1 ORDER BY l.created, l.id`, userID)
+		WHERE p.user_id=? ORDER BY l.created, l.id`, userID)
 	if err != nil {
 		return nil, err
 	}

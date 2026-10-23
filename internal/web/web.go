@@ -99,6 +99,7 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("POST /api/reactions", s.user(s.apiReact))
 	s.mux.HandleFunc("DELETE /api/reactions", s.user(s.apiUnlike))
 	s.mux.HandleFunc("GET /posts/{slug}/replies.xml", s.user(s.repliesFeed))
+	s.mux.HandleFunc("GET /posts/{slug}/likes.xml", s.user(s.postLikesFeed))
 	s.mux.HandleFunc("GET /replies", s.user(s.moderation))
 	s.mux.HandleFunc("POST /replies/{id}/status", s.user(s.moderateForm))
 	s.mux.HandleFunc("GET /api/replies", s.user(s.apiReplies))

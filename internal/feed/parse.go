@@ -38,6 +38,7 @@ type ParsedItem struct {
 	// weft:likeOf: set when the item is a like rather than a post.
 	LikeOf             string
 	Likes              int      // weft:likes count
+	LikesHref          string   // weft:likes href: the feed listing everyone who liked the item
 	RepliesHref        string   // weft:replies href: where this item's approved replies are published
 	RepliesCount       int      // weft:replies count; -1 when the item does not say
 	FeedHref, FeedName string   // weft:feed: the author's feed and display name (replies feeds)
@@ -119,7 +120,8 @@ type xmlParsed struct {
 				Image       string `xml:"image,attr"`
 			} `xml:"https://weftseed.com/ns/weft/0.1 context"`
 			Likes struct {
-				Count int `xml:"count,attr"`
+				Count int    `xml:"count,attr"`
+				Href  string `xml:"href,attr"`
 			} `xml:"https://weftseed.com/ns/weft/0.1 likes"`
 			OldReactions struct {
 				Plus int `xml:"plus,attr"`
@@ -197,7 +199,7 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 			Root: strings.TrimSpace(it.Root.Href), RootFeed: strings.TrimSpace(it.Root.Feed),
 			LikeOf: strings.TrimSpace(it.LikeOf.Href), RepliesHref: strings.TrimSpace(it.Replies.Href),
 			FeedHref: strings.TrimSpace(it.Feed.Href), FeedName: strings.TrimSpace(it.Feed.Name),
-			Likes: max(it.Likes.Count, it.OldReactions.Plus, 0), Keywords: Keywords(it.Categories),
+			Likes: max(it.Likes.Count, it.OldReactions.Plus, 0), Keywords: Keywords(it.Categories), LikesHref: strings.TrimSpace(it.Likes.Href),
 		}
 		if pi.LikeOf != "" && pi.Parent.Empty() {
 			// a like carries what the liked page looked like, as the reply's weft:context does

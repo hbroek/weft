@@ -1,6 +1,10 @@
 package web
 
 import (
+	"context"
+	"time"
+
+	"github.com/hbroek/weft/internal/feed"
 	"net/http"
 	"strings"
 )
@@ -11,6 +15,7 @@ type likerRow struct {
 	State         string // "unfollow", "follow", "following" (followed by another address), "you", or "" for no action
 	Counted       bool   // in the post's like count (the owner follows them)
 	Tag           string // a short note shown beside the name
+	Site          string // the liker's home page, for people not followed
 }
 
 // likedByPage lists who liked a post, like the Following page: on one of this site's posts everyone
@@ -39,10 +44,7 @@ func (s *Server) likedByPage(w http.ResponseWriter, r *http.Request, q *req) {
 		}
 		for _, x := range xs {
 			x.FeedURL = personFeed(x.FeedURL)
-			if !x.Trusted && !q.owner {
-				continue // visitors see only the likes that count
-			}
-			row := likerRow{Name: orStr(x.Author, orStr(x.FeedURL, siteHost(x.Source))), FeedURL: x.FeedURL, Counted: x.Trusted}
+			row := likerRow{Name: orStr(x.Author, orStr(x.FeedURL, siteHost(x.Source))), FeedURL: x.FeedURL, Counted: true}
 			if q.owner && x.FeedURL != "" {
 				if on, _ := q.sp.IsFollowing(q.host.ID, x.FeedURL); on {
 					row.State = "unfollow"
@@ -54,12 +56,8 @@ func (s *Server) likedByPage(w http.ResponseWriter, r *http.Request, q *req) {
 			} else if q.owner && x.Trusted {
 				row.State = "following"
 			}
-			if q.owner && !x.Trusted {
-				row.Tag = "not counted" // on your own post, likes from people you don't follow are left out of the count
-			}
 			d.Likers = append(d.Likers, row)
 		}
-		d.LikeNote = "Only likes from people you follow are counted."
 	} else {
 		if !s.requireOwner(w, r, q) {
 			return
@@ -91,11 +89,59 @@ func (s *Server) likedByPage(w http.ResponseWriter, r *http.Request, q *req) {
 				counted++
 			}
 		}
-		if n := s.tally(q.host.ID, target, it.Likes); n > counted {
-			d.LikeNote = "The author counts " + likesText(n) + ". The others are by people you don't follow, so they can't be listed here."
+		n := s.tally(q.host.ID, target, it.Likes)
+		if it.LikesHref != "" {
+			d.Others = s.otherLikers(r.Context(), q, own, target, it.LikesHref, d.Likers)
+		}
+		if n > counted+len(d.Others) {
+			d.LikeNote = "The author counts " + likesText(n) + ", more than can be listed here."
 		}
 	}
 	s.show(w, "likers", http.StatusOK, d)
+}
+
+// maxOtherLikers bounds how many strangers a Likes page lists.
+const maxOtherLikers = 200
+
+// otherLikers reads the liked-by feed a followed post advertises and returns the people on it whom the
+// owner does not follow, each with a Follow button. A feed that cannot be read leaves the section out.
+func (s *Server) otherLikers(ctx context.Context, q *req, own, target, href string, known []likerRow) []likerRow {
+	if httpURL(href) == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	res, err := s.web.Get(ctx, href)
+	if err != nil {
+		return nil
+	}
+	p, err := feed.Parse(res.Body, time.Now())
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{own: true}
+	for _, k := range known {
+		seen[k.FeedURL] = true
+	}
+	var out []likerRow
+	for _, it := range p.Items {
+		if it.LikeOf != "" && it.LikeOf != target {
+			continue // a like of something else
+		}
+		fu := personFeed(it.FeedHref)
+		if fu == "" || httpURL(fu) == "" || seen[fu] {
+			continue
+		}
+		seen[fu] = true
+		if on, _ := q.sp.IsFollowing(q.host.ID, fu); on {
+			continue // followed, but its like is not in the cache yet
+		}
+		out = append(out, likerRow{Name: orStr(it.FeedName, siteHost(fu)), FeedURL: fu, State: "follow", Site: siteOf(fu)})
+		if len(out) == maxOtherLikers {
+			break
+		}
+	}
+	return out
 }
 
 // siteHost is the host part of a URL, for naming a sender that gave no name.

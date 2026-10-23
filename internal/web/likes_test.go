@@ -39,13 +39,13 @@ func TestLikeRoundTripAcrossInstances(t *testing.T) {
 	}
 	settle(ctx, alice, bob)
 
-	// Alice does not follow Bob: the like is verified but not in the public count.
+	// Alice does not follow Bob: the like is verified and counted, and marked as from a stranger.
 	got := alice.call(t, "GET", "/api/likes/received?post_id=1", "", 200)
 	if !strings.Contains(got, `"source":"`+bob.base+`/likes/1"`) || !strings.Contains(got, `"trusted":false`) {
 		t.Fatalf("received: %s", got)
 	}
-	if f := alice.get("/feed.xml"); !strings.Contains(f, `<weft:likes count="0">`) {
-		t.Errorf("untrusted like was counted:\n%s", f)
+	if f := alice.get("/feed.xml"); !strings.Contains(f, `<weft:likes count="1"`) {
+		t.Errorf("a like from a stranger was not counted:\n%s", f)
 	}
 
 	// Liking twice changes nothing: same permalink, still one item.
@@ -56,11 +56,11 @@ func TestLikeRoundTripAcrossInstances(t *testing.T) {
 		t.Errorf("a second like made a second item")
 	}
 
-	// Alice follows Bob; the count follows.
+	// Alice follows Bob; the count stays the same, since every like counts.
 	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
 	bob.call(t, "POST", "/api/likes", `{"target":"`+ua+`","target_feed":"`+alice.base+`/feed.xml"}`, 200)
 	settle(ctx, alice, bob)
-	if f := alice.get("/feed.xml"); !strings.Contains(f, `<weft:likes count="1">`) {
+	if f := alice.get("/feed.xml"); !strings.Contains(f, `<weft:likes count="1"`) {
 		t.Errorf("count after following:\n%s", f)
 	}
 	if pg := alice.get(pathOf(ua)); !strings.Contains(pg, "1 like") || !strings.Contains(pg, `title="Liked by Bob"`) {
@@ -370,20 +370,20 @@ func TestWhoLikedPage(t *testing.T) {
 	page := "/liked-by?target=" + url.QueryEscape(ua)
 
 	// the count links to the list
-	if home := do4(alice, "/", ""); !strings.Contains(home, `<a href="/liked-by?target=`) || !strings.Contains(home, "1 like") {
+	if home := do4(alice, "/", ""); !strings.Contains(home, `<a href="/liked-by?target=`) || !strings.Contains(home, "2 likes") {
 		t.Errorf("count is not a link to the likers:\n%s", home)
 	}
 
 	// the owner sees everyone, counted or not, and can follow or unfollow each
 	own := do4(alice, page, ack)
-	for _, want := range []string{">Bob<", ">Carol<", "not counted", `action="/following/remove"`, `action="/following"`, `value="` + bob.base + `/feed.xml"`, `value="` + carol.base + `/feed.xml"`} {
+	for _, want := range []string{">Bob<", ">Carol<", `action="/following/remove"`, `action="/following"`, `value="` + bob.base + `/feed.xml"`, `value="` + carol.base + `/feed.xml"`} {
 		if !strings.Contains(own, want) {
 			t.Errorf("owner's list lacks %q:\n%s", want, own)
 		}
 	}
-	// visitors see only the likes that count, with no buttons
+	// visitors see everyone too, with no buttons
 	vis := do4(alice, page, "")
-	if !strings.Contains(vis, ">Bob<") || strings.Contains(vis, "Carol") || strings.Contains(vis, `action="/following`) {
+	if !strings.Contains(vis, ">Bob<") || !strings.Contains(vis, ">Carol<") || strings.Contains(vis, "not counted") || strings.Contains(vis, `action="/following`) {
 		t.Errorf("visitor's list:\n%s", vis)
 	}
 
@@ -414,8 +414,12 @@ func TestWhoLikedPage(t *testing.T) {
 	bob.s.RefreshAll(ctx)
 	formAs(bob, "/following/remove", bck, "http://"+bob.host+page, url.Values{"url": {carol.base + "/feed.xml"}})
 	bl = do4(bob, page, bck)
-	if strings.Contains(bl, "Carol") || strings.Contains(bl, "not followed") || !strings.Contains(bl, ">You<") {
-		t.Errorf("only people bob follows belong on his list:\n%s", bl)
+	// she is no longer someone Bob follows, so she moves to the people he could follow
+	if i := strings.Index(bl, "Also liked by"); i < 0 || !strings.Contains(bl[i:], "Carol") || strings.Contains(bl[:i], "Carol") || strings.Contains(bl, "not followed") || !strings.Contains(bl, ">You<") {
+		t.Errorf("only people bob follows belong above \"Also liked by\":\n%s", bl)
+	}
+	if !strings.Contains(bl, `<form method="post" action="/following" style="display:inline"><input type="hidden" name="url" value="`+carol.base+`/feed.xml">`) {
+		t.Errorf("a stranger on the list needs a Follow button:\n%s", bl)
 	}
 	if c := do(bob.s, "GET", bob.host, page, "", "").Code; c == 200 {
 		t.Errorf("a list for a remote post is for the owner only")
@@ -461,15 +465,15 @@ func TestOwnPostsInTimeline(t *testing.T) {
 	}
 }
 
-// Following someone counts the likes they already gave your posts, and unfollowing drops them.
+// Every like received counts, whether or not you follow the sender; following changes only how it is listed.
 func TestFollowingRecountsLikes(t *testing.T) {
 	alice, carol := newInstance(t, "alice"), newInstance(t, "carol")
 	ctx := t.Context()
 	ua := alice.post(t, `{"markdown":"Count my likes"}`)
 	carol.call(t, "POST", "/api/likes", `{"target":"`+ua+`"}`, 200)
 	settle(ctx, alice, carol)
-	if strings.Contains(alice.get("/"), "1 like") {
-		t.Fatalf("carol is not followed, so her like must not count yet")
+	if !strings.Contains(alice.get("/"), "1 like") {
+		t.Fatalf("carol is not followed, but her like counts")
 	}
 
 	alice.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
@@ -477,8 +481,8 @@ func TestFollowingRecountsLikes(t *testing.T) {
 		t.Errorf("following carol should count her earlier like:\n%s", home)
 	}
 	alice.call(t, "DELETE", "/api/following", `{"url":"`+carol.base+`/feed.xml"}`, 204)
-	if strings.Contains(alice.get("/"), "1 like") {
-		t.Errorf("unfollowing carol should drop her like from the count")
+	if !strings.Contains(alice.get("/"), "1 like") {
+		t.Errorf("unfollowing carol must not drop her like from the count")
 	}
 
 	// likes recorded before they named their feed point at the likes feed; they recount too
@@ -491,7 +495,7 @@ func TestFollowingRecountsLikes(t *testing.T) {
 	alice.s.space("alice").UpsertLikeIn(old)
 	alice.call(t, "POST", "/api/following", `{"url":"`+carol.base+`/"}`, 200)
 	if !strings.Contains(alice.get("/"), "1 like") {
-		t.Errorf("a like recorded from the likes feed should count once the sender is followed")
+		t.Errorf("a like recorded from the likes feed should still count")
 	}
 }
 
@@ -974,5 +978,46 @@ func TestReplyAndLikeReturnToThePost(t *testing.T) {
 		if got := w.Header().Get("Location"); w.Code != 303 || got != view+"#"+id {
 			t.Errorf("%s returned to %q", path, got)
 		}
+	}
+}
+
+// A post's liked-by feed lists everyone whose like arrived, counted or not, to anyone who asks.
+func TestPostLikesFeedListsEveryLiker(t *testing.T) {
+	alice, bob, carol := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol")
+	ctx := t.Context()
+	ua := alice.post(t, `{"markdown":"Dark Matter is good"}`)
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	bob.call(t, "POST", "/api/likes", `{"target":"`+ua+`"}`, 200)
+	carol.call(t, "POST", "/api/likes", `{"target":"`+ua+`"}`, 200)
+	settle(ctx, alice, bob, carol)
+
+	if f := alice.get("/feed.xml"); !strings.Contains(f, `<weft:likes count="2" href="`+ua+`/likes.xml"`) {
+		t.Errorf("the feed does not say where the likes are listed:\n%s", f)
+	}
+	list := do(alice.s, "GET", alice.host, pathOf(ua)+"/likes.xml", "", "")
+	body := list.Body.String()
+	if list.Code != 200 || !strings.Contains(body, carol.base+"/feed.xml") || !strings.Contains(body, bob.base+"/feed.xml") || !strings.Contains(body, ">Carol<") {
+		t.Errorf("liked-by feed: %d\n%s", list.Code, body)
+	}
+}
+
+// On a followed post the Likes page adds the people the owner does not follow, found through the post's liked-by feed.
+func TestLikesPageListsStrangersFromTheLikedByFeed(t *testing.T) {
+	alice, bob, carol := newInstance(t, "alice"), newInstance(t, "bob"), newInstance(t, "carol")
+	ctx := t.Context()
+	ub := bob.post(t, `{"markdown":"I love watching Dark Matter"}`)
+	alice.call(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+	carol.call(t, "POST", "/api/likes", `{"target":"`+ub+`"}`, 200)
+	settle(ctx, alice, bob, carol)
+	alice.s.RefreshAll(ctx)
+
+	ack := loginCookie(t, alice)
+	page := do4(alice, "/liked-by?target="+url.QueryEscape(ub), ack)
+	i := strings.Index(page, "Also liked by")
+	if i < 0 || !strings.Contains(page[i:], ">Carol<") || !strings.Contains(page[i:], `value="`+carol.base+`/feed.xml"`) {
+		t.Fatalf("no stranger section:\n%s", page)
+	}
+	if strings.Contains(page, "can't be listed") {
+		t.Errorf("the old apology is still shown:\n%s", page)
 	}
 }

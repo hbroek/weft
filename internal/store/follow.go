@@ -219,9 +219,9 @@ func (s *Instance) SaveFeed(feedURL string, p *feed.Parsed) error {
 		if !it.Updated.IsZero() {
 			upd = it.Updated.Unix()
 		}
-		if _, err := tx.Exec(`INSERT OR REPLACE INTO items(feed_url,guid,link,title,text,markdown,published,updated,in_reply_to,in_reply_to_feed,root,root_feed,likes,replies_href,replies_count,keywords,parent_title,parent_desc,parent_image)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, feedURL, it.GUID, it.Link, it.Title, it.Text, it.Markdown,
-			it.Published.Unix(), upd, it.InReplyTo, it.InReplyToFeed, it.Root, it.RootFeed, it.Likes, it.RepliesHref, it.RepliesCount, packKeywords(it.Keywords), it.Parent.Title, it.Parent.Description, it.Parent.Image); err != nil {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO items(feed_url,guid,link,title,text,markdown,published,updated,in_reply_to,in_reply_to_feed,root,root_feed,likes,replies_href,replies_count,keywords,parent_title,parent_desc,parent_image,likes_href)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, feedURL, it.GUID, it.Link, it.Title, it.Text, it.Markdown,
+			it.Published.Unix(), upd, it.InReplyTo, it.InReplyToFeed, it.Root, it.RootFeed, it.Likes, it.RepliesHref, it.RepliesCount, packKeywords(it.Keywords), it.Parent.Title, it.Parent.Description, it.Parent.Image, it.LikesHref); err != nil {
 			return err
 		}
 	}
@@ -316,7 +316,8 @@ type TimelineItem struct {
 	InReplyTo          string
 	Likes              int // the author's published like tally, if any
 	RepliesHref        string
-	RepliesCount       int // approved replies the author published; -1 when the feed did not say
+	LikesHref          string // where the author lists everyone who liked the post
+	RepliesCount       int    // approved replies the author published; -1 when the feed did not say
 	Root               string
 	InReplyToFeed      string
 	Keywords           []string
@@ -324,7 +325,7 @@ type TimelineItem struct {
 	Parent             feed.ParentInfo
 }
 
-const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.likes, i.replies_href, i.root, i.in_reply_to_feed, i.replies_count, i.keywords, COALESCE(d.image,''), i.parent_title, i.parent_desc, i.parent_image
+const timelineSelect = `SELECT i.feed_url, COALESCE(d.title,''), i.guid, i.link, i.title, i.text, i.markdown, i.published, i.updated, i.in_reply_to, i.likes, i.replies_href, i.root, i.in_reply_to_feed, i.replies_count, i.keywords, COALESCE(d.image,''), i.parent_title, i.parent_desc, i.parent_image, i.likes_href
 		FROM items i LEFT JOIN feeds d ON d.url=i.feed_url `
 
 func (in *Instance) queryTimeline(q string, args ...any) ([]TimelineItem, error) {
@@ -339,7 +340,7 @@ func (in *Instance) queryTimeline(q string, args ...any) ([]TimelineItem, error)
 		var pub int64
 		var upd *int64
 		var kw string
-		if err := rows.Scan(&t.FeedURL, &t.FeedTitle, &t.GUID, &t.Link, &t.Title, &t.Text, &t.Markdown, &pub, &upd, &t.InReplyTo, &t.Likes, &t.RepliesHref, &t.Root, &t.InReplyToFeed, &t.RepliesCount, &kw, &t.FeedImage, &t.Parent.Title, &t.Parent.Description, &t.Parent.Image); err != nil {
+		if err := rows.Scan(&t.FeedURL, &t.FeedTitle, &t.GUID, &t.Link, &t.Title, &t.Text, &t.Markdown, &pub, &upd, &t.InReplyTo, &t.Likes, &t.RepliesHref, &t.Root, &t.InReplyToFeed, &t.RepliesCount, &kw, &t.FeedImage, &t.Parent.Title, &t.Parent.Description, &t.Parent.Image, &t.LikesHref); err != nil {
 			return nil, err
 		}
 		t.Published = time.Unix(pub, 0)
