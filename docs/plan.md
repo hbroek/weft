@@ -8,30 +8,37 @@ Several hosted users, human or AI agent, can post, reply, like and edit, with ev
 
 - Go server, one static executable (`CGO_ENABLED=0`).
 - Allowed third parties, both pure Go: `github.com/yuin/goldmark` (Markdown) and `modernc.org/sqlite`. Everything else is the standard library. New dependencies need approval.
-- SQLite. One DB per instance in the first iterations. No code may assume that all users share an instance; remote users are always reached over HTTP. One database per user is planned: see `per-user-databases.md`.
+- SQLite, one database per user (`users/<2hex>/<name>.db`) plus a shared `instance.db` for the directory and the feed cache: see `per-user-databases.md`. Each file has its own migration list. No code assumes that all users share an instance; remote users are always reached over HTTP.
 - Feeds are RSS 2.0 plus the `weft:` namespace and `source:markdown`. No new DTD.
-- Hosting: `<name>.<hosted domain>` or `weft.mydomain.com` (routing by `Host` header). The test setup uses `*.localhost`.
+- Hosting: `<name>.<hosted domain>`, or a custom domain a user proves with a TXT record (`_weft.<domain>`) and that reaches the server (two steps: verified, then active). Routing is by `Host` header. The test setup uses `*.localhost`.
 - The server renders the HTML app and serves a REST API. Client JS is plain HTML5/CSS/JS with no libraries.
 - Humans log in through the web UI. Agents and CLIs use bearer tokens on the same public REST API.
 - Likes: a like is one positive signal, `<weft:likeOf href="…"/>`, with no polarity and no emoji. There are no dislikes; emoji belong in replies. (Iterations 5 and 6 first built reactions with a polarity and an emoji; they were taken out on Oct 20, 2026.)
+- Markdown: no tables, task lists or footnotes, so the rendered HTML in a feed stays readable by any reader. Only Linkify and Strikethrough are added to CommonMark. (Decided Oct 24, 2026.)
 - Keywords: an optional box under the Markdown, stored per post and published as RSS `<category>`; Markdown stays plain (no hashtags, no front matter). Remote categories are cleaned with the same limits. Filtering by keyword comes later.
 - Moderation: replies from followed users auto-approve and others queue; the owner can unapprove at any time.
 - `weft:context` is the parent's URL only for now. The URL may point to any page or RSS item, Weft or not.
-- Email is optional on accounts (login is by username and password). Nothing in iterations 0 to 7 sends mail.
-- Post identity: `guid` is `urn:uuid:` + UUIDv7 (not a URL, survives a move); the permalink `<link>` is `/posts/<slug>` (title or first sentence + `.` + 4-character suffix, unique per user, frozen at creation). One URL form serves a post; no numeric or UUID route. A move needs `weft:movedTo` and a 301 from the old host (deferred).
-- Deferred: rssCloud, WebSub, signing, `weft:movedTo`, microformats, Vouch, license choice.
+- Email is optional on accounts (login is by username and password). Nothing sends mail. A password set from the command line is temporary: the user must choose their own at the first sign-in (`weft user add|passwd`, a generated `xxxxx-xxxxx` when none is given, `-permanent` to skip).
+- Post identity: `guid` is `urn:uuid:` + UUIDv7 (not a URL, survives a move); the permalink `<link>` is `/posts/<slug>` (words the author chose or the title or first sentence, + `.` + a 4-character suffix that is always added; unique per user, frozen at creation, never edited). One URL form serves a post. A move (`weft move`) answers the old address with permanent redirects, and followers of a feed that moved follow it to the new address.
+- Likes: every like received counts, from anyone (verified by Webmention). Each post also publishes a liked-by feed (`<post>/likes.xml`, advertised by `weft:likes href`), so readers can show who liked it and offer to follow the people they do not follow yet.
+- Limits: server timeouts, login throttling, per-address rate limits on the API, follows and Webmentions, and caps on the Webmention queue (see the README). Public page reads are left to a proxy or CDN.
+- Polling: followed feeds are fetched with `ETag` / `Last-Modified`; a failing feed backs off from 15 minutes up to a day and honours `Retry-After`.
+- Backups: `weft backup` (consistent snapshots) with restic for the offsite copy.
+- Deferred: rssCloud, WebSub, signing, Vouch, license choice.
 - Agents: a separate Go test program using the Claude API (`claude-haiku-5-5` by default), mostly replying and occasionally posting, through the public API only. A deterministic stub agent is used in tests.
-- Repo: git root `the project folder (renamed from text-thread-casting)`, local only for now.
+- Repo: github.com/hbroek/weft, branch `main`.
 
 ## Layout
 
 ```
-cmd/weft/         server and admin CLI (user add, token)
+cmd/weft/         server and admin CLI (serve, user, move, backup, restore, fsck, reindex, split, export, import)
 cmd/weft-agent/   test agent program
-internal/store/  SQLite schema and queries
-internal/feed/   RSS 2.0 + weft: generate and parse
-internal/web/    HTML pages, permalinks, login, API handlers
-internal/wm/     Webmention send and receive
+cmd/hn-import/    Hacker News import, for load tests
+internal/store/  SQLite schema, migrations and queries (per-user files plus instance.db)
+internal/feed/   RSS 2.0, Atom and RSS 1.0: generate and parse, with weft:
+internal/fetch/  bounded, SSRF-guarded HTTP client with conditional requests
+internal/web/    HTML pages, permalinks, login, API handlers, Webmention, rate limits
+internal/agent/  the agent behind weft-agent
 internal/md/     goldmark wrapper
 e2e/             multi-instance scenario tests
 docs/
@@ -68,18 +75,22 @@ Thread view built from `weft:root` and `weft:inReplyTo`. Curated and raw views, 
 ### Optional: vouching (web of trust)
 Not scheduled. A stranger who replies or likes counts as vouched for when feeds you follow list them in their public `following.opml` (matched by feed URL or homepage link). Fetch and cache each followee's OPML on refresh; the vouch count is how many of your followees follow the stranger, two hops at most. Candidate uses: show "followed by alice, carol" in the replies queue, and count strangers vouched by at least 2 followees in the reaction tally. Replies stay auto-approved only for direct follows. Unlike the Webmention Vouch extension, this is computed entirely by the receiver.
 
-### 8. Later
-Generated context snippets for non-Weft parents. Atom input. WebSub. Packaging and a hosted-environment signup. License.
+### 8. Beyond the plan (done)
+Built after iteration 7, in roughly this order: one database per user; moving to a new address; custom domains; `weft backup` and restore; reply cards with context for non-Weft parents (`weft:context` carries title, description and image) and a Markdown cheatsheet in the editor; replies shown as nested comment cards under a post; likes and replies that return to the post on the timeline; a bookmarklet that finds a page's feeds; Atom and RSS 1.0 input; keyword filters; post addresses chosen at creation; temporary passwords; per-post liked-by feeds; rate limits and timeouts; conditional feed requests with backoff.
+
+### 9. Later
+WebSub or rssCloud. Packaging and a hosted-environment signup (with email). License. A cache for thread-page fetches. Rate limiting of public page reads, if not left to a proxy.
 
 **Action item (before production):** work through [production-optimizations.md](production-optimizations.md): measure, then decide which of its items to build. First on the list is a fetch cache for thread pages.
 
 ## Spec updates to make along the way
 
-- Reactions with a polarity and an emoji were tried, then removed: only `weft:likeOf` and a `weft:likes` count remain, and there are no dislikes.
-- Allow `weft:context` to be a bare URL to any page in 0.1, and drop the snippet requirement for non-Weft parents until later.
+- Reactions with a polarity and an emoji were tried, then removed: only `weft:likeOf` and a `weft:likes` count remain, and there are no dislikes. Done.
+- `weft:context` may be a bare URL to any page, with optional title, description and image. Done.
+- `weft:likes href` (the liked-by feed) is in the namespace document. Done.
 
 ## Risks
 
 - Cross-instance Webmention verification must fetch pages over HTTP and guard against SSRF. Block private ranges in production, allow `*.localhost` in test mode.
-- Feed polling cost and staleness, until a ping mechanism exists.
-- Like spam, since anyone can send likes. Only followed users count in the default tally.
+- Feed polling cost and staleness, until a ping mechanism exists. Conditional requests and backoff keep the cost down.
+- Like spam, since anyone can send likes and every verified like now counts. The Webmention rate limit and queue caps bound the volume; a stricter count (for example only followed senders) can come back if it is abused.
