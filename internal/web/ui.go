@@ -359,6 +359,9 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown, slug st
 	}
 	n := store.NewPost{UserID: u.ID, Title: title, Markdown: markdown, HTML: html, Keywords: keywords, Slug: slug}
 	if replyTo != "" {
+		if parent.Empty() {
+			parent = s.parentSnapshot(r, reqOf(r), replyTo)
+		}
 		n.Parent = parent
 		n.InReplyTo = replyTo
 		n.InReplyToFeed, n.Root, n.RootFeed = s.resolveThread(r.Context(), s.base(r), reqOf(r).sp, replyTo, replyFeed)

@@ -193,7 +193,8 @@ func orphanSetup(t *testing.T) (alice, bob, carol *instance, ua, ub string) {
 func TestThreadOrphanParentExistsButUnknown(t *testing.T) {
 	alice, _, _, ua, ub := orphanSetup(t)
 	page := threadPageOf(alice, loginCookie(t, alice), ua, "raw")
-	inOrder(t, page, "ROOT-A", "exists but is not known", ub, "REPLY-C")
+	// the reply carries what its parent said (fetched when the reply was written), so the gap is not blank
+	inOrder(t, page, "ROOT-A", ub, "REPLY-B", "REPLY-C")
 	if !strings.Contains(page, `href="/compose?reply_to=`) {
 		t.Errorf("no reply links in thread view")
 	}

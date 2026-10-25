@@ -1,11 +1,13 @@
 package web
 
 import (
+	"context"
 	"html"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/hbroek/weft/internal/feed"
 	"github.com/hbroek/weft/internal/md"
@@ -35,6 +37,62 @@ type modeLink struct {
 	Current     bool
 }
 
+// postCard makes the card of a post from its title and Markdown (plain: text already without markup). A post
+// without a title is named by its first words, then by the alt text of its first image, then "a photo"; a
+// post with nothing to show gets no card.
+func postCard(target, host, title, markdown string, plain bool) *parentCard {
+	text, img, alt := markdown, "", ""
+	if !plain {
+		text, img, alt = readMarkdown(markdown)
+	}
+	desc := oneLine(text, 140)
+	if title == "" {
+		switch {
+		case text != "":
+			title, desc = oneLine(text, 90), ""
+		case alt != "":
+			title = alt
+		case img != "":
+			title = "a photo"
+		default:
+			return nil
+		}
+	}
+	return &parentCard{Href: target, Title: oneLine(title, 90), Description: desc, Image: img, Host: host}
+}
+
+// parentSnapshot is what a reply to target carries of the post it answers (weft:context), for a reply sent
+// without one: what this server knows of the post, or else the post itself, asked for as a one-item feed,
+// so a reply reads the same whether the post is on this server or another one. A page that is not a Weft
+// post, or does not answer in time, gives nothing, and the reply keeps only the address.
+func (s *Server) parentSnapshot(r *http.Request, q *req, target string) feed.ParentInfo {
+	if _, card := s.replyContext(r, q, target); card != nil {
+		return feed.ParentInfo{Title: card.Title, Description: card.Description, Image: card.Image}.Clean()
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	res, err := s.web.GetAs(ctx, target, "application/rss+xml")
+	if err != nil {
+		return feed.ParentInfo{}
+	}
+	p, err := feed.Parse(res.Body, time.Now())
+	if err != nil || len(p.Items) == 0 {
+		return feed.ParentInfo{}
+	}
+	it := p.Items[0]
+	for _, x := range p.Items {
+		if sameAddress(x.Link, target) {
+			it = x
+			break
+		}
+	}
+	card := postCard(target, siteHost(target), it.Title, orStr(it.Markdown, it.Text), it.Markdown == "")
+	if card == nil {
+		return feed.ParentInfo{}
+	}
+	return feed.ParentInfo{Title: card.Title, Description: card.Description, Image: card.Image}.Clean()
+}
+
 // replyContext says what the post at target is, for the "replying to …" line of a timeline row: whose post
 // it is and a card of its first lines. It looks only at what this server already has: one of the reader's
 // own posts, a post of another user on this server (the host names the user), a post cached from a
@@ -46,28 +104,8 @@ func (s *Server) replyContext(r *http.Request, q *req, target string) (who strin
 	}
 	host := siteHost(target)
 	who = host
-	// cardOf makes the card of a post from its title and Markdown. A post without a title is named by
-	// its first words, then by the alt text of its first image, then "a photo"; a post with nothing to
-	// show gets no card.
 	cardOf := func(title, markdown string, plain bool) *parentCard {
-		text, img, alt := markdown, "", ""
-		if !plain {
-			text, img, alt = readMarkdown(markdown)
-		}
-		desc := oneLine(text, 140)
-		if title == "" {
-			switch {
-			case text != "":
-				title, desc = oneLine(text, 90), ""
-			case alt != "":
-				title = alt
-			case img != "":
-				title = "a photo"
-			default:
-				return nil
-			}
-		}
-		return &parentCard{Href: target, Title: oneLine(title, 90), Description: desc, Image: img, Host: host}
+		return postCard(target, host, title, markdown, plain)
 	}
 	if id, ok := s.localPostID(q.sp, s.base(r), target); ok {
 		if p, err := q.sp.Post(q.host.ID, id); err == nil && !p.Deleted {
@@ -75,11 +113,13 @@ func (s *Server) replyContext(r *http.Request, q *req, target string) (who strin
 		}
 	}
 	if name := s.hostUser(host); name != "" && name != q.host.Name {
-		who = name + "’s post"
-		if u, err := url.Parse(target); err == nil {
-			if slug, ok := strings.CutPrefix(u.Path, "/posts/"); ok && slug != "" && !strings.Contains(slug, "/") {
-				if sp, release, err := s.st.Space(name); err == nil {
-					defer release()
+		// the host looks like a user here; if there is no such user (removed, or moved away), the post is
+		// treated like any other and found in the feeds the reader follows
+		if sp, release, err := s.st.Space(name); err == nil {
+			defer release()
+			who = name + "’s post"
+			if u, err := url.Parse(target); err == nil {
+				if slug, ok := strings.CutPrefix(u.Path, "/posts/"); ok && slug != "" && !strings.Contains(slug, "/") {
 					if p, err := sp.PostBySlug(sp.UID(), slug); err == nil && !p.Deleted {
 						if usr, err := sp.User(); err == nil {
 							who = orStr(usr.Display, name) + "’s post"
@@ -88,8 +128,8 @@ func (s *Server) replyContext(r *http.Request, q *req, target string) (who strin
 					}
 				}
 			}
+			return who, nil
 		}
-		return who, nil
 	}
 	if it, err := q.sp.ItemByTarget(q.host.ID, target); err == nil {
 		return "a post from " + orStr(it.FeedTitle, it.FeedURL), cardOf(it.Title, orStr(it.Markdown, it.Text), it.Markdown == "")
