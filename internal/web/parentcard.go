@@ -69,15 +69,30 @@ func (s *Server) parentSnapshot(r *http.Request, q *req, target string) feed.Par
 	if _, card := s.replyContext(r, q, target); card != nil {
 		return feed.ParentInfo{Title: card.Title, Description: card.Description, Image: card.Image}.Clean()
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	it := s.fetchPost(r.Context(), target)
+	if it == nil {
+		return feed.ParentInfo{}
+	}
+	card := postCard(target, siteHost(target), it.Title, orStr(it.Markdown, it.Text), it.Markdown == "")
+	if card == nil {
+		return feed.ParentInfo{}
+	}
+	return feed.ParentInfo{Title: card.Title, Description: card.Description, Image: card.Image}.Clean()
+}
+
+// fetchPost asks a Weft post's own server for it as a one-item feed (Accept: application/rss+xml), for a
+// post this reader does not follow. It returns nil for a page that is not a Weft post or does not answer in
+// five seconds.
+func (s *Server) fetchPost(ctx context.Context, target string) *feed.ParsedItem {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	res, err := s.web.GetAs(ctx, target, "application/rss+xml")
 	if err != nil {
-		return feed.ParentInfo{}
+		return nil
 	}
 	p, err := feed.Parse(res.Body, time.Now())
 	if err != nil || len(p.Items) == 0 {
-		return feed.ParentInfo{}
+		return nil
 	}
 	it := p.Items[0]
 	for _, x := range p.Items {
@@ -86,11 +101,7 @@ func (s *Server) parentSnapshot(r *http.Request, q *req, target string) feed.Par
 			break
 		}
 	}
-	card := postCard(target, siteHost(target), it.Title, orStr(it.Markdown, it.Text), it.Markdown == "")
-	if card == nil {
-		return feed.ParentInfo{}
-	}
-	return feed.ParentInfo{Title: card.Title, Description: card.Description, Image: card.Image}.Clean()
+	return &it
 }
 
 // replyContext says what the post at target is, for the "replying to …" line of a timeline row: whose post

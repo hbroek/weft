@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/store"
 	"net/http"
 	"strings"
 )
@@ -64,8 +65,13 @@ func (s *Server) likedByPage(w http.ResponseWriter, r *http.Request, q *req) {
 		}
 		it, err := q.sp.ItemByTarget(q.host.ID, target)
 		if err != nil {
-			http.NotFound(w, r)
-			return
+			// not in a feed this reader follows (they found it by its address): ask the post's own server
+			p := s.fetchPost(r.Context(), target)
+			if p == nil {
+				http.NotFound(w, r)
+				return
+			}
+			it = &store.TimelineItem{Title: p.Title, Text: p.Text, Likes: p.Likes, LikesHref: p.LikesHref}
 		}
 		d.LikeTitle = orStr(it.Title, oneLine(it.Text, 60))
 		if s.iLike(q.sp, target) {

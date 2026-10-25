@@ -23,6 +23,9 @@ func (s *Server) setLike(r *http.Request, u *store.User, target, feedHint string
 	}
 	sp := reqOf(r).sp
 	was := s.iLike(sp, target)
+	if !was && info.Empty() {
+		info = s.parentSnapshot(r, reqOf(r), target) // what the liked post said, so the like reads the same wherever the post is
+	}
 	x, err := sp.SetLikeInfo(u.ID, target, feedHint, info)
 	if err != nil {
 		return nil, err.Error()
@@ -239,6 +242,22 @@ func (s *Server) apiLikesReceived(w http.ResponseWriter, r *http.Request, q *req
 }
 
 // likesText renders a like count for display ("1 like", "3 likes"), or "" for none.
+// postsText is "1 post" or "3 posts".
+func postsText(n int) string {
+	if n == 1 {
+		return "1 post"
+	}
+	return fmt.Sprintf("%d posts", n)
+}
+
+// repliesText is "1 reply" or "3 replies", with an adjective ("other ") before the noun.
+func repliesText(n int, adj string) string {
+	if n == 1 {
+		return "1 " + adj + "reply"
+	}
+	return fmt.Sprintf("%d %sreplies", n, adj)
+}
+
 func likesText(n int) string {
 	switch {
 	case n <= 0:

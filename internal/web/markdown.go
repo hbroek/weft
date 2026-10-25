@@ -193,7 +193,7 @@ func (d pageData) mdTimeline(b *strings.Builder) {
 func (d pageData) mdThread(b *strings.Builder) {
 	t := d.Thread
 	names := map[string]string{"focus": "This branch", "curated": "Whole thread", "raw": "Raw"}
-	fmt.Fprintf(b, "# Thread\n\n%s (%d posts). Views: %s · %s · %s\n", names[t.View], t.Count,
+	fmt.Fprintf(b, "# Thread\n\n%s (%s). Views: %s · %s · %s\n", names[t.View], postsText(t.Count),
 		viewLink(d, t, "focus", t.FocusHref), viewLink(d, t, "curated", t.CuratedHref), viewLink(d, t, "raw", t.RawHref))
 	d.mdNode(b, t.Root, 0)
 }
@@ -234,9 +234,9 @@ func (d pageData) mdNode(b *strings.Builder, n *tnode, depth int) {
 		text := "Replies"
 		switch {
 		case n.Replies > 0 && n.Other:
-			text = fmt.Sprintf("%d other replies", n.Replies)
+			text = repliesText(n.Replies, "other ")
 		case n.Replies > 0:
-			text = fmt.Sprintf("%d replies", n.Replies)
+			text = repliesText(n.Replies, "")
 		case n.Other:
 			text = "Other replies"
 		}
@@ -283,7 +283,7 @@ func (d pageData) mdModeration(b *strings.Builder) {
 
 func (d pageData) mdLikers(b *strings.Builder) {
 	fmt.Fprintf(b, "# Likes\n\nof %s\n\n", mdLink(d.LikeTitle, d.LikeTarget))
-	if len(d.Likers) == 0 {
+	if len(d.Likers) == 0 && len(d.Others) == 0 {
 		b.WriteString("No likes to show.\n")
 	}
 	for _, l := range d.Likers {
@@ -295,6 +295,12 @@ func (d pageData) mdLikers(b *strings.Builder) {
 			line += " — " + l.Tag
 		}
 		b.WriteString(line + "\n")
+	}
+	if len(d.Others) > 0 {
+		b.WriteString("\n## Also liked by\n\nPeople you don't follow.\n\n")
+		for _, l := range d.Others {
+			b.WriteString("- " + mdLink(l.Name, l.Site) + " (" + l.FeedURL + ")\n")
+		}
 	}
 	if d.LikeNote != "" {
 		b.WriteString("\n" + mdLine(d.LikeNote) + "\n")
@@ -402,12 +408,12 @@ func markdownChannel(ch feed.Channel) string {
 			meta = append(meta, "Keywords: "+strings.Join(ks, ", "))
 		}
 		if it.Likes != nil && it.Likes.Count > 0 {
-			meta = append(meta, fmt.Sprintf("%d likes", it.Likes.Count))
+			meta = append(meta, likesText(it.Likes.Count))
 		}
 		if it.Replies != nil && it.Replies.Href != "" {
 			text := "Replies"
 			if it.Replies.Count > 0 {
-				text = fmt.Sprintf("%d replies", it.Replies.Count)
+				text = repliesText(it.Replies.Count, "")
 			}
 			meta = append(meta, mdLink(text, it.Replies.Href))
 		}

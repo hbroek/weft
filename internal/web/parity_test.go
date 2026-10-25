@@ -433,3 +433,56 @@ func TestReplyContextWhenTheLocalUserIsGone(t *testing.T) {
 func TestParityNobodyFollows(t *testing.T) {
 	parityScenario(t, "page", follows{})
 }
+
+// userOn adds a signed-in person to an existing server.
+func userOn(t *testing.T, in *instance, name string) *person {
+	t.Helper()
+	tok, err := in.s.st.AddUser(name, strings.ToUpper(name[:1])+name[1:], "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := in.base[:strings.Index(in.base, "//")+2] // "http://"
+	host := name + in.host[strings.Index(in.host, "."):]
+	p := &person{name: name, host: host, base: base + host, tok: tok, in: in}
+	if err := in.s.space(name).SetPassword("correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("POST", p.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	in.s.ServeHTTP(w, r)
+	if p.cookie = cookieOf(w); p.cookie == "" {
+		t.Fatalf("%s cannot sign in: %d", name, w.Code)
+	}
+	return p
+}
+
+// A post found by its address, not through a followed feed, still has a Likes page for the person who liked it: it
+// names them, lists the others from the author's liked-by feed with a Follow button, and is linked from the like.
+func TestLikesPageOfAPostFromAStranger(t *testing.T) {
+	for _, same := range []bool{true, false} {
+		t.Run(fmt.Sprint("same server ", same), func(t *testing.T) {
+			alice, bob, settle := pairOnServers(t, same)
+			carol := userOn(t, alice.in, "carol") // a third person, on Alice's server
+			if !same {
+				carol = userOn(t, bob.in, "carol") // or on Bob's
+			}
+			pa := alice.post(t, `{"title":"Dark Matter","markdown":"I love watching Dark Matter."}`)
+			carol.api(t, "POST", "/api/likes", `{"target":"`+pa+`"}`, 200)
+			bob.api(t, "POST", "/api/likes", `{"target":"`+pa+`"}`, 200)
+			settle()
+			page := bob.page("/liked-by?target="+url.QueryEscape(pa), false)
+			i := strings.Index(page, "Also liked by")
+			if !strings.Contains(page, "[200]") || !strings.Contains(page, "of [Dark Matter]") || !strings.Contains(page, "- You") {
+				t.Fatalf("bob's Likes page:\n%s", page)
+			}
+			if i < 0 || !strings.Contains(page[i:], "Carol") {
+				t.Errorf("no section for the people Bob does not follow:\n%s", page)
+			}
+			tl := do4(bob.in, "/timeline?likes=1", bob.cookie)
+			if !strings.Contains(tl, `<a href="/liked-by?target=`+url.QueryEscape(pa)+`">Who liked</a>`) || !strings.Contains(tl, "“Dark Matter”") {
+				t.Errorf("the like in Bob's timeline lacks the title or the link to who liked:\n%s", tl)
+			}
+		})
+	}
+}

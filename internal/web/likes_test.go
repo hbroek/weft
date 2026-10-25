@@ -24,7 +24,7 @@ func TestLikeRoundTripAcrossInstances(t *testing.T) {
 		t.Fatalf("like url: %s", out)
 	}
 	lf := bob.get("/likes.xml")
-	if !strings.Contains(lf, `<weft:likeOf href="`+ua+`">`) || !strings.Contains(lf, `<guid isPermaLink="true">`+bob.base+`/likes/1<`) {
+	if !strings.Contains(lf, `<weft:likeOf href="`+ua+`" title="RSS plus links already gives you a social web.">`) || !strings.Contains(lf, `<guid isPermaLink="true">`+bob.base+`/likes/1<`) {
 		t.Errorf("likes feed:\n%s", lf)
 	}
 	if strings.Contains(lf, "polarity") || strings.Contains(lf, "emoji") {
@@ -870,7 +870,7 @@ func TestFeedsAsMarkdown(t *testing.T) {
 		return body
 	}
 	main := md("feed.xml", "/feed.xml", "# Alice", "## ["+"Alice note]("+un+")", "Alice says *hi*", "Keywords: [go]("+alice.base+"/?keyword=go), [open web]("+alice.base+"/?keyword=open%20web)",
-		"1 replies", "In reply to [blog.example](https://blog.example/x)", "> **[The web](https://blog.example/x)**: About links.", "Also: [Likes]("+alice.base+"/likes.xml) · [Following]("+alice.base+"/following.opml)")
+		"1 reply", "In reply to [blog.example](https://blog.example/x)", "> **[The web](https://blog.example/x)**: About links.", "Also: [Likes]("+alice.base+"/likes.xml) · [Following]("+alice.base+"/following.opml)")
 	if strings.Contains(main, "Older posts") {
 		t.Errorf("one page has no next link")
 	}

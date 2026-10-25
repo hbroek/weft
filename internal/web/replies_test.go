@@ -76,7 +76,7 @@ func TestRepliesUnderAPostLookLikeComments(t *testing.T) {
 	}
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
 	if p := do3(s, "GET", host, "/posts/"+slug, ck).Body.String(); !strings.Contains(p, `href="/compose?reply_to=http%3A%2F%2Fbob.example%2Fposts%2Fgreat.k3x9&amp;reply_feed=http%3A%2F%2Fbob.example%2Ffeed.xml"`) ||
-		!strings.Contains(p, "1 reply(ies) awaiting your approval") {
+		!strings.Contains(p, "1 reply awaits your approval") {
 		t.Errorf("the owner's page lacks the reply link or the pending notice")
 	}
 }

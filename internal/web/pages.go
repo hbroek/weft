@@ -121,7 +121,7 @@ document.querySelectorAll('form.followform').forEach(function(f){
 </article>{{else}}<p>No posts yet.</p>{{end}}
 {{if .Replies}}<section class="replies" id="replies"><h3>{{.ReplyTotal}} {{if eq .ReplyTotal 1}}reply{{else}}replies{{end}}</h3>
 <ol class="comments">{{range .Replies}}{{template "comment" .}}{{end}}</ol></section>{{end}}
-{{if and .Owner .Pending}}<p><a href="/replies">{{.Pending}} reply(ies) awaiting your approval</a></p>{{end}}
+{{if and .Owner .Pending}}<p><a href="/replies">{{.Pending}} {{if eq .Pending 1}}reply awaits{{else}}replies await{{end}} your approval</a></p>{{end}}
 {{template "foot"}}{{end}}
 {{define "like"}}{{template "head" .}}<article class="h-entry">
 {{template "authorcard" .}}
@@ -135,7 +135,7 @@ document.querySelectorAll('form.followform').forEach(function(f){
 <p><button>Log in</button></p></form>{{template "foot"}}{{end}}
 {{define "timeline"}}{{template "head" .}}{{if .Keyword}}<p class="kwhead">Tagged <strong>{{.Keyword}}</strong>{{if .Only}} from <strong>{{.Heading}}</strong>{{end}} <small>· <a href="{{.ClearKeyword}}">Clear filter</a></small></p>{{end}}<h2>{{if .Only}}{{.Heading}}</h2><p><small>{{.Only}} · <a href="/timeline">All feeds</a> · <a href="/following">Following</a></small></p>{{else}}Timeline</h2>{{end}}
 <p><small>{{if not .Keyword}}<a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a>{{end}}{{if not .Only}}{{if not .Keyword}} · {{end}}<a href="{{.MineToggle}}">{{if .ShowMine}}Hide my posts{{else}}Show my posts{{end}}</a>{{end}}</small></p>
-{{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small></p>{{if .Mine}}<form method="post" action="/unlike"><input type="hidden" name="target" value="{{.Target}}"><button class="linkbtn">Unlike</button></form>{{end}}</article>
+{{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small>{{if .Target}} <small><a href="/liked-by?target={{.Target | urlquery}}">Who liked</a></small>{{end}}</p>{{if .Mine}}<form method="post" action="/unlike"><input type="hidden" name="target" value="{{.Target}}"><button class="linkbtn">Unlike</button></form>{{end}}</article>
 {{else}}<article{{if .Anchor}} id="{{.Anchor}}"{{end}}>
 <div class="card-top"><p class="who">{{template "avatar" .}}{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}}{{if .InReplyTo}} replying to <a href="{{.InReplyTo}}">{{if .ReplyWho}}{{.ReplyWho}}{{else if .Parent}}{{.Parent.Host}}{{else}}a post{{end}}</a>{{end}}</p>
 <span class="when">{{if .Link}}<a href="{{.Link}}"><time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{else}}<time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time>{{end}}{{if .Edited}} · edited{{end}}</span></div>
@@ -172,7 +172,7 @@ document.querySelectorAll('form.followform').forEach(function(f){
 <p>{{if eq .Thread.View "focus"}}<strong>This branch</strong>{{else}}<a href="{{.Thread.FocusHref}}">This branch</a>{{end}} |
 {{if eq .Thread.View "curated"}}<strong>Whole thread</strong>{{else}}<a href="{{.Thread.CuratedHref}}">Whole thread</a>{{end}} |
 {{if eq .Thread.View "raw"}}<strong>Raw</strong>{{else}}<a href="{{.Thread.RawHref}}">Raw</a>{{end}}
-<small>({{.Thread.Count}} posts)</small></p>
+<small>({{.Thread.Count}} {{if eq .Thread.Count 1}}post{{else}}posts{{end}})</small></p>
 <p><small>{{if eq .Thread.View "focus"}}The post, the posts above it back to the root, and its replies. Use the replies icon on any post to open that branch.{{else if eq .Thread.View "curated"}}Only the replies each author approved, read down from the root.{{else}}Everything your reader knows about this conversation, including replies that were not approved.{{end}}</small></p>
 <ul class="thread">{{template "node" .Thread.Root}}</ul>
 {{template "foot"}}{{end}}
