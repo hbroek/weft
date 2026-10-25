@@ -104,7 +104,15 @@ func (p *person) public(path string) string {
 }
 
 func (p *person) form(path, referer string, vals url.Values) *httptest.ResponseRecorder {
-	return formAs(p.in, path, p.cookie, referer, vals)
+	r := httptest.NewRequest("POST", "http://"+p.host+path, strings.NewReader(vals.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: p.cookie})
+	if referer != "" {
+		r.Header.Set("Referer", referer)
+	}
+	w := httptest.NewRecorder()
+	p.in.s.ServeHTTP(w, r)
+	return w
 }
 
 // instanceOn starts a server like newInstance, but for its own base domain, as two real servers have: its
@@ -208,11 +216,10 @@ func norm(s string) string {
 	return s
 }
 
-// parityRecord runs the scenario and returns what was observed, by label.
-func parityRecord(t *testing.T, same bool, scenario func(t *testing.T, alice, bob *person, settle func(), see func(label, text string))) map[string]string {
-	alice, bob, settle := pairOnServers(t, same)
+// recorder returns where observations are kept and the function that records one.
+func recorder() (map[string]string, func(label, text string)) {
 	rec := map[string]string{}
-	see := func(label, text string) {
+	return rec, func(label, text string) {
 		text = norm(text)
 		if strings.HasSuffix(label, "timeline") || strings.HasSuffix(label, "timeline with likes") || strings.HasSuffix(label, "home") {
 			// things that happened in the same second are ordered by their random addresses, which differ from
@@ -228,8 +235,64 @@ func parityRecord(t *testing.T, same bool, scenario func(t *testing.T, alice, bo
 		}
 		rec[label] = text
 	}
+}
+
+// parityRecord runs the scenario and returns what was observed, by label.
+func parityRecord(t *testing.T, same bool, scenario func(t *testing.T, alice, bob *person, settle func(), see func(label, text string))) map[string]string {
+	alice, bob, settle := pairOnServers(t, same)
+	rec, see := recorder()
 	scenario(t, alice, bob, settle, see)
 	return rec
+}
+
+// trioOnServers is pairOnServers with Carol: all three on one server, or each on a server of their own.
+func trioOnServers(t *testing.T, same bool) (alice, bob, carol *person, settle func()) {
+	t.Helper()
+	alice, bob, pairSettle := pairOnServers(t, same)
+	var in *instance
+	if same {
+		in = alice.in
+	} else {
+		in = instanceOn(t, "carol", "three.localhost")
+	}
+	if same {
+		carol = userOn(t, in, "carol")
+	} else {
+		carol = &person{name: "carol", host: in.host, base: in.base, tok: in.tok, in: in}
+		if err := in.s.space("carol").SetPassword("correct horse"); err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest("POST", in.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		in.s.ServeHTTP(w, r)
+		if carol.cookie = cookieOf(w); carol.cookie == "" {
+			t.Fatalf("carol cannot sign in: %d", w.Code)
+		}
+	}
+	settle = func() {
+		ctx := context.Background()
+		insts := []*instance{alice.in, bob.in, carol.in}
+		seen := map[*instance]bool{}
+		for range 3 {
+			for _, i := range insts {
+				if !seen[i] || true {
+					i.s.RefreshAll(ctx)
+				}
+			}
+			var uniq []*instance
+			seen = map[*instance]bool{}
+			for _, i := range insts {
+				if !seen[i] {
+					seen[i] = true
+					uniq = append(uniq, i)
+				}
+			}
+			settleAll(ctx, uniq...)
+		}
+	}
+	_ = pairSettle
+	return
 }
 
 // compare reports every label whose two records differ, with the lines that are in only one of them.
@@ -485,4 +548,86 @@ func TestLikesPageOfAPostFromAStranger(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Alice and Bob follow each other and Carol follows Alice. Bob and Carol both like and reply to Alice's post. Carol
+// follows neither Bob nor anyone Bob follows, so she meets Bob as a stranger; Alice does not follow Carol.
+func TestParityThirdPerson(t *testing.T) {
+	scenario := func(t *testing.T, alice, bob, carol *person, settle func(), see func(label, text string)) {
+		reply := func(p *person, target, targetFeed, text string) string {
+			return p.replyViaPage(t, target, targetFeed, text)
+		}
+		alice.api(t, "POST", "/api/following", `{"url":"`+bob.base+`/"}`, 200)
+		bob.api(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
+		carol.api(t, "POST", "/api/following", `{"url":"`+alice.base+`/"}`, 200)
+		settle()
+
+		pa := alice.post(t, `{"title":"Dark Matter","markdown":"I love watching Dark Matter."}`)
+		settle()
+		bob.api(t, "POST", "/api/likes", `{"target":"`+pa+`","target_feed":"`+alice.base+`/feed.xml"}`, 200)
+		rb := reply(bob, pa, alice.base+"/feed.xml", "Same here, the second season is better.")
+		carol.api(t, "POST", "/api/likes", `{"target":"`+pa+`","target_feed":"`+alice.base+`/feed.xml"}`, 200)
+		rc := reply(carol, pa, alice.base+"/feed.xml", "Watching it tonight.")
+		settle()
+
+		observe := func(stage string) {
+			for _, p := range []*person{alice, bob, carol} {
+				who := p.name + " " + stage + " "
+				see(who+"feed", p.public("/feed.xml"))
+				see(who+"likes.xml", p.public("/likes.xml"))
+				see(who+"home", p.page("/", false))
+				see(who+"timeline", p.page("/timeline", false))
+				see(who+"timeline with likes", p.page("/timeline?likes=1", false))
+				see(who+"replies queue", p.page("/replies", false))
+				see(who+"api timeline", p.apiGet("/api/timeline"))
+				see(who+"api replies", p.apiGet("/api/replies"))
+				see(who+"liked-by on alice's post", p.page("/liked-by?target="+url.QueryEscape(pa), false))
+				see(who+"thread of alice's post", p.page("/thread?url="+url.QueryEscape(pa), false))
+				see(who+"api thread of alice's post", p.apiGet("/api/thread?url="+url.QueryEscape(pa)))
+			}
+			see(stage+" alice post as visitor", alice.page(pathOf(pa), true))
+			see(stage+" alice post replies.xml", alice.public(pathOf(pa)+"/replies.xml"))
+			see(stage+" alice post likes.xml", alice.public(pathOf(pa)+"/likes.xml"))
+			see(stage+" alice liked-by as visitor", alice.page("/liked-by?target="+url.QueryEscape(pa), true))
+			see(stage+" bob reply page", bob.page(pathOf(rb), true))
+			see(stage+" carol reply page", carol.page(pathOf(rc), true))
+			see(stage+" carol thread of her reply", carol.page("/thread?url="+url.QueryEscape(rc), false))
+		}
+		observe("after likes and replies")
+		// the reader who only follows Alice reads the replies in the thread as Markdown, too
+		if th := carol.page("/thread?url="+url.QueryEscape(pa), false); !strings.Contains(th, "Same here, the second season is better.") {
+			t.Errorf("carol's thread lacks Bob's reply text:\n%s", th)
+		}
+
+		see("replies waiting for alice", fmt.Sprint(alice.approvePending(t)))
+		settle()
+		observe("after approval")
+
+		// Carol takes her like back
+		carol.api(t, "DELETE", "/api/likes", `{"target":"`+pa+`"}`, 204)
+		settle()
+		observe("after carol unlikes")
+	}
+	run := func(same bool) map[string]string {
+		alice, bob, carol, settle := trioOnServers(t, same)
+		rec, see := recorder()
+		scenario(t, alice, bob, carol, settle, see)
+		return rec
+	}
+	same, apart := run(true), run(false)
+	if dir := os.Getenv("WEFT_PARITY_DUMP"); dir != "" {
+		for name, rec := range map[string]map[string]string{"same": same, "apart": apart} {
+			var keys []string
+			for k := range rec {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			var b strings.Builder
+			for _, k := range keys {
+				fmt.Fprintf(&b, "===== %s\n%s\n", k, rec[k])
+			}
+			os.WriteFile(filepath.Join(dir, name+".txt"), []byte(b.String()), 0o644)
+		}
+	}
+	compare(t, same, apart)
 }
