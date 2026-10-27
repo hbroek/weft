@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"html"
 	"html/template"
 	"io"
 	"net/http"
@@ -19,6 +20,14 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}}</title>
 {{if .Desc}}<meta name="description" content="{{.Desc}}">
+{{end}}<meta property="og:title" content="{{.Title}}">
+<meta property="og:type" content="{{.OGType}}">
+<meta property="og:url" content="{{.OGURL}}">
+<meta property="og:site_name" content="{{.Author}}">
+{{if .Desc}}<meta property="og:description" content="{{.Desc}}">
+{{end}}{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">
+<meta name="twitter:card" content="summary_large_image">
+{{else}}<meta name="twitter:card" content="summary">
 {{end}}<link rel="alternate" type="application/rss+xml" href="{{.FeedURL}}">
 <link rel="icon" href="/static/weft-icon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="any">
@@ -261,7 +270,7 @@ f.addEventListener('change',function(){
 <label><span class="adv">Markdown</span> <textarea name="markdown" aria-label="Markdown" required>{{.Form.Markdown}}</textarea></label>
 <p class="imgbar"><input type="file" id="imgfile" accept="image/jpeg,image/png,image/gif" data-max="{{.ImageMax}}" data-max-compact="{{.ImageMaxCompact}}" hidden><button type="button" id="addimg">Add image</button>
 <label>Size <select id="imgsize"><option value="original">Original</option><option value="compact">Compact</option></select></label>
-<button type="button" id="keepimgs" hidden>Keep copies of other sites' images</button> <small><a href="/images">Your images</a></small> <small id="imgmsg" role="status"></small></p>
+<button type="button" id="keepimgs" title="Fetch the pictures this post shows from other sites and keep them here" hidden>Copy images</button> <small><a href="/images">Your images</a></small> <small id="imgmsg" role="status"></small></p>
 <label class="adv">Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="travel, open source, weekend project"></label>
 {{if not .Delete}}<label class="adv">Address <input type="text" name="slug" id="slug" value="{{.Form.Slug}}" maxlength="80"{{if .SlugAuto}} data-auto="1"{{end}} autocapitalize="off" autocorrect="off" spellcheck="false"></label>
 <p class="adv"><small>The end of the post's link. It follows your title or first sentence until you change it, and cannot be changed once the post is published. A short code is added to make it yours alone.</small></p>{{end}}
@@ -356,6 +365,7 @@ type pageData struct {
 	PageFeeds                                  []pageFeed   // feeds the bookmarked page advertises
 	Back                                       string       // the timeline view a reply returns to
 	Desc                                       string       // the meta description of the page
+	OGType, OGURL, OGImage                     string       // Open Graph: what the page is, its address, and a picture for a link preview
 	sp                                         *store.Space // the owner of the page, for the sizes of its pictures
 	Older, Newest                              string       // timeline: the next page of older posts, and the way back to the newest
 	Cheat                                      *cheatSheet  // the Markdown help beside the editor
@@ -403,7 +413,8 @@ type pageData struct {
 
 func (s *Server) data(r *http.Request, q *req, title string) pageData {
 	return pageData{Title: title, FeedURL: s.base(r) + "/feed.xml", WebmentionURL: s.base(r) + "/webmention",
-		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", WantMD: negotiate(r.Header.Get("Accept")) == "markdown", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), sp: q.sp, Desc: describe(orStr(q.host.Bio, "Posts by "+orStr(q.host.Display, q.host.Name)+"."))}
+		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", WantMD: negotiate(r.Header.Get("Accept")) == "markdown", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), sp: q.sp, Desc: describe(orStr(q.host.Bio, "Posts by "+orStr(q.host.Display, q.host.Name)+".")),
+		OGType: "website", OGURL: s.base(r) + r.URL.Path, OGImage: s.previewImage(r, q.host.Avatar)}
 }
 
 // navOf names the header menu entry a path belongs to, or "".
@@ -530,6 +541,10 @@ func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
 	s.renderPosts(w, r, q, title, []*store.Post{p}, func(d *pageData) {
 		if text := describe(p.HTML); text != "" {
 			d.Desc = text
+		}
+		d.OGType = "article"
+		if m := bodyImage.FindStringSubmatch(absMedia(p.HTML, s.base(r))); m != nil {
+			d.OGImage = s.previewImage(r, html.UnescapeString(m[1]))
 		}
 	})
 }
@@ -681,4 +696,19 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 	}
 	ch.LastBuildDate = feed.RFC822(last)
 	s.writeChannel(w, r, ch)
+}
+
+// previewImage is the address of a picture for a link preview: absolute, and for an uploaded picture the
+// 800-pixel copy. It is "" when there is no usable picture.
+func (s *Server) previewImage(r *http.Request, src string) string {
+	if p := localAvatar(src); p != "" {
+		return s.base(r) + p + "?w=800"
+	}
+	if rest, ok := strings.CutPrefix(src, s.base(r)+"/media/"); ok && mediaName.MatchString(rest) {
+		return src + "?w=800"
+	}
+	if httpURL(src) != "" {
+		return src
+	}
+	return ""
 }

@@ -66,12 +66,14 @@ func (s *Server) likedByPage(w http.ResponseWriter, r *http.Request, q *req) {
 		it, err := q.sp.ItemByTarget(q.host.ID, target)
 		if err != nil {
 			// not in a feed this reader follows (they found it by its address): ask the post's own server
-			p := s.fetchPost(r.Context(), target)
-			if p == nil {
+			if p := s.fetchPost(r.Context(), target); p != nil {
+				it = &store.TimelineItem{Title: p.Title, Text: p.Text, Likes: p.Likes, LikesHref: p.LikesHref}
+			} else if l, err := q.sp.ActiveLike(q.host.ID, target); err == nil { // a page of the web, not a post: only this reader's like is known
+				it = &store.TimelineItem{Title: l.Parent.Title}
+			} else {
 				http.NotFound(w, r)
 				return
 			}
-			it = &store.TimelineItem{Title: p.Title, Text: p.Text, Likes: p.Likes, LikesHref: p.LikesHref}
 		}
 		d.LikeTitle = orStr(it.Title, oneLine(it.Text, 60))
 		if s.iLike(q.sp, target) {

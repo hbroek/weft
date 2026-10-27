@@ -1021,3 +1021,19 @@ func TestLikesPageListsStrangersFromTheLikedByFeed(t *testing.T) {
 		t.Errorf("the old apology is still shown:\n%s", page)
 	}
 }
+
+// A page of the web that is not a post can be liked, and its "who liked it" page opens with the reader's own like.
+func TestLikedByPageOfAPageThatIsNotAPost(t *testing.T) {
+	bob := newInstance(t, "bob")
+	page := "http://other.example/"
+	bob.call(t, "POST", "/api/likes", `{"target":"`+page+`","context":{"title":"Other site"}}`, 200)
+	bob.s.space("bob").SetPassword("correct horse")
+	lr := httptest.NewRequest("POST", bob.base+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
+	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	lw := httptest.NewRecorder()
+	bob.s.ServeHTTP(lw, lr)
+	w := do3(bob.s, "GET", bob.host, "/liked-by?target="+url.QueryEscape(page), cookieOf(lw))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Other site") || !strings.Contains(w.Body.String(), "You") {
+		t.Errorf("liked-by of a page: %d\n%s", w.Code, w.Body.String())
+	}
+}

@@ -92,3 +92,29 @@ func TestDescribeShortensAtAWord(t *testing.T) {
 		t.Errorf("%d runes: %q", len(r), long)
 	}
 }
+
+func TestPostPagesHaveOpenGraphTags(t *testing.T) {
+	s, tok := setup(t)
+	const host = "alice.localhost:8080"
+	js, _ := json.Marshal(map[string]any{"title": "Dark matter", "markdown": "Some words.\n\n![x](http://" + host + "/media/0123456789abcdef0123456789abcdef.png)"})
+	w := do(s, "POST", host, "/api/posts", tok, string(js))
+	var res struct{ URL string }
+	json.Unmarshal(w.Body.Bytes(), &res)
+	page := getEnc(s, host, strings.TrimPrefix(res.URL, "http://"+host), "").Body.String()
+	for _, want := range []string{
+		`<meta property="og:title" content="Dark matter">`,
+		`<meta property="og:type" content="article">`,
+		`<meta property="og:url" content="` + res.URL + `">`,
+		`<meta property="og:description" content="Some words.`,
+		`<meta property="og:image" content="http://` + host + `/media/0123456789abcdef0123456789abcdef.png?w=800">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	home := getEnc(s, host, "/", "").Body.String()
+	if !strings.Contains(home, `<meta property="og:type" content="website">`) || strings.Contains(home, "og:image") {
+		t.Errorf("home page tags:\n%s", home[:900])
+	}
+}
