@@ -73,6 +73,14 @@ func absMedia(s, base string) string {
 		`href="/media/`, `href="`+base+`/media/`, `]: /media/`, `]: `+base+`/media/`).Replace(s)
 }
 
+// absPath makes the path of one of the user's pictures a full address on base; any other address is left as it is.
+func absPath(u, base string) string {
+	if strings.HasPrefix(u, "/media/") {
+		return strings.TrimSuffix(base, "/") + u
+	}
+	return u
+}
+
 // originOf is the scheme and host of an address, "" if it is not one.
 func originOf(raw string) string {
 	u, err := url.Parse(raw)
@@ -131,21 +139,45 @@ func modeOf(v string) img.Mode {
 	return img.Original
 }
 
-// mediaError answers a failed upload.
-func mediaError(w http.ResponseWriter, err error) {
+func megabytes(n int) string {
+	if n >= 1<<20 && n%(1<<20) == 0 {
+		return fmt.Sprintf("%d MB", n>>20)
+	}
+	return byteSize(int64(n))
+}
+
+// uploadProblem is what went wrong with an upload, as a status and a sentence for the person who made it. limit is
+// the largest file this kind of upload accepts.
+func (s *Server) uploadProblem(err error, limit int) (int, string) {
 	var tooBig *http.MaxBytesError
 	switch {
 	case errors.Is(err, img.ErrUnsupported):
-		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-	case errors.Is(err, img.ErrTooLarge), errors.Is(err, img.ErrTooManyPx), errors.As(err, &tooBig):
-		http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+		return http.StatusUnsupportedMediaType, "Only JPEG, PNG and GIF pictures can be added."
+	case errors.Is(err, img.ErrTooManyPx):
+		return http.StatusRequestEntityTooLarge, fmt.Sprintf("That picture has too many pixels: the most is %d million. Make it smaller and try again.", s.imageLimits().MaxPixels/1_000_000)
+	case errors.Is(err, img.ErrTooLarge), errors.As(err, &tooBig):
+		return http.StatusRequestEntityTooLarge, "That file is too large: the limit is " + megabytes(limit) + "."
 	case errors.Is(err, img.ErrCorrupt):
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return http.StatusUnprocessableEntity, "That file is not a picture that can be read."
 	case errors.Is(err, store.ErrQuota):
-		http.Error(w, "Your storage is full. Delete pictures you no longer use.", http.StatusInsufficientStorage)
-	default:
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return http.StatusInsufficientStorage, "Your storage is full. Delete pictures you no longer use."
 	}
+	return http.StatusInternalServerError, err.Error()
+}
+
+// mediaError answers a failed upload that was made by a script on the page or by a program: the sentence, as text.
+func (s *Server) mediaError(w http.ResponseWriter, err error, limit int) {
+	code, msg := s.uploadProblem(err, limit)
+	http.Error(w, msg, code)
+}
+
+// limitFor is the largest file an upload at the given size accepts.
+func (s *Server) limitFor(mode img.Mode) int {
+	l := s.imageLimits()
+	if mode == img.Compact {
+		return max(l.MaxBytes, l.MaxInput)
+	}
+	return l.MaxBytes
 }
 
 // readUpload reads the picture a request carries: the "file" part of a form, or else the whole body.
@@ -190,12 +222,12 @@ type mediaJSON struct {
 func (s *Server) upload(w http.ResponseWriter, r *http.Request, q *req) {
 	data, mode, err := s.readUpload(w, r)
 	if err != nil {
-		mediaError(w, err)
+		s.mediaError(w, err, s.limitFor(img.Compact))
 		return
 	}
 	m, added, err := s.storeImage(q.sp, data, mode, "")
 	if err != nil {
-		mediaError(w, err)
+		s.mediaError(w, err, s.limitFor(mode))
 		return
 	}
 	alt := strings.NewReplacer("[", "", "]", "", "\n", " ").Replace(r.URL.Query().Get("alt"))

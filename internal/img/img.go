@@ -566,3 +566,80 @@ func round8(v float32) uint8 {
 	}
 	return uint8(v + 0.5)
 }
+
+// ---- profile pictures ----
+
+// Avatar makes a profile picture from a JPEG, PNG or GIF (the first frame): the middle square of the picture, turned
+// the right way up, at most size pixels each way, with no metadata. A picture with transparency stays a PNG, any
+// other is a JPEG. Like Compact, it accepts a file as large as a phone photo.
+func Avatar(data []byte, lim Limits, size int) (*Result, error) {
+	if lim.MaxBytes <= 0 {
+		lim = DefaultLimits
+	}
+	if lim.MaxPixels <= 0 {
+		lim.MaxPixels = DefaultLimits.MaxPixels
+	}
+	if len(data) > max(lim.MaxBytes, lim.MaxInput) {
+		return nil, ErrTooLarge
+	}
+	var src image.Image
+	var cfg image.Config
+	var err error
+	orient, icc := 1, [][]byte(nil)
+	switch {
+	case bytes.HasPrefix(data, []byte{0xFF, 0xD8, 0xFF}):
+		if cfg, err = jpeg.DecodeConfig(bytes.NewReader(data)); err == nil {
+			if err = checkSize(cfg, lim); err != nil {
+				return nil, err
+			}
+			src, err = jpeg.Decode(bytes.NewReader(data))
+			orient, icc = jpegOrientation(data), jpegICC(data)
+		}
+	case bytes.HasPrefix(data, []byte("\x89PNG\r\n\x1a\n")):
+		if cfg, err = png.DecodeConfig(bytes.NewReader(data)); err == nil {
+			if err = checkSize(cfg, lim); err != nil {
+				return nil, err
+			}
+			src, err = png.Decode(bytes.NewReader(data))
+		}
+	case bytes.HasPrefix(data, []byte("GIF87a")), bytes.HasPrefix(data, []byte("GIF89a")):
+		if cfg, err = gif.DecodeConfig(bytes.NewReader(data)); err == nil {
+			if err = checkSize(cfg, lim); err != nil {
+				return nil, err
+			}
+			src, err = gif.Decode(bytes.NewReader(data))
+		}
+	default:
+		return nil, ErrUnsupported
+	}
+	if err != nil || src == nil {
+		if errors.Is(err, ErrTooManyPx) {
+			return nil, err
+		}
+		return nil, ErrCorrupt
+	}
+	pic := toRGBA(src)
+	if orient > 1 {
+		pic = orientPicture(pic, orient)
+	}
+	w, h := pic.Bounds().Dx(), pic.Bounds().Dy()
+	side := min(w, h)
+	x0, y0 := (w-side)/2, (h-side)/2
+	sq := toRGBA(pic.SubImage(image.Rect(x0, y0, x0+side, y0+side)))
+	if size > 0 && side > size {
+		sq = resize(sq, size, size)
+		side = size
+	}
+	var buf bytes.Buffer
+	if !sq.Opaque() {
+		enc := png.Encoder{CompressionLevel: png.BestCompression}
+		if err := enc.Encode(&buf, sq); err != nil {
+			return nil, err
+		}
+		return &Result{Data: buf.Bytes(), Mime: "image/png", Ext: "png", Width: side, Height: side}, nil
+	}
+	if err := jpeg.Encode(&buf, sq, &jpeg.Options{Quality: 88}); err != nil {
+		return nil, err
+	}
+	return &Result{Data: withICC(buf.Bytes(), icc), Mime: "image/jpeg", Ext: "jpg", Width: side, Height: side}, nil
+}

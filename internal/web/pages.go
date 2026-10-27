@@ -100,9 +100,26 @@ document.querySelectorAll('form.followform').forEach(function(f){
 <form method="post" action="/profile">
 <label>Name <input type="text" name="display" value="{{.Profile.Display}}" maxlength="80"></label>
 <label>Bio <input type="text" name="bio" value="{{.Profile.Bio}}" maxlength="500"></label>
-<label>Avatar image address (optional, an http:// or https:// link; the first letter of your name is shown without one) <input type="text" name="avatar" value="{{.Profile.Avatar}}" placeholder="https://example.com/me.jpg" inputmode="url"></label>
-<p>{{template "avatar" .}}<small> preview of your current avatar</small></p>
+<label>Picture from a link (optional, an http:// or https:// address{{if .Profile.Local}}; you have uploaded a picture, and a link here replaces it{{end}}) <input type="text" name="avatar" value="{{.Profile.Avatar}}" placeholder="https://example.com/me.jpg" inputmode="url"></label>
+{{if .Profile.Local}}<input type="hidden" name="keep_avatar" value="1">{{end}}
 <p><button>Save</button></p></form>
+<h3>Picture</h3>
+<p>{{template "avatar" .}}<small> {{if .Profile.Local}}an uploaded picture{{else if .Avatar}}a picture from a link{{else}}no picture: the first letter of your name is shown{{end}}</small></p>
+<form method="post" action="/profile/avatar" enctype="multipart/form-data"><label>Upload a picture <input type="file" name="file" accept="image/jpeg,image/png,image/gif" data-max="{{.UploadMax}}" required></label>
+<p class="err" id="avmsg" role="alert"></p>
+<p><button>Upload</button> <small>It is cropped to a square, made at most 256 pixels wide, and kept with your account. Photos from a phone are fine.</small></p></form>
+{{if .Avatar}}<form method="post" action="/profile/avatar/remove"><button class="linkbtn">Remove picture</button></form>{{end}}
+<script>
+(function(){
+var f=document.querySelector('input[type=file][name=file]'),m=document.getElementById('avmsg');
+if(!f||!m)return;
+f.addEventListener('change',function(){
+ m.textContent='';var x=f.files[0];if(!x)return;
+ if(!/^image\/(jpeg|png|gif)$/.test(x.type)){m.textContent='Only JPEG, PNG and GIF pictures can be added.';f.value='';return}
+ if(x.size>+f.dataset.max){m.textContent='That file is too large: the limit is '+Math.round(f.dataset.max/1048576)+' MB.';f.value=''}
+});
+})();
+</script>
 <p><a href="/password">Change password</a></p>
 <h3>Your data</h3>
 <p><small>Everything you have here in one file: posts, replies, likes, who you follow and your login. It holds no sessions and no API token. Whoever runs a Weft server can import it to bring you there.</small></p>
@@ -239,7 +256,7 @@ document.querySelectorAll('form.followform').forEach(function(f){
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label class="adv">Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label><span class="adv">Markdown</span> <textarea name="markdown" aria-label="Markdown" required>{{.Form.Markdown}}</textarea></label>
-<p class="imgbar"><input type="file" id="imgfile" accept="image/jpeg,image/png,image/gif" hidden><button type="button" id="addimg">Add image</button>
+<p class="imgbar"><input type="file" id="imgfile" accept="image/jpeg,image/png,image/gif" data-max="{{.ImageMax}}" data-max-compact="{{.ImageMaxCompact}}" hidden><button type="button" id="addimg">Add image</button>
 <label>Size <select id="imgsize"><option value="original">Original</option><option value="compact">Compact</option></select></label>
 <button type="button" id="keepimgs" hidden>Keep copies of other sites' images</button> <small><a href="/images">Your images</a></small> <small id="imgmsg" role="status"></small></p>
 <label class="adv">Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="travel, open source, weekend project"></label>
@@ -284,6 +301,8 @@ if(file&&add){
  function put(text){var a=md.selectionStart||0,b=md.selectionEnd||0;md.setRangeText(text,a,b,'end');var s=a+2;md.setSelectionRange(s,s+5);md.focus();md.dispatchEvent(new Event('input'))}
  function send(f){
   if(!/^image\/(jpeg|png|gif)$/.test(f.type)){say('Only JPEG, PNG and GIF pictures can be added.');return}
+  var lim=+(size.value==='compact'?file.dataset.maxCompact:file.dataset.max);
+  if(lim&&f.size>lim){say('That file is too large: the limit is '+Math.round(lim/1048576)+' MB'+(size.value==='compact'?'.':'. The Compact size accepts larger files.'));return}
   var fd=new FormData();fd.append('file',f);fd.append('size',size.value);say('Adding '+(f.name||'picture')+'…');
   fetch('/media',{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t.trim())})})
    .then(function(j){put('![image]('+j.path+')');say('Added: '+j.width+' × '+j.height+', '+Math.round(j.size/1024)+' KB. Type a description in place of "image".')})
@@ -357,19 +376,23 @@ type pageData struct {
 	Parent                                       *parentCard
 	Modes                                        []modeLink // Bookmark, Reply and Like links for the page the bookmarklet sent
 	Avatar, Initial                              string     // the site owner's avatar address and fallback letter, for the header
-	Profile                                      struct{ Display, Bio, Avatar string }
-	Domain                                       *domainView
-	Likers, Others                               []likerRow
-	Images                                       []imageRow
-	Clip                                         bool // long posts are folded, with a button to open them (a list of posts, not one)
-	MediaUsed, MediaQuota                        string
-	LikeTarget, LikeTitle, LikeNote              string
-	ClearKeyword                                 string
-	Keyword, TopicFeed                           string       // a keyword filter on the home page, and the feed of just those posts
-	Bookmarklet                                  template.URL // javascript: link that sends the current page to /compose; owner's home page only
-	LikesToggle                                  string
-	Form                                         struct{ Title, Markdown, Keywords, Slug string }
-	SlugAuto                                     bool // the address is the suggestion, to follow the title and text until it is reworded
+	Profile                                      struct {
+		Display, Bio, Avatar string
+		Local                bool // the avatar is an uploaded picture
+	}
+	Domain                               *domainView
+	Likers, Others                       []likerRow
+	Images                               []imageRow
+	UploadMax, ImageMax, ImageMaxCompact int  // the largest picture accepted: for a profile picture, at the Original size, at the Compact size
+	Clip                                 bool // long posts are folded, with a button to open them (a list of posts, not one)
+	MediaUsed, MediaQuota                string
+	LikeTarget, LikeTitle, LikeNote      string
+	ClearKeyword                         string
+	Keyword, TopicFeed                   string       // a keyword filter on the home page, and the feed of just those posts
+	Bookmarklet                          template.URL // javascript: link that sends the current page to /compose; owner's home page only
+	LikesToggle                          string
+	Form                                 struct{ Title, Markdown, Keywords, Slug string }
+	SlugAuto                             bool // the address is the suggestion, to follow the title and text until it is reworded
 }
 
 func (s *Server) data(r *http.Request, q *req, title string) pageData {
@@ -612,7 +635,7 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 		Following:  s.base(r) + "/following.opml", LikesFeed: s.base(r) + "/likes.xml",
 	}
 	if q.host.Avatar != "" {
-		ch.Image = &feed.ChannelImage{URL: q.host.Avatar, Title: q.host.Display, Link: s.base(r) + "/"}
+		ch.Image = &feed.ChannelImage{URL: absPath(q.host.Avatar, s.base(r)), Title: q.host.Display, Link: s.base(r) + "/"}
 	}
 	counts, _ := q.sp.ApprovedCounts(q.host.ID)
 	tallies, _ := q.sp.Tallies(q.host.ID)

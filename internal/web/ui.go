@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/img"
 	"github.com/hbroek/weft/internal/md"
 	"github.com/hbroek/weft/internal/store"
 )
@@ -173,6 +174,7 @@ func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request, q *req) bo
 func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status int, heading, action, button, del, title, markdown string, keywords []string, errMsg string, tweak ...func(*pageData)) {
 	d := s.data(r, q, heading)
 	d.ReplyTo, d.ReplyFeed = httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed"))
+	d.ImageMax, d.ImageMaxCompact = s.limitFor(img.Original), s.limitFor(img.Compact)
 	d.Back = timelineBack(r.FormValue("back"))
 	d.Cheat = &cheats
 	d.PInfo = parentFromForm(r)

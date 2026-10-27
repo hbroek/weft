@@ -350,3 +350,91 @@ func TestCompactAcceptsAFileLargerThanWhatIsKept(t *testing.T) {
 		t.Errorf("a result over MaxBytes: %v", err)
 	}
 }
+
+func TestAvatarIsTheMiddleSquare(t *testing.T) {
+	// 600 wide and 300 tall, red on the left third, green in the middle third, blue on the right third: the middle
+	// square (300 x 300) is the green part with a little of the others at its edges
+	m := image.NewRGBA(image.Rect(0, 0, 600, 300))
+	for y := 0; y < 300; y++ {
+		for x := 0; x < 600; x++ {
+			c := color.RGBA{R: 255, A: 255}
+			if x >= 200 {
+				c = color.RGBA{G: 255, A: 255}
+			}
+			if x >= 400 {
+				c = color.RGBA{B: 255, A: 255}
+			}
+			m.SetRGBA(x, y, c)
+		}
+	}
+	dirty := withSegments(jpegOf(t, m), nil, segment(0xE1, exif(binary.LittleEndian, 1)))
+	got, err := Avatar(dirty, DefaultLimits, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Width != 100 || got.Height != 100 || got.Mime != "image/jpeg" {
+		t.Fatalf("result %+v", got)
+	}
+	if bytes.Contains(got.Data, []byte("GPSMARKER")) {
+		t.Errorf("the position survived")
+	}
+	out, err := jpeg.Decode(bytes.NewReader(got.Data))
+	if err != nil || out.Bounds().Dx() != 100 || out.Bounds().Dy() != 100 {
+		t.Fatalf("decoded %v %v", out.Bounds(), err)
+	}
+	centre := color.RGBAModel.Convert(out.At(50, 50)).(color.RGBA)
+	if centre.G < 200 || centre.R > 80 {
+		t.Errorf("the centre is not from the middle of the picture: %v", centre)
+	}
+}
+
+func TestAvatarKeepsTransparencyAndSmallPictures(t *testing.T) {
+	m := image.NewRGBA(image.Rect(0, 0, 40, 60)) // transparent, and smaller than the size asked for
+	m.SetRGBA(20, 30, color.RGBA{R: 255, A: 255})
+	var b bytes.Buffer
+	png.Encode(&b, m)
+	got, err := Avatar(b.Bytes(), DefaultLimits, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mime != "image/png" || got.Width != 40 || got.Height != 40 {
+		t.Errorf("result %+v", got) // not made larger; the shorter side decides
+	}
+}
+
+func TestAvatarTurnsAPhotoAndTakesAGIFFrame(t *testing.T) {
+	// orientation 6: stored 64 wide, red left; shown 48 wide and 64 tall with the red at the top, so the square's top is red
+	dirty := withSegments(jpegOf(t, picture(64, 48)), nil, segment(0xE1, exif(binary.BigEndian, 6)))
+	got, err := Avatar(dirty, DefaultLimits, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ := jpeg.Decode(bytes.NewReader(got.Data))
+	top, bottom := color.RGBAModel.Convert(m.At(24, 3)).(color.RGBA), color.RGBAModel.Convert(m.At(24, 44)).(color.RGBA)
+	if got.Width != 48 || top.R < 200 || bottom.B < 200 {
+		t.Errorf("not turned: %dx%d top %v bottom %v", got.Width, got.Height, top, bottom)
+	}
+	g := &gif.GIF{}
+	for i := 0; i < 2; i++ {
+		f := image.NewPaletted(image.Rect(0, 0, 20, 10), []color.Color{color.Black, color.White})
+		g.Image, g.Delay = append(g.Image, f), append(g.Delay, 10)
+	}
+	var gb bytes.Buffer
+	gif.EncodeAll(&gb, g)
+	if r, err := Avatar(gb.Bytes(), DefaultLimits, 256); err != nil || r.Width != 10 {
+		t.Errorf("gif: %+v %v", r, err)
+	}
+}
+
+func TestAvatarRefusals(t *testing.T) {
+	if _, err := Avatar([]byte("not a picture"), DefaultLimits, 256); err != ErrUnsupported {
+		t.Errorf("text: %v", err)
+	}
+	if _, err := Avatar(jpegOf(t, picture(100, 100)), Limits{MaxBytes: 1 << 20, MaxPixels: 1000}, 256); err != ErrTooManyPx {
+		t.Errorf("too many pixels: %v", err)
+	}
+	cut := jpegOf(t, picture(64, 48))
+	if _, err := Avatar(cut[:len(cut)/2], DefaultLimits, 256); err != ErrCorrupt {
+		t.Errorf("cut: %v", err)
+	}
+}

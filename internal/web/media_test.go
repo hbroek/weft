@@ -2,10 +2,13 @@ package web
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
+	"image/png"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -416,5 +419,206 @@ func TestHeaderIsSticky(t *testing.T) {
 	}
 	if !strings.Contains(css, "scroll-margin-top") {
 		t.Errorf("no room is left for the header above a post that is jumped to")
+	}
+}
+
+func aliceCookie(t *testing.T, s *Server, host string) string {
+	t.Helper()
+	s.space("alice").SetPassword("correct horse")
+	lw := httptest.NewRecorder()
+	lr := httptest.NewRequest("POST", "http://"+host+"/login", strings.NewReader(url.Values{"password": {"correct horse"}}.Encode()))
+	lr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	s.ServeHTTP(lw, lr)
+	return cookieOf(lw)
+}
+
+func profilePost(s *Server, host, path, cookie string, vals url.Values) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("POST", "http://"+host+path, strings.NewReader(vals.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", "http://"+host)
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: cookie})
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	return w
+}
+
+func avatarUploadForm(t *testing.T, s *Server, host, cookie string, data []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	var b bytes.Buffer
+	mw := multipart.NewWriter(&b)
+	fw, _ := mw.CreateFormFile("file", "me.jpg")
+	fw.Write(data)
+	mw.Close()
+	r := httptest.NewRequest("POST", "http://"+host+"/profile/avatar", &b)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	r.Header.Set("Origin", "http://"+host)
+	if cookie != "" {
+		r.AddCookie(&http.Cookie{Name: cookieName, Value: cookie})
+	}
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	return w
+}
+
+func TestProfilePictureFromAnUpload(t *testing.T) {
+	s, tok := setup(t)
+	host := "alice.localhost:8080"
+	ck := aliceCookie(t, s, host)
+
+	if w := avatarUploadForm(t, s, host, "", gpsJPEG(t, 80, 80)); w.Code != 303 && w.Code != 401 {
+		t.Errorf("a visitor uploaded: %d", w.Code)
+	}
+	if u, _ := s.space("alice").User(); u.Avatar != "" {
+		t.Fatalf("a visitor set the avatar to %q", u.Avatar)
+	}
+
+	w := avatarUploadForm(t, s, host, ck, gpsJPEG(t, 1200, 800)) // wide, so it is cropped
+	if w.Code != 303 || w.Header().Get("Location") != "/profile" {
+		t.Fatalf("upload: %d %s", w.Code, w.Body)
+	}
+	u, _ := s.space("alice").User()
+	if !strings.HasPrefix(u.Avatar, "/media/") || !strings.HasSuffix(u.Avatar, ".jpg") {
+		t.Fatalf("avatar %q", u.Avatar)
+	}
+	pic := do(s, "GET", host, u.Avatar, "", "")
+	m, err := jpeg.Decode(bytes.NewReader(pic.Body.Bytes()))
+	if pic.Code != 200 || err != nil || m.Bounds().Dx() != 256 || m.Bounds().Dy() != 256 || bytes.Contains(pic.Body.Bytes(), []byte("GPSMARKER")) {
+		t.Fatalf("stored picture: %d %v", pic.Code, err)
+	}
+
+	// pages use the path; the feed says where it is, in full
+	if home := do(s, "GET", host, "/", "", "").Body.String(); !strings.Contains(home, `src="`+u.Avatar+`"`) {
+		t.Errorf("the page does not show the avatar:\n%s", home)
+	}
+	fw := do(s, "GET", host, "/feed.xml", "", "").Body.String()
+	if !strings.Contains(fw, "<url>http://"+host+u.Avatar+"</url>") {
+		t.Errorf("the feed's channel image is not a full address:\n%s", fw)
+	}
+
+	// saving the profile form keeps an uploaded picture
+	if w := profilePost(s, host, "/profile", ck, url.Values{"display": {"Alice B"}, "bio": {"hi"}, "avatar": {""}, "keep_avatar": {"1"}}); w.Code != 303 {
+		t.Fatalf("save: %d %s", w.Code, w.Body)
+	}
+	if u2, _ := s.space("alice").User(); u2.Avatar != u.Avatar || u2.Display != "Alice B" {
+		t.Errorf("the profile form changed the picture: %q %q", u2.Avatar, u2.Display)
+	}
+	page := do3(s, "GET", host, "/profile", ck).Body.String()
+	if !strings.Contains(page, `name="keep_avatar"`) || !strings.Contains(page, "an uploaded picture") || strings.Contains(page, `value="/media/`) {
+		t.Errorf("profile page:\n%s", page)
+	}
+
+	// a new upload replaces it, and the old one is removed from the database
+	first := strings.TrimPrefix(u.Avatar, "/media/")
+	if w := avatarUploadForm(t, s, host, ck, gpsJPEG(t, 300, 300)); w.Code != 303 {
+		t.Fatalf("second upload: %d", w.Code)
+	}
+	u3, _ := s.space("alice").User()
+	if u3.Avatar == u.Avatar {
+		t.Fatalf("avatar did not change")
+	}
+	if _, err := s.space("alice").Media(first); err == nil {
+		t.Errorf("the replaced picture is still stored")
+	}
+
+	// a picture a post shows is not removed when it stops being the avatar
+	name := strings.TrimPrefix(u3.Avatar, "/media/")
+	do(s, "POST", host, "/api/posts", tok, `{"markdown":"![me](`+u3.Avatar+`)"}`)
+	if w := avatarUploadForm(t, s, host, ck, gpsJPEG(t, 120, 120)); w.Code != 303 {
+		t.Fatalf("third upload: %d", w.Code)
+	}
+	if _, err := s.space("alice").Media(name); err != nil {
+		t.Errorf("a picture in use by a post was removed: %v", err)
+	}
+
+	// a link replaces an upload; removing clears the avatar
+	if w := profilePost(s, host, "/profile", ck, url.Values{"display": {"Alice B"}, "bio": {"hi"}, "avatar": {"https://example.com/me.png"}}); w.Code != 303 {
+		t.Fatalf("link: %d", w.Code)
+	}
+	if u4, _ := s.space("alice").User(); u4.Avatar != "https://example.com/me.png" {
+		t.Errorf("avatar %q", u4.Avatar)
+	}
+	avatarUploadForm(t, s, host, ck, gpsJPEG(t, 100, 100))
+	if w := profilePost(s, host, "/profile/avatar/remove", ck, url.Values{}); w.Code != 303 {
+		t.Fatalf("remove: %d", w.Code)
+	}
+	if u5, _ := s.space("alice").User(); u5.Avatar != "" {
+		t.Errorf("avatar after removing: %q", u5.Avatar)
+	}
+	if w := avatarUploadForm(t, s, host, ck, []byte("<svg/>")); w.Code != 415 {
+		t.Errorf("svg: %d", w.Code)
+	}
+}
+
+func TestProfilePictureThroughTheAPI(t *testing.T) {
+	s, tok := setup(t)
+	host := "alice.localhost:8080"
+	r := httptest.NewRequest("POST", "http://"+host+"/api/avatar", bytes.NewReader(gpsJPEG(t, 400, 300)))
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	var j struct{ Path, URL string }
+	json.Unmarshal(w.Body.Bytes(), &j)
+	if w.Code != 200 || !strings.HasPrefix(j.Path, "/media/") || j.URL != "http://"+host+j.Path {
+		t.Fatalf("api avatar: %d %s", w.Code, w.Body)
+	}
+	if u, _ := s.space("alice").User(); u.Avatar != j.Path {
+		t.Errorf("avatar %q", u.Avatar)
+	}
+	r = httptest.NewRequest("POST", "http://"+host+"/api/avatar", bytes.NewReader(gpsJPEG(t, 40, 40)))
+	r.Header.Set("Authorization", "Bearer wrong")
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != 401 {
+		t.Errorf("wrong token: %d", w.Code)
+	}
+}
+
+// A picture that cannot be used is explained on the page the person was on, not on a bare error page.
+func TestUploadProblemsAreWrittenOnThePage(t *testing.T) {
+	s, tok := setup(t)
+	host := "alice.localhost:8080"
+	ck := aliceCookie(t, s, host)
+
+	// a tiny file that says it has 60000 x 60000 pixels
+	var b bytes.Buffer
+	m := image.NewRGBA(image.Rect(0, 0, 10, 10))
+	png.Encode(&b, m)
+	bomb := b.Bytes()
+	binary.BigEndian.PutUint32(bomb[16:], 60000)
+	binary.BigEndian.PutUint32(bomb[20:], 60000)
+	binary.BigEndian.PutUint32(bomb[29:], crc32.ChecksumIEEE(bomb[12:29]))
+
+	for _, tc := range []struct {
+		name string
+		data []byte
+		code int
+		want string
+	}{
+		{"too many pixels", bomb, 413, "too many pixels"},
+		{"not a picture type", []byte("<svg/>"), 415, "Only JPEG, PNG and GIF"},
+		{"damaged", []byte("\xff\xd8\xff damaged"), 422, "not a picture that can be read"},
+	} {
+		w := avatarUploadForm(t, s, host, ck, tc.data)
+		body := w.Body.String()
+		if w.Code != tc.code || !strings.Contains(body, "<h2>Profile</h2>") || !strings.Contains(body, `class="err"`) || !strings.Contains(body, tc.want) {
+			t.Errorf("%s: %d\n%s", tc.name, w.Code, body)
+		}
+		if !strings.Contains(body, `name="display"`) { // the form is still there, to try again
+			t.Errorf("%s: the page has no form", tc.name)
+		}
+	}
+
+	// a program and the editor's script get the sentence as text
+	code, _, text := uploadAPI(t, s, tok, host, "", bomb)
+	if code != 413 || !strings.Contains(text, "too many pixels") {
+		t.Errorf("api: %d %q", code, text)
+	}
+
+	// the pages carry the limits, so the browser can refuse a file before sending it
+	if page := do3(s, "GET", host, "/profile", ck).Body.String(); !strings.Contains(page, `data-max="26214400"`) || !strings.Contains(page, `id="avmsg"`) {
+		t.Errorf("the profile page does not carry the limit")
+	}
+	if page := do3(s, "GET", host, "/compose", ck).Body.String(); !strings.Contains(page, `data-max="5242880"`) || !strings.Contains(page, `data-max-compact="26214400"`) {
+		t.Errorf("the editor does not carry the limits")
 	}
 }
