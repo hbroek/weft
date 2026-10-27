@@ -41,19 +41,26 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div>
 <script>
 (function(){
-// a post in a list that is longer than about 20 lines is folded, with a button to open it
+// a post in a list that is longer than about 20 lines is folded, with a button to open it.
+// Kept cheap on purpose: one pass reads every height, then one pass changes what needs it, and a picture that
+// loads later is looked at on its own. (Checking every post again for every picture froze the page.)
+var posts=[].slice.call(document.querySelectorAll('.clip'));
+if(!posts.length)return;
+var limit=(parseFloat(getComputedStyle(posts[0]).fontSize)||16)*33;
+function toggle(c,b){var o=c.classList.toggle('open');b.textContent=o?'Show less':'Show more';b.setAttribute('aria-expanded',o?'true':'false')}
 function fold(c){
- if(c.dataset.fold==='1'||c.classList.contains('open'))return;
- var fs=parseFloat(getComputedStyle(c).fontSize)||16;
- if(c.scrollHeight<=fs*33)return;
  c.dataset.fold='1';c.classList.add('clamped');
  var b=document.createElement('button');b.type='button';b.className='clipbtn';b.textContent='Show more';b.setAttribute('aria-expanded','false');
- b.addEventListener('click',function(){var o=c.classList.toggle('open');b.textContent=o?'Show less':'Show more';b.setAttribute('aria-expanded',o?'true':'false')});
+ b.addEventListener('click',function(){toggle(c,b)});
  c.after(b);
 }
-function all(){document.querySelectorAll('.clip').forEach(fold)}
-all();window.addEventListener('load',all);
-document.addEventListener('load',function(e){if(e.target.closest&&e.target.closest('.clip'))all()},true);
+function check(list){
+ var long=list.filter(function(c){return c.dataset.fold!=='1'&&c.scrollHeight>limit});
+ long.forEach(fold);
+}
+check(posts);
+window.addEventListener('load',function(){check(posts)});
+document.addEventListener('load',function(e){var c=e.target.closest&&e.target.closest('.clip');if(c)check([c])},true);
 })();
 </script></body></html>{{end}}
 {{define "modes"}}{{if .Modes}}<p class="modes">{{range .Modes}}{{if .Current}}<strong>{{.Label}}</strong>{{else}}<a href="{{.Href}}">{{.Label}}</a>{{end}}{{end}}</p>{{end}}{{end}}
@@ -240,10 +247,10 @@ document.querySelectorAll('form.followform').forEach(function(f){
 <p class="adv"><small>The end of the post's link. It follows your title or first sentence until you change it, and cannot be changed once the post is published. A short code is added to make it yours alone.</small></p>{{end}}
 <p class="advrow"><label><input type="checkbox" id="adv"{{if .Advanced}} checked{{end}}> Advanced</label> <small>title, keywords, address and Markdown help</small></p>
 <p><button>{{.Button}}</button></p></form>
-{{template "cheats" .Cheat}}</div>
 <h3>Preview</h3>
 <article id="preview" class="h-entry"><h3 id="preview-title"{{if not .Form.Title}} hidden{{end}}>{{.Form.Title}}</h3><div id="preview-body">{{if .Preview}}{{.Preview}}{{else}}<p class="empty">Nothing to preview yet.</p>{{end}}</div>
 <p class="kw" id="preview-kw"{{if not .PreviewKeywords}} hidden{{end}}>{{range .PreviewKeywords}}<span>{{.}}</span>{{end}}</p></article>
+{{template "cheats" .Cheat}}</div>
 <script>
 (function(){
 var md=document.querySelector('textarea[name=markdown]'),ti=document.querySelector('input[name=title]'),kw=document.querySelector('input[name=keywords]'),kwbox=document.getElementById('preview-kw'),

@@ -39,7 +39,7 @@ a { color: var(--link); }
 .wrap { max-width: 40rem; margin: 0 auto; padding: 0 1rem; }
 
 /* header: logo on the left; site name, theme and log in/out on the right */
-.top { background: var(--header); color: var(--header-text); }
+.top { background: var(--header); color: var(--header-text); position: sticky; top: 0; z-index: 20; box-shadow: 0 1px 8px #0000002e; }
 .top-in { padding: .6rem 1.25rem; display: flex; align-items: center; gap: .75rem; }
 .brand { display: inline-flex; align-items: center; gap: .6rem; color: var(--header-text); text-decoration: none; font-weight: 700; font-size: 1.25rem; letter-spacing: .01em; }
 .brand img { display: block; border-radius: 9px; box-shadow: 0 0 0 1px #eef0fa40; }
@@ -60,7 +60,9 @@ html:not([data-theme]) .th .t-auto, html[data-theme="light"] .th .t-light, html[
 .menu a.on { text-decoration: underline var(--orange) 2px; text-underline-offset: 6px; }
 .bio { color: var(--muted); margin: .75rem 0 0; }
 @media (max-width: 40rem) {
-  .top-in { flex-wrap: wrap; row-gap: .25rem; }
+  .top-in { flex-wrap: wrap; row-gap: .1rem; padding: .4rem 1rem; }
+  .menu a { padding: .2rem .65rem; }
+  article[id], .focus { scroll-margin-top: 6.5rem; } /* the header stays in view, so a post jumped to must clear it */
   .menu { order: 3; width: 100%; justify-content: center; overflow-x: auto; }
   .site { max-width: 9rem; }
 }

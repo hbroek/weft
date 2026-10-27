@@ -25,8 +25,9 @@ func TestCheatsheetShowsWhatTheRendererDoes(t *testing.T) {
 	}
 }
 
-// The sheet is on the pages where a post is written or edited, outside the form, after the editor and before the
-// preview; the page that only likes something does not have it.
+// The sheet is on the pages where a post is written or edited, outside the form and inside the editor's box, after the
+// preview: on a small screen it comes below the preview, and on a wide one it sits in the margins beside the form. The
+// page that only likes something does not have it.
 func TestCheatsheetBesideTheEditor(t *testing.T) {
 	s, tok := setup(t)
 	s.space("alice").SetPassword("correct horse")
@@ -37,12 +38,10 @@ func TestCheatsheetBesideTheEditor(t *testing.T) {
 	for _, path := range []string{"/compose", edit} {
 		page := do3(s, "GET", host, path, ck).Body.String()
 		ed, left, right, preview := strings.Index(page, `<div class="ed">`), strings.Index(page, `cheat cheat-l`), strings.Index(page, `cheat cheat-r`), strings.Index(page, "<h3>Preview</h3>")
-		formEnd := -1
-		if left > 0 {
-			formEnd = strings.LastIndex(page[:left], "</form>") // the editor's form closes before the sheet
-		}
-		if ed < 0 || !(ed < formEnd && formEnd < left && left < right && right < preview) || strings.Contains(page[ed:formEnd], "cheat") {
-			t.Errorf("%s: order wrong (ed %d, form end %d, left %d, right %d, preview %d)", path, ed, formEnd, left, right, preview)
+		formEnd := strings.Index(page[max(ed, 0):], "</form>") + max(ed, 0) // the editor's form closes before the preview
+		edEnd := strings.Index(page, "<script>\n(function(){\nvar md=")     // and the box closes after the sheet, before the editor's script
+		if ed < 0 || formEnd < ed || !(ed < formEnd && formEnd < preview && preview < left && left < right && right < edEnd) || strings.Contains(page[ed:formEnd], "cheat") {
+			t.Errorf("%s: order wrong (ed %d, form end %d, preview %d, left %d, right %d, box end %d)", path, ed, formEnd, preview, left, right, edEnd)
 		}
 		for _, r := range append(append([]cheatRow{}, cheatRowsLeft...), cheatRowsRight...) {
 			if !strings.Contains(page, "<code>"+html.EscapeString(r.Syntax)+"</code>") {

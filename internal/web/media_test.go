@@ -405,3 +405,16 @@ func TestLongPostsFoldInListsOnly(t *testing.T) {
 		t.Errorf("the timeline does not fold long posts:\n%s", tl)
 	}
 }
+
+// The header stays in view while a page scrolls, and a post jumped to is left clear of it.
+func TestHeaderIsSticky(t *testing.T) {
+	s, _ := setup(t)
+	css := do(s, "GET", "alice.localhost:8080", "/static/weft.css", "", "").Body.String()
+	m := regexp.MustCompile(`\.top \{[^}]*\}`).FindString(css)
+	if !strings.Contains(m, "position: sticky") || !strings.Contains(m, "top: 0") {
+		t.Errorf("the header is not sticky: %q", m)
+	}
+	if !strings.Contains(css, "scroll-margin-top") {
+		t.Errorf("no room is left for the header above a post that is jumped to")
+	}
+}
