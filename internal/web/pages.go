@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"html/template"
 	"io"
 	"net/http"
@@ -17,7 +18,8 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}}</title>
-<link rel="alternate" type="application/rss+xml" href="{{.FeedURL}}">
+{{if .Desc}}<meta name="description" content="{{.Desc}}">
+{{end}}<link rel="alternate" type="application/rss+xml" href="{{.FeedURL}}">
 <link rel="icon" href="/static/weft-icon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
@@ -84,9 +86,9 @@ document.querySelectorAll('form.followform').forEach(function(f){
 <p><button>Like this page</button></p></form>
 <p><small>Your like goes in your likes feed, and the page is told with a Webmention if it can take one.</small></p>
 {{template "foot"}}{{end}}
-{{define "parentcard"}}<a class="pcard" href="{{.Href}}">{{if .Image}}<img src="{{.Image}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">{{end}}<span class="pc-t"><strong>{{.Title}}</strong>{{if .Description}}<span class="pc-d">{{.Description}}</span>{{end}}<small>{{.Host}}</small></span></a>{{end}}
-{{define "authorcard"}}<span class="p-author h-card" hidden><a class="u-url p-name" href="{{.SiteURL}}">{{.Author}}</a>{{if .Avatar}}<img class="u-photo" src="{{.Avatar}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}</span>{{end}}
-{{define "avatar"}}<span class="av">{{if .Avatar}}<img src="{{.Avatar}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>{{.Initial}}</span>{{else}}<span>{{.Initial}}</span>{{end}}</span>{{end}}
+{{define "parentcard"}}<a class="pcard" href="{{.Href}}">{{if .Image}}<img src="{{.Image}}" alt="" width="96" height="96" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">{{end}}<span class="pc-t"><strong>{{.Title}}</strong>{{if .Description}}<span class="pc-d">{{.Description}}</span>{{end}}<small>{{.Host}}</small></span></a>{{end}}
+{{define "authorcard"}}<span class="p-author h-card" hidden><a class="u-url p-name" href="{{.SiteURL}}">{{.Author}}</a>{{if .Avatar}}<img class="u-photo" src="{{.Avatar}}" alt="" width="64" height="64" loading="lazy" referrerpolicy="no-referrer">{{end}}</span>{{end}}
+{{define "avatar"}}<span class="av">{{if .Avatar}}<img src="{{.Avatar}}" alt="" width="32" height="32" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>{{.Initial}}</span>{{else}}<span>{{.Initial}}</span>{{end}}</span>{{end}}
 {{define "password"}}{{template "head" .}}<h2>{{if .Forced}}Choose a new password{{else}}Change password{{end}}</h2>
 {{if .Forced}}<p>You signed in with a temporary password. Choose your own to go on.</p>{{end}}
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
@@ -205,7 +207,7 @@ f.addEventListener('change',function(){
 {{define "images"}}{{template "head" .}}<h2>Images</h2>
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <p>{{.MediaUsed}} used{{if .MediaQuota}} of {{.MediaQuota}}{{end}}. Add pictures in the <a href="/compose">editor</a>.</p>
-{{if .Images}}<ul class="imgs">{{range .Images}}<li><a href="{{.Path}}"><img src="{{.Path}}" alt="" loading="lazy" width="120"></a>
+{{if .Images}}<ul class="imgs">{{range .Images}}<li><a href="{{.Path}}"><img src="{{.Path}}?w=240" alt="" loading="lazy" width="120"></a>
 <small>{{.Dims}} · {{.Size}} · {{.When}}{{if .Origin}} · copied from <a href="{{.Origin}}" rel="noreferrer">{{.Origin}}</a>{{end}}<br>
 <code>{{.Path}}</code> · {{if .Used}}in {{.Used}} post{{if ne .Used 1}}s{{end}}{{else}}not used{{end}}</small>
 <form method="post" action="/images/delete" style="display:inline"><input type="hidden" name="name" value="{{.Name}}">{{if .Used}}<input type="hidden" name="force" value="1"><button class="linkbtn">Delete anyway</button>{{else}}<button class="linkbtn">Delete</button>{{end}}</form></li>{{end}}</ul>{{else}}<p>No pictures yet.</p>{{end}}
@@ -350,13 +352,15 @@ type pageData struct {
 	Posts                                      []pagePost
 	Timeline                                   []tlRow
 	Replies                                    []replyRow
-	ReplyTotal                                 int         // replies in all, with the ones to replies
-	PageFeeds                                  []pageFeed  // feeds the bookmarked page advertises
-	Back                                       string      // the timeline view a reply returns to
-	Older, Newest                              string      // timeline: the next page of older posts, and the way back to the newest
-	Cheat                                      *cheatSheet // the Markdown help beside the editor
-	Advanced                                   bool        // the editor opens with title, keywords, address and the Markdown help
-	Forced                                     bool        // the owner signed in with a temporary password and must replace it
+	ReplyTotal                                 int          // replies in all, with the ones to replies
+	PageFeeds                                  []pageFeed   // feeds the bookmarked page advertises
+	Back                                       string       // the timeline view a reply returns to
+	Desc                                       string       // the meta description of the page
+	sp                                         *store.Space // the owner of the page, for the sizes of its pictures
+	Older, Newest                              string       // timeline: the next page of older posts, and the way back to the newest
+	Cheat                                      *cheatSheet  // the Markdown help beside the editor
+	Advanced                                   bool         // the editor opens with title, keywords, address and the Markdown help
+	Forced                                     bool         // the owner signed in with a temporary password and must replace it
 	Moderation                                 []modRow
 	Pending                                    int
 	Like                                       *likeData
@@ -399,7 +403,7 @@ type pageData struct {
 
 func (s *Server) data(r *http.Request, q *req, title string) pageData {
 	return pageData{Title: title, FeedURL: s.base(r) + "/feed.xml", WebmentionURL: s.base(r) + "/webmention",
-		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", WantMD: negotiate(r.Header.Get("Accept")) == "markdown", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name))}
+		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", WantMD: negotiate(r.Header.Get("Accept")) == "markdown", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), sp: q.sp, Desc: describe(orStr(q.host.Bio, "Posts by "+orStr(q.host.Display, q.host.Name)+"."))}
 }
 
 // navOf names the header menu entry a path belongs to, or "".
@@ -423,12 +427,15 @@ func (s *Server) show(w http.ResponseWriter, name string, status int, d pageData
 			return
 		}
 	}
+	var page bytes.Buffer
+	err := layout.ExecuteTemplate(&page, name, d)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	if err := layout.ExecuteTemplate(w, name, d); err != nil {
-		// headers are sent; nothing more to do than log through the body
+	if err != nil {
 		w.Write([]byte("template error"))
+		return
 	}
+	w.Write(sizePictures(page.Bytes(), d.sp))
 }
 
 func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, title string, posts []*store.Post, tweak ...func(*pageData)) {
@@ -520,7 +527,11 @@ func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
 	if title == "" {
 		title = q.host.Display
 	}
-	s.renderPosts(w, r, q, title, []*store.Post{p})
+	s.renderPosts(w, r, q, title, []*store.Post{p}, func(d *pageData) {
+		if text := describe(p.HTML); text != "" {
+			d.Desc = text
+		}
+	})
 }
 
 // negotiate picks the representation of a post that the Accept header asks for: "markdown",

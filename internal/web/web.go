@@ -64,13 +64,15 @@ type Server struct {
 	adj   map[adjKey]likeAdj
 	// lim holds the rate limits; nil when they are off.
 	lim *limits
+	// scaled keeps recent smaller copies of large pictures.
+	scaled *scaleCache
 }
 
 func New(cfg Config, st *store.Instance) *Server {
 	if cfg.Scheme == "" {
 		cfg.Scheme = "http"
 	}
-	s := &Server{cfg: cfg, st: st, mux: http.NewServeMux(), web: fetch.New(cfg.AllowPrivate), wake: make(chan struct{}, 1)}
+	s := &Server{cfg: cfg, st: st, mux: http.NewServeMux(), web: fetch.New(cfg.AllowPrivate), wake: make(chan struct{}, 1), scaled: newScaleCache(scaleMemory)}
 	if !cfg.NoLimits && !limitsOffInTests {
 		s.lim = newLimits()
 	}
@@ -151,6 +153,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !s.admit(w, r) {
 		return
 	}
+	w, done := withGzip(w, r)
+	defer done()
 	if s.lim != nil && strings.HasPrefix(r.URL.Path, "/api/") { // a wrong token counts against the caller
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		s.serve(sw, r)

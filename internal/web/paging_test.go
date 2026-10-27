@@ -223,3 +223,27 @@ func TestMarkdownTimelineHasOlderPosts(t *testing.T) {
 		t.Errorf("second page wrong")
 	}
 }
+
+// Pictures in a post are given their size, so the page does not jump, and all but the first wait until they
+// are near the screen. The icons and avatars of the page are left as they are.
+func TestPicturesInPostsAreSizedAndDeferred(t *testing.T) {
+	s, tok := setup(t)
+	const host = "alice.localhost:8080"
+	_, j1, _ := uploadAPI(t, s, tok, host, "", gpsJPEG(t, 300, 200))
+	_, j2, _ := uploadAPI(t, s, tok, host, "", gpsJPEG(t, 120, 90))
+	md := "![one](" + j1.Path + ")\n\n![two](" + j2.Path + ")\n\n![away](http://other.example/x.jpg)"
+	body, _ := json.Marshal(map[string]any{"title": "Pictures", "markdown": md})
+	if w := do(s, "POST", host, "/api/posts", tok, string(body)); w.Code != 201 {
+		t.Fatalf("post: %d %s", w.Code, w.Body)
+	}
+	page := do(s, "GET", host, "/", "", "").Body.String()
+	for _, want := range []string{
+		`<img src="` + j1.Path + `" alt="one" width="300" height="200" style="--r:1.5000" decoding="async">`,
+		`<img src="` + j2.Path + `" alt="two" width="120" height="90" style="--r:1.3333" loading="lazy" decoding="async">`,
+		`<img src="http://other.example/x.jpg" alt="away" loading="lazy" decoding="async">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("missing %s in:\n%s", want, page)
+		}
+	}
+}

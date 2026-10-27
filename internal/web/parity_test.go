@@ -199,6 +199,7 @@ var (
 	reISO   = regexp.MustCompile(`\d{4}-\d\d-\d\d[T ][\d:]+(Z|[+-]\d\d:?\d\d)?`)
 	reAgo   = regexp.MustCompile(`\b(just now|\d+ (sec|secs|min|mins|hr|hrs|hours?|days?) ago)\b`)
 	reHuman = regexp.MustCompile(`[A-Z][a-z]{2} \d{1,2}, \d{4}(,? \d{1,2}:\d\d( ?[AP]M)?)?`)
+	reStamp = regexp.MustCompile(`\d{1,2} [A-Z][a-z]{2} \d{4}( at)? \d\d:\d\d`) // the page's own dates; the two runs may fall in different minutes
 	reTok   = regexp.MustCompile(`"id":\d+`)
 )
 
@@ -213,6 +214,7 @@ func norm(s string) string {
 	s = reISO.ReplaceAllString(s, "DATE")
 	s = reAgo.ReplaceAllString(s, "AGO")
 	s = reHuman.ReplaceAllString(s, "DATE")
+	s = reStamp.ReplaceAllString(s, "DATE")
 	return s
 }
 

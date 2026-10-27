@@ -102,6 +102,9 @@ func checkSize(cfg image.Config, lim Limits) error {
 	return nil
 }
 
+// Fitted returns the size of a picture w by h shrunk so that its longest side is at most side.
+func Fitted(w, h, side int) (int, int) { return fitted(w, h, side) }
+
 // fitted returns the size of a picture w by h shrunk so that its longest side is at most side.
 func fitted(w, h, side int) (int, int) {
 	long := max(w, h)

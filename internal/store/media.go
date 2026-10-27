@@ -104,3 +104,19 @@ func (s *Space) PostsUsingMedia(name string) (int, error) {
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM posts WHERE deleted=0 AND markdown LIKE ? ESCAPE '\'`, like).Scan(&n)
 	return n, err
 }
+
+// MediaMeta returns a stored picture without its bytes, or ErrNotFound.
+func (s *Space) MediaMeta(name string) (*Media, error) {
+	m := &Media{Name: name}
+	var created int64
+	err := s.db.QueryRow(`SELECT mime,size,width,height,origin,created FROM media WHERE name=?`, name).
+		Scan(&m.Mime, &m.Size, &m.Width, &m.Height, &m.Origin, &created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	m.Created = time.Unix(created, 0)
+	return m, nil
+}

@@ -90,30 +90,65 @@ func originOf(raw string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-// mediaGet serves a picture. Anyone may read it: it is part of a published post.
+// mediaGet serves a picture, or with ?w=800 or ?w=240 a smaller copy of a large one: the picture as it is when
+// it is already small.
 func (s *Server) mediaGet(w http.ResponseWriter, r *http.Request, q *req) {
 	name := r.PathValue("name")
 	if !mediaName.MatchString(name) {
 		http.NotFound(w, r)
 		return
 	}
-	m, err := q.sp.Media(name)
+	side := sideOf(r.URL.Query().Get("w"))
+	if side < 0 {
+		http.Error(w, "w must be 240 or 800", http.StatusBadRequest)
+		return
+	}
+	meta, err := q.sp.MediaMeta(name)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
+	etag := `"` + name + `"`
+	var m *scaled
+	if side > 0 && scalable(meta, side) {
+		etag = `"` + name + `-w` + strconv.Itoa(side) + `"`
+		if r.Header.Get("If-None-Match") != etag { // not needed to answer a revalidation
+			m = s.scaled.get(scaleKey{name, side}, func() *scaled {
+				full, err := q.sp.Media(name)
+				if err != nil {
+					return nil
+				}
+				return s.scaleOf(full, side)
+			})
+			if m == nil { // it could not be made smaller: the picture itself
+				etag = `"` + name + `"`
+			}
+		}
+	}
 	h := w.Header()
-	h.Set("Content-Type", m.Mime)
-	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Cache-Control", "public, max-age=31536000, immutable") // the name is the hash of the bytes
-	h.Set("ETag", `"`+name+`"`)
-	if r.Header.Get("If-None-Match") == `"`+name+`"` {
+	h.Set("ETag", etag)
+	if r.Header.Get("If-None-Match") == etag {
+		h.Set("Content-Type", meta.Mime)
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	h.Set("Content-Length", strconv.Itoa(len(m.Data)))
-	w.Write(m.Data)
+	data, mime := []byte(nil), meta.Mime
+	if m != nil {
+		data, mime = m.data, m.mime
+	} else {
+		full, err := q.sp.Media(name)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		data = full.Data
+	}
+	h.Set("Content-Type", mime)
+	h.Set("Content-Length", strconv.Itoa(len(data)))
+	w.Write(data)
 }
 
 // storeImage cleans a picture and keeps it in the user's database.
