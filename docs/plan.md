@@ -94,10 +94,64 @@ Built Oct 26, 2026: all of the above except webp and avif.
 Timeline pages (Oct 27, 2026): 50 posts to a page with "Older posts"; a date cursor (`before`) rather than an offset, so new posts arriving do not shift the pages. Replies and threads are not folded.
 
 ### 10. Roadmap: automatic account transfers
-Moving an account between servers without doing it by hand: the account's file, followers and old address move together, with the redirect left behind. The case in mind is a person who outgrows a free server's quota and moves to a paid one (for example a "weftbig" server with large quotas), and back. `weft move` and export/import are the pieces to build on.
+Moving an account from one server to another without the operators doing it by hand. Planned Oct 27, 2026; not built. The case in mind is a person who outgrows a free server's quota and moves to a paid one (for example a "weftbig" server with large quotas), and back. Today the same result takes three steps by hand: export, import, `weft move` (see the README). The new pieces are the authorization code, the transfer between the two servers, and the safe order of the switch-over.
 
-### 11. Later
-WebSub or rssCloud. Packaging and a hosted-environment signup (with email). License. A cache for thread-page fetches. Rate limiting of public page reads, if not left to a proxy.
+**The flow, from the user's side**
+1. The user makes an account on the new server, with the same name as on the old one. The name is the identity: the old addresses redirect to the same place on the new server, so the name must match.
+2. On the old server (Profile, "Move to another server") the user gives the password and the address of the new server, and receives a **move code**. It is shown once.
+3. On the new server (Profile, "Move here from another server") the user enters the address of the old server and the code.
+4. The new server fetches the account, checks it and replaces its own, empty account with it. The old server's addresses redirect to the new server, and the user sees a message on both.
+
+**The code**
+- 128 bits from the system's random source, written in groups for typing. The old server keeps only a hash of it, with the account name, the destination the user named, an expiry (one hour) and a count of failed attempts. It is single use, and a new request replaces the previous code.
+- The user names the destination when asking for it. That fixes where the redirect will point, and the old server refuses a transfer asked for by any other address. This does not prove who the caller is (anybody can claim an address); the code does.
+- The code travels in a request header, never in an address, and never into logs. Both servers require HTTPS, except in development mode.
+- Requesting a code needs the password, and a recent sign-in is not enough. Codes are rate limited per account and per address.
+
+**The transfer: separate calls on the old server**, which has one protected path (`/.well-known/weft/move/`) for them:
+1. `prepare` (the code, the new server's address, the account name): the old server checks the code, **freezes** the account (no posts, replies, likes or settings change while it is frozen, so nothing is lost and the checksum stays true), makes one consistent copy with the existing export code, and answers with a manifest: export format, schema version, size, SHA-256 and the Weft version. The copy is kept until the transfer ends.
+2. The new server checks the manifest before downloading anything: format and schema version not newer than it knows (the existing import check), size within its quotas and `MaxImportBytes`, the name matches its own account and the account is still unused (no posts, no followers). If any check fails it calls `abort` and the old server unfreezes.
+3. `data`: the copy as a stream, with `Range` so a broken download resumes. The new server computes the SHA-256 while it writes to a temporary file and compares it with the manifest. A second call for the checksum is not needed: it is in the manifest, which cannot change because the account is frozen.
+4. The new server runs the same checks as `weft import` (integrity, no triggers or views, one user, the right name) on the temporary file. Failing, it calls `abort`.
+5. `received` (checksum matched, file valid): from here the old server treats the account as moved pending. It no longer unfreezes by itself; only the user can cancel it (`weft move -cancel`, or the profile page).
+6. The new server swaps the files: the staged file replaces its account in one rename. The new account keeps its own password and API token, so the user stays signed in; the old password is not carried over. Sessions of the old server are not carried over.
+7. `done`: the old server sets the account to moved, with the redirect to the new server and the name reserved for good. The existing machinery then takes over: its file goes to `trash/` and is deleted after 30 days, and `weft move -cancel` brings it back until then.
+
+If a step before 5 fails, the old server unfreezes (an expired `prepare` also unfreezes) and nothing changed on either side. If the new server fails after 5 and before 6, the staged file waits, the user retries on the new server, and the old account stays frozen: it never has two live copies. If `done` cannot be delivered, the new server retries it in the background and the page tells the user, who can also press "Finish the move" on the old server.
+
+**What is not carried over**
+- The custom domain. The user points it at the new server and claims it there, as for any new domain (the TXT record is new, since its token belongs to the account on that server).
+- Remote sessions, the API token, queued Webmentions and the feed cache (rebuilt by polling).
+- The old password. The user keeps the one they chose on the new server.
+
+**What changes for others**
+- Addresses of posts, feeds, pictures and the likes feed: only the host part, and all addresses stored in the file are relative or take the current host, so they resolve on the new server. The old host answers with 301/308 redirects, which readers and Webmention senders already follow (see the tests of a reader following a moved feed).
+- Guids are `urn:uuid:` so a post keeps its identity. Followers' readers see the same items on the new feed address.
+- Likes and replies already stored under the old host keep their old source addresses; those still verify through the redirect.
+
+**Build order**
+1. Store: freeze and unfreeze, prepare-copy keeping, move code table in `instance.db` (hash, destination, expiry, attempts, state), staged import with a given file and expected checksum, replacing an unused account.
+2. Old server: the profile page and the `/.well-known/weft/move/` calls, the freeze check in every write path, and `weft move` / `weft move -cancel` showing the new states.
+3. New server: the profile page and the client of those calls (using the same guarded HTTP client as feed fetching, so private addresses are refused outside development mode).
+4. Tests: two servers in one test, the whole flow; every failure point (bad code, expired, reused, wrong destination, newer schema, checksum mismatch, a broken download and its resume, `abort`, a crash between 5 and 7) leaves one live copy; a hostile old server (a huge file, a manifest that lies, a zip with extra files).
+5. README section and a changelog line.
+
+**Open questions**
+- Same name only, or may the user rename while moving? Renaming changes every address, so the first version refuses it.
+- Whether the new account must be empty. The plan says yes: it protects a user from moving over an account they are using.
+- Should the code also be sent by email to a verified address (see iteration 11), as a second channel? Optional, and only after email exists.
+
+### 11. Roadmap: email, as a plug-in
+Planned Oct 27, 2026; not built. Weft does not send email itself (no mail server, no vendor built in). It defines the one thing it needs and lets the operator choose how it is done.
+- A `Mailer` interface with a single call, send a message (to, subject, text, and an optional HTML part). The server is configured with one mailer, or none. With none, everything that would send an email falls back to what works today: the operator hands out a temporary password, and the move code is shown on the screen.
+- Providers, each small and separate: `smtp` (host, port, user, password from the environment, standard library only); `command` (the message goes to the standard input of a program the operator names, such as `sendmail -t`, which gives every other provider without a new dependency); `http` (a configured endpoint and header for services with a plain JSON API, such as Postmark, Resend or Mailgun). `cloudflare` is a ready-made setting of the `http` provider for servers whose domain is on Cloudflare: it posts `{to, from, subject, text, html}` as JSON to `https://api.cloudflare.com/client/v4/accounts/<account id>/email/sending/send` with a bearer API token, and reads `result.delivered`, `result.queued` and `result.permanent_bounces` from the answer (a permanent bounce marks the address as bad, so the server stops mailing it). The operator onboards the domain once in the Cloudflare dashboard (Email Service, Email Sending), which adds SPF, DKIM, DMARC and bounce records under `cf-bounce`; the domain has to use Cloudflare DNS. Mail is sent from an address on the operator's domain (for example `no-reply@weftseed.com`), never from a user's own domain. The account id and the token (a token limited to sending) come from the environment, not from a file in the repository. Checked against Cloudflare's [send-email guide](https://developers.cloudflare.com/email-service/get-started/send-emails/) on Oct 27, 2026, which does not say what plans it needs, its sending limits, or whether recipients are restricted; look those up before building, and treat the request format as one to re-check, since the service is new. Nothing is added to the module unless a provider cannot be done without it.
+- Email stays optional on an account. An address is used only after it is **verified**: a message with a one-time link to the address, hashed token, one hour. Changing the address verifies the new one and tells the old one.
+- First uses: password reset (a one-time link; the answer is the same whether the address exists or not; rate limited per address and per client; the link signs out other sessions on use) and the move code (iteration 10) as a second channel.
+- Later uses, each a setting the user turns on, off by default: a note for a reply or mention on your posts, a note for a new follower, and a daily digest instead of single notes. Each message has a one-click way to stop that kind of mail. A queue (the Webmention queue's pattern) with a cap and retries, so a slow provider never slows a request.
+- Not planned: receiving mail, posting by email, and any tracking pixels or links.
+
+### 12. Later
+WebSub or rssCloud. Packaging and a hosted-environment signup (with email, iteration 11). License. A cache for thread-page fetches. Rate limiting of public page reads, if not left to a proxy.
 
 **Action item (before production):** work through [production-optimizations.md](production-optimizations.md): measure, then decide which of its items to build. First on the list is a fetch cache for thread pages.
 
