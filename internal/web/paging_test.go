@@ -5,6 +5,7 @@ import (
 	"html"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -78,6 +79,9 @@ func TestTimelinePagesShowEveryPostOnce(t *testing.T) {
 		path = ""
 		if m := olderLink.FindStringSubmatch(body); m != nil {
 			path = html.UnescapeString(m[1])
+			if strings.Contains(path, "%") || !regexp.MustCompile(`before=\d{4}-\d\d-\d\d_\d\d-\d\d$`).MatchString(path) {
+				t.Errorf("the address is not a plain date: %s", path)
+			}
 		}
 	}
 	if pages != 5 { // 220 posts, 50 to a page
@@ -98,22 +102,37 @@ func TestTimelinePagesShowEveryPostOnce(t *testing.T) {
 
 func TestTimelineCutKeepsOnlyWhatTheSourcesGaveWhole(t *testing.T) {
 	at := func(sec int64) tlRow { return tlRow{when: time.Unix(sec, 0)} }
-	rows := []tlRow{at(100), at(90), at(80), at(80), at(70), at(60)}
+	// minutes 100, 90, 80 (two posts), 70, 60
+	rows := []tlRow{at(6000), at(5400), at(4800), at(4810), at(4200), at(3600)}
 
 	// all sources gave everything they have: one page, no more
 	pg := &tlPage{limit: 50}
 	if page, next := pg.cut(rows, 50); len(page) != 6 || next != 0 {
 		t.Errorf("all: %d rows, next %d", len(page), next)
 	}
-	// a page ends inside a second: the rest of that second comes along
+	// a page ends inside a minute: the rest of that minute comes along, and the next page starts before it
 	pg = &tlPage{limit: 50}
-	if page, next := pg.cut(rows, 3); len(page) != 4 || next != 80 {
+	if page, next := pg.cut(rows, 3); len(page) != 4 || next != 4800 {
 		t.Errorf("tie: %d rows, next %d", len(page), next)
 	}
-	// a source that gave its limit has more below 70: older rows are not complete, so they wait
+	// a source that gave its limit has more below minute 70: that minute and older are not complete, so they wait
 	pg = &tlPage{limit: 4}
-	pg.took(4, time.Unix(70, 0))
-	if page, next := pg.cut(rows, 50); len(page) != 4 || next != 80 {
+	pg.took(4, time.Unix(4210, 0))
+	if page, next := pg.cut(rows, 50); len(page) != 4 || next != 4800 {
 		t.Errorf("edge: %d rows, next %d", len(page), next)
+	}
+}
+
+func TestBeforeIsWrittenAsADate(t *testing.T) {
+	want := time.Date(2026, 10, 27, 14, 35, 0, 0, time.UTC).Unix()
+	for _, v := range []string{"2026-10-27_14-35", "2026-10-27:14:35", "2026-10-27T14:35", "2026-10-27 14:35", " 2026-10-27:14:35 ", strconv.FormatInt(want, 10)} {
+		if got := parseBefore(v); got != want {
+			t.Errorf("%q: %d, want %d", v, got, want)
+		}
+	}
+	for _, v := range []string{"", "yesterday", "2026-13-01:00:00"} {
+		if got := parseBefore(v); got != 0 {
+			t.Errorf("%q: %d, want 0", v, got)
+		}
 	}
 }

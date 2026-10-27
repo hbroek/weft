@@ -98,7 +98,7 @@ In a list of posts (the timeline, the home page, a keyword page) a post longer t
 
 ## Timeline pages
 
-The timeline shows 50 posts at a time. "Older posts" at the bottom leads to the next 50 (`/timeline?before=<unix time>`, with the feed, keyword and likes choices kept), and "Back to the newest" returns. Your own posts and, if shown, likes are cut at the same dates, so every post appears once.
+The timeline shows 50 posts at a time. "Older posts" at the bottom leads to the next 50 (`/timeline?before=2026-10-27_14-35`, a minute in UTC with 24-hour time that you can edit to jump to a date, with the feed, keyword and likes choices kept), and "Back to the newest" returns. Your own posts and, if shown, likes are cut at the same dates, so every post appears once.
 
 ## Pictures
 

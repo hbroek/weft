@@ -129,17 +129,19 @@ func (pg *tlPage) took(n int, oldest time.Time) {
 }
 
 // cut keeps the first page of rows (newest first): only those the sources have given completely, at
-// most one page of them, and every row of the second the page ends in. next is the Unix time the next
-// page starts before, or 0 when there is no more.
+// most one page of them, and every row of the minute the page ends in, since the address of the next
+// page names a minute. next is the Unix time the next page starts before (a whole minute), or 0 when
+// there is no more.
 func (pg *tlPage) cut(rows []tlRow, size int) (page []tlRow, next int64) {
+	minute := func(i int) int64 { return rows[i].when.Unix() / 60 }
 	more := false
-	if pg.edge > 0 {
-		n := sort.Search(len(rows), func(i int) bool { return rows[i].when.Unix() <= pg.edge })
+	if pg.edge > 0 { // the minute the edge is in is not complete either
+		n := sort.Search(len(rows), func(i int) bool { return rows[i].when.Unix() < pg.edge/60*60+60 })
 		rows, more = rows[:n], true
 	}
 	if len(rows) > size {
 		end := size
-		for end < len(rows) && rows[end].when.Unix() == rows[size-1].when.Unix() {
+		for end < len(rows) && minute(end) == minute(size-1) {
 			end++
 		}
 		if end < len(rows) {
@@ -150,9 +152,27 @@ func (pg *tlPage) cut(rows []tlRow, size int) (page []tlRow, next int64) {
 	case !more:
 		return rows, 0
 	case len(rows) == 0:
-		return rows, pg.edge
+		return rows, pg.edge / 60 * 60 // a minute with more posts than a read holds is skipped rather than shown again forever
 	}
-	return rows, rows[len(rows)-1].when.Unix()
+	return rows, rows[len(rows)-1].when.Unix() / 60 * 60
+}
+
+// beforeStamp is how an address names a minute: 2026-10-27_14-35 (UTC, 24 hours). Its characters need
+// no escaping in an address.
+const beforeStamp = "2006-01-02_15-04"
+
+// parseBefore reads that, or the same with a colon, a T or a space between the day and the hour, or a Unix time.
+func parseBefore(v string) int64 {
+	v = strings.TrimSpace(v)
+	if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+		return n
+	}
+	for _, layout := range []string{beforeStamp, "2006-01-02:15:04", "2006-01-02T15:04", "2006-01-02 15:04"} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t.Unix()
+		}
+	}
+	return 0
 }
 
 func (s *Server) rows(r *http.Request, q *req, feedURL string, pg *tlPage) ([]tlRow, []store.TimelineItem, error) {
@@ -303,7 +323,7 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 	if kw != "" {                          // the filter drops most of what the sources give, so read more of it
 		pg.limit = 8 * timelinePage
 	}
-	pg.before, _ = strconv.ParseInt(r.FormValue("before"), 10, 64)
+	pg.before = parseBefore(r.FormValue("before"))
 	rows, _, err := s.rows(r, q, only, pg)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -377,7 +397,7 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 	d.Timeline = rows
 	if next != 0 {
 		v := r.URL.Query()
-		v.Set("before", strconv.FormatInt(next, 10))
+		v.Set("before", time.Unix(next, 0).UTC().Format(beforeStamp))
 		d.Older = "/timeline?" + v.Encode()
 	}
 	if pg.before > 0 {
