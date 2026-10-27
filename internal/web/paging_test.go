@@ -1,8 +1,11 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -134,5 +137,89 @@ func TestBeforeIsWrittenAsADate(t *testing.T) {
 		if got := parseBefore(v); got != 0 {
 			t.Errorf("%q: %d, want 0", v, got)
 		}
+	}
+}
+
+var linkNext = regexp.MustCompile(`<([^>]+)>; rel="next"`)
+
+// The API timeline pages the same way: limit and before, and a Link header to the next page.
+func TestAPITimelinePages(t *testing.T) {
+	s, tok := setup(t)
+	const host = "alice.localhost:8080"
+	start := time.Now().Add(-time.Hour)
+	savePosts(t, s, "a", 70, start, 60, map[int]bool{29: true, 30: true, 31: true})
+	savePosts(t, s, "b", 40, start, 90, nil)
+
+	seen := map[string]int{}
+	path, pages := "/api/timeline?limit=25", 0
+	for path != "" {
+		if pages++; pages > 10 {
+			t.Fatal("the pages do not end")
+		}
+		w := do(s, "GET", host, path, tok, "")
+		if w.Code != 200 {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
+		}
+		var items []struct{ Title string }
+		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+			t.Fatal(err)
+		}
+		if len(items) > 25 {
+			t.Errorf("page %d has %d posts, limit 25", pages, len(items))
+		}
+		for _, it := range items {
+			seen[it.Title]++
+		}
+		path = ""
+		if m := linkNext.FindStringSubmatch(w.Header().Get("Link")); m != nil {
+			path = m[1]
+		} else if len(items) == 0 {
+			t.Errorf("page %d is empty", pages)
+		}
+	}
+	if len(seen) != 110 {
+		t.Errorf("%d different posts, want 110", len(seen))
+	}
+	for k, n := range seen {
+		if n != 1 {
+			t.Errorf("%s shown %d times", k, n)
+		}
+	}
+	// no parameters: the newest 200, here all of them, and no next page
+	w := do(s, "GET", host, "/api/timeline", tok, "")
+	if w.Header().Get("Link") != "" || strings.Count(w.Body.String(), `"guid"`) != 110 {
+		t.Errorf("plain call: link %q, %d posts", w.Header().Get("Link"), strings.Count(w.Body.String(), `"guid"`))
+	}
+	for _, bad := range []string{"limit=0", "limit=501", "limit=x", "before=yesterday"} {
+		if c := do(s, "GET", host, "/api/timeline?"+bad, tok, "").Code; c != 400 {
+			t.Errorf("%s: %d, want 400", bad, c)
+		}
+	}
+}
+
+// The Markdown timeline leads on to older posts the same way the page does.
+func TestMarkdownTimelineHasOlderPosts(t *testing.T) {
+	s, _ := setup(t)
+	savePosts(t, s, "a", 130, time.Now().Add(-time.Hour), 60, nil)
+	if err := s.space("alice").SetPassword("correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+	get := func(path string) string {
+		r := httptest.NewRequest("GET", "http://alice.localhost:8080"+path, nil)
+		r.Header.Set("Accept", "text/markdown")
+		r.AddCookie(&http.Cookie{Name: cookieName, Value: ck})
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w.Body.String()
+	}
+	first := get("/timeline")
+	m := regexp.MustCompile(`\[Older posts\]\((http://alice\.localhost:8080/timeline\?before=[0-9_-]+)\)`).FindStringSubmatch(first)
+	if m == nil || strings.Contains(first, "Back to the newest") {
+		t.Fatalf("first page:\n%s", first[len(first)-300:])
+	}
+	second := get(strings.TrimPrefix(m[1], "http://alice.localhost:8080"))
+	if !strings.Contains(second, "Back to the newest") || strings.Contains(second, "Post a 000") || !strings.Contains(second, "Post a 05") {
+		t.Errorf("second page wrong")
 	}
 }

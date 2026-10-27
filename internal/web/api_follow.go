@@ -3,6 +3,8 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/hbroek/weft/internal/feed"
@@ -38,14 +40,55 @@ func (s *Server) apiAuth(w http.ResponseWriter, r *http.Request, q *req) bool {
 	return true
 }
 
+// maxAPITimeline is the most posts one call of the API timeline gives.
+const maxAPITimeline = 500
+
+// apiTimeline gives the newest posts of the followed feeds as JSON. limit (default 200) and before (a date
+// like 2026-10-27_14-35 in UTC, or a Unix time) page back through older ones; a Link header with
+// rel="next" names the next page and is missing on the last.
 func (s *Server) apiTimeline(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.apiAuth(w, r, q) {
 		return
 	}
-	items, err := q.sp.Timeline(q.host.ID, 200)
+	limit := 200
+	if v := r.FormValue("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > maxAPITimeline {
+			http.Error(w, "limit must be a number from 1 to "+strconv.Itoa(maxAPITimeline), http.StatusBadRequest)
+			return
+		}
+		limit = n
+	}
+	before := int64(0)
+	if v := r.FormValue("before"); v != "" {
+		if before = parseBefore(v); before == 0 {
+			http.Error(w, "before must be a date like 2026-10-27_14-35 (UTC) or a Unix time", http.StatusBadRequest)
+			return
+		}
+	}
+	items, err := q.sp.TimelineBefore(q.host.ID, before, limit)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
+	}
+	// A full read may have more. Its oldest minute may be cut short, so that minute is left for the next
+	// page, which starts before it, unless the whole read is that one minute.
+	if len(items) == limit {
+		minute := func(i int) int64 { return items[i].Published.Unix() / 60 }
+		keep := len(items)
+		for keep > 0 && minute(keep-1) == minute(len(items)-1) {
+			keep--
+		}
+		if keep == 0 {
+			keep = len(items)
+		}
+		items = items[:keep]
+		next := items[keep-1].Published.Unix() / 60 * 60
+		v := url.Values{"before": {time.Unix(next, 0).UTC().Format(beforeStamp)}}
+		if r.FormValue("limit") != "" {
+			v.Set("limit", strconv.Itoa(limit))
+		}
+		w.Header().Add("Link", "</api/timeline?"+v.Encode()+`>; rel="next"`)
 	}
 	out := make([]timelineJSON, 0, len(items))
 	for _, it := range items {

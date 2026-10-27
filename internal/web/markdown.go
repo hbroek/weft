@@ -188,6 +188,16 @@ func (d pageData) mdTimeline(b *strings.Builder) {
 			b.WriteString("\n" + strings.Join(meta, " · ") + "\n")
 		}
 	}
+	var nav []string
+	if d.Older != "" {
+		nav = append(nav, mdLink("Older posts", d.abs(d.Older)))
+	}
+	if d.Newest != "" {
+		nav = append(nav, mdLink("Back to the newest", d.abs(d.Newest)))
+	}
+	if len(nav) > 0 {
+		b.WriteString("\n---\n\n" + strings.Join(nav, " · ") + "\n")
+	}
 }
 
 func (d pageData) mdThread(b *strings.Builder) {
