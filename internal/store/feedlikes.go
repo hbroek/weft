@@ -39,6 +39,11 @@ type FeedLike struct {
 
 // FeedLikes returns the likes of the feeds the user follows, newest first. A feedURL limits it to one feed.
 func (s *Space) FeedLikes(userID int64, feedURL string, limit int) ([]FeedLike, error) {
+	return s.FeedLikesBefore(userID, feedURL, 0, limit)
+}
+
+// FeedLikesBefore is FeedLikes for the likes published before the Unix time before (0: no bound).
+func (s *Space) FeedLikesBefore(userID int64, feedURL string, before int64, limit int) ([]FeedLike, error) {
 	urls, err := s.followURLs(userID)
 	if err != nil {
 		return nil, err
@@ -48,6 +53,9 @@ func (s *Space) FeedLikes(userID int64, feedURL string, limit int) ([]FeedLike, 
 			return nil, nil
 		}
 		urls = []string{feedURL}
+	}
+	if before > 0 {
+		return s.in.likesOf(urls, `AND l.published<? ORDER BY l.published DESC, l.guid LIMIT ?`, before, limit)
 	}
 	return s.in.likesOf(urls, `ORDER BY l.published DESC, l.guid LIMIT ?`, limit)
 }

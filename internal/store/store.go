@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -207,6 +208,27 @@ func (s *Space) Post(userID, id int64) (*Post, error) {
 // RecentPosts returns a user's non-deleted posts, newest first.
 func (s *Space) RecentPosts(userID int64, limit int) ([]*Post, error) {
 	return s.PostsPage(userID, limit, 0)
+}
+
+// PostsBefore returns limit of the user's posts created before the Unix time before (0: no bound), newest first.
+func (s *Space) PostsBefore(userID, before int64, limit int) ([]*Post, error) {
+	if before <= 0 {
+		before = math.MaxInt64
+	}
+	rows, err := s.db.Query(`SELECT `+postCols+` FROM posts WHERE user_id=? AND deleted=0 AND created<? ORDER BY created DESC, id DESC LIMIT ?`, userID, before, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Post
+	for rows.Next() {
+		p, err := scanPost(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // PostsPage returns limit of the user's posts, newest first, after skipping offset of them.

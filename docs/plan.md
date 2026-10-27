@@ -91,6 +91,8 @@ Images are stored in the author's own database, so a post does not break when so
 
 Built Oct 26, 2026: all of the above except webp and avif.
 
+Timeline pages (Oct 27, 2026): 50 posts to a page with "Older posts"; a date cursor (`before`) rather than an offset, so new posts arriving do not shift the pages. Replies and threads are not folded.
+
 ### 10. Roadmap: automatic account transfers
 Moving an account between servers without doing it by hand: the account's file, followers and old address move together, with the redirect left behind. The case in mind is a person who outgrows a free server's quota and moves to a paid one (for example a "weftbig" server with large quotas), and back. `weft move` and export/import are the pieces to build on.
 

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,18 +109,67 @@ func backParam(back string) string {
 	return "&back=" + url.QueryEscape(back)
 }
 
-func (s *Server) rows(r *http.Request, q *req, feedURL string) ([]tlRow, []store.TimelineItem, error) {
+// timelinePage is how many cards one page of the timeline shows; "Older posts" leads to the next.
+const timelinePage = 50
+
+// tlPage is one page of the timeline being read: the sources (followed posts, likes, your own posts)
+// each give their newest limit entries older than before. A source that gave all limit of them may
+// have more; edge is the newest date at which such a source stops, and nothing older is complete.
+type tlPage struct {
+	before int64 // Unix time: only older entries; 0 for the first page
+	limit  int
+	edge   int64
+}
+
+// took notes how many entries a source gave and when its oldest was made.
+func (pg *tlPage) took(n int, oldest time.Time) {
+	if n >= pg.limit && n > 0 && oldest.Unix() > pg.edge {
+		pg.edge = oldest.Unix()
+	}
+}
+
+// cut keeps the first page of rows (newest first): only those the sources have given completely, at
+// most one page of them, and every row of the second the page ends in. next is the Unix time the next
+// page starts before, or 0 when there is no more.
+func (pg *tlPage) cut(rows []tlRow, size int) (page []tlRow, next int64) {
+	more := false
+	if pg.edge > 0 {
+		n := sort.Search(len(rows), func(i int) bool { return rows[i].when.Unix() <= pg.edge })
+		rows, more = rows[:n], true
+	}
+	if len(rows) > size {
+		end := size
+		for end < len(rows) && rows[end].when.Unix() == rows[size-1].when.Unix() {
+			end++
+		}
+		if end < len(rows) {
+			rows, more = rows[:end], true
+		}
+	}
+	switch {
+	case !more:
+		return rows, 0
+	case len(rows) == 0:
+		return rows, pg.edge
+	}
+	return rows, rows[len(rows)-1].when.Unix()
+}
+
+func (s *Server) rows(r *http.Request, q *req, feedURL string, pg *tlPage) ([]tlRow, []store.TimelineItem, error) {
 	sp := q.sp
 	userID := sp.UID()
 	var items []store.TimelineItem
 	var err error
 	if feedURL != "" {
-		items, err = sp.FeedItems(userID, feedURL, 200)
+		items, err = sp.FeedItemsBefore(userID, feedURL, pg.before, pg.limit)
 	} else {
-		items, err = sp.Timeline(userID, 200)
+		items, err = sp.TimelineBefore(userID, pg.before, pg.limit)
 	}
 	if err != nil {
 		return nil, nil, err
+	}
+	if n := len(items); n > 0 {
+		pg.took(n, items[n-1].Published)
 	}
 	likers, _ := sp.FollowedLikers(userID)
 	out := make([]tlRow, 0, len(items))
@@ -138,15 +188,24 @@ func (s *Server) rows(r *http.Request, q *req, feedURL string) ([]tlRow, []store
 			Date: stampAt(it.Published), ISO: it.Published.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(it.Published), MD: orStr(it.Markdown, it.Text), HTML: remoteHTML(it), Edited: it.Updated != nil, Keywords: it.Keywords,
 			ReplyHref: replyHref(it, r.URL.RequestURI()), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(n), TallyTip: likedBy(names, n),
 			Mine: mine, when: it.Published})
-		if row := &out[len(out)-1]; row.InReplyTo != "" {
-			who, card := s.replyContext(r, q, row.InReplyTo)
-			row.ReplyWho = who
-			if row.Parent == nil {
-				row.Parent = card
-			}
-		}
 	}
 	return out, items, nil
+}
+
+// addContext tells who each reply answers and shows the post it answers, as far as it is known; only
+// the rows of the page need it, because it may fetch the post.
+func (s *Server) addContext(r *http.Request, q *req, rows []tlRow) {
+	for i := range rows {
+		row := &rows[i]
+		if row.InReplyTo == "" {
+			continue
+		}
+		who, card := s.replyContext(r, q, row.InReplyTo)
+		row.ReplyWho = who
+		if row.Parent == nil {
+			row.Parent = card
+		}
+	}
 }
 
 // oneLine shortens text to about n runes on one line.
@@ -177,18 +236,24 @@ func (s *Server) likedAs(r *http.Request, q *req, target string, info feed.Paren
 }
 
 // withLikes adds the likes of followed people, and the user's own, to the timeline rows, in date order.
-func (s *Server) withLikes(r *http.Request, q *req, only string, rows []tlRow) ([]tlRow, error) {
-	ls, err := q.sp.FeedLikes(q.host.ID, only, 200)
+func (s *Server) withLikes(r *http.Request, q *req, only string, rows []tlRow, pg *tlPage) ([]tlRow, error) {
+	ls, err := q.sp.FeedLikesBefore(q.host.ID, only, pg.before, pg.limit)
 	if err != nil {
 		return rows, err
+	}
+	if n := len(ls); n > 0 {
+		pg.took(n, ls[n-1].Published)
 	}
 	for _, l := range ls {
 		rows = append(rows, tlRow{IsLike: true, Author: orStr(l.FeedTitle, l.FeedURL), AuthorHref: "/timeline?feed=" + url.QueryEscape(l.FeedURL),
 			Date: stamp(l.Published), LikedHref: httpURL(l.Target), LikedAs: s.likedAs(r, q, l.Target, l.Parent), when: l.Published})
 	}
-	mine, err := q.sp.ActiveLikes(q.host.ID, 200)
+	mine, err := q.sp.ActiveLikesBefore(q.host.ID, pg.before, pg.limit)
 	if err != nil {
 		return rows, err
+	}
+	if n := len(mine); n > 0 {
+		pg.took(n, mine[n-1].Created)
 	}
 	for _, l := range mine {
 		if only != "" { // on one person's page, only likes of their posts
@@ -205,10 +270,13 @@ func (s *Server) withLikes(r *http.Request, q *req, only string, rows []tlRow) (
 
 // ownRows are the user's own posts as timeline rows, so a post (or a reply to someone) shows up
 // where its conversation is read. They carry the like tally of the post's page, not a like button.
-func (s *Server) ownRows(r *http.Request, q *req) ([]tlRow, error) {
-	posts, err := q.sp.RecentPosts(q.host.ID, 200)
+func (s *Server) ownRows(r *http.Request, q *req, pg *tlPage) ([]tlRow, error) {
+	posts, err := q.sp.PostsBefore(q.host.ID, pg.before, pg.limit)
 	if err != nil {
 		return nil, err
+	}
+	if n := len(posts); n > 0 {
+		pg.took(n, posts[n-1].Created)
 	}
 	tallies, _ := q.sp.Tallies(q.host.ID)
 	likers, _ := q.sp.Likers(q.host.ID)
@@ -221,13 +289,6 @@ func (s *Server) ownRows(r *http.Request, q *req) ([]tlRow, error) {
 			Edited: p.Updated != nil, Keywords: p.Keywords, EditHref: "/posts/" + p.Slug + "/edit",
 			ReplyHref: "/compose?reply_to=" + url.QueryEscape(pu) + backParam(r.URL.RequestURI()), ThreadHref: threadHref(pu, ""), HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 			Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), when: p.Created})
-		if row := &out[len(out)-1]; row.InReplyTo != "" {
-			who, card := s.replyContext(r, q, row.InReplyTo)
-			row.ReplyWho = who
-			if row.Parent == nil {
-				row.Parent = card
-			}
-		}
 	}
 	return out, nil
 }
@@ -237,7 +298,13 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	only := r.FormValue("feed")
-	rows, _, err := s.rows(r, q, only)
+	kw := feed.Keyword(r.FormValue("keyword"))
+	pg := &tlPage{limit: 2 * timelinePage} // a page is cut to what every source gave whole, so read more than a page of each
+	if kw != "" {                          // the filter drops most of what the sources give, so read more of it
+		pg.limit = 8 * timelinePage
+	}
+	pg.before, _ = strconv.ParseInt(r.FormValue("before"), 10, 64)
+	rows, _, err := s.rows(r, q, only, pg)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -245,7 +312,7 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 	// your own posts join the full timeline; on one person's page they would not belong
 	showMine := only == "" && r.FormValue("mine") != "0"
 	if showMine {
-		own, err := s.ownRows(r, q)
+		own, err := s.ownRows(r, q, pg)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -253,7 +320,6 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 		rows = append(rows, own...)
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].when.After(rows[j].when) })
 	}
-	kw := feed.Keyword(r.FormValue("keyword"))
 	if kw != "" {
 		// a keyword filter shows posts only; likes carry no keywords
 		kept := rows[:0]
@@ -266,11 +332,13 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	showLikes := kw == "" && r.FormValue("likes") == "1"
 	if showLikes {
-		if rows, err = s.withLikes(r, q, only, rows); err != nil {
+		if rows, err = s.withLikes(r, q, only, rows, pg); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 	}
+	rows, next := pg.cut(rows, timelinePage)
+	s.addContext(r, q, rows)
 	d := s.data(r, q, "Timeline")
 	d.ShowLikes = showLikes
 	d.ShowMine = showMine
@@ -307,6 +375,19 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 		}
 	}
 	d.Timeline = rows
+	if next != 0 {
+		v := r.URL.Query()
+		v.Set("before", strconv.FormatInt(next, 10))
+		d.Older = "/timeline?" + v.Encode()
+	}
+	if pg.before > 0 {
+		v := r.URL.Query()
+		v.Del("before")
+		d.Newest = "/timeline"
+		if len(v) > 0 {
+			d.Newest += "?" + v.Encode()
+		}
+	}
 	s.show(w, "timeline", http.StatusOK, d)
 }
 

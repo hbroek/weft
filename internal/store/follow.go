@@ -2,6 +2,7 @@ package store
 
 import (
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/hbroek/weft/internal/feed"
@@ -356,11 +357,24 @@ func (in *Instance) queryTimeline(q string, args ...any) ([]TimelineItem, error)
 
 // Timeline returns items from the feeds the user follows, newest first.
 func (s *Space) Timeline(userID int64, limit int) ([]TimelineItem, error) {
+	return s.TimelineBefore(userID, 0, limit)
+}
+
+// TimelineBefore is Timeline for the items published before the Unix time before (0: no bound).
+func (s *Space) TimelineBefore(userID, before int64, limit int) ([]TimelineItem, error) {
 	urls, err := s.followURLs(userID)
 	if err != nil {
 		return nil, err
 	}
-	return s.in.itemsOf(urls, ``, `ORDER BY i.published DESC, i.guid LIMIT ?`, limit)
+	return s.in.itemsOf(urls, publishedBefore(before), `ORDER BY i.published DESC, i.guid LIMIT ?`, limit)
+}
+
+// publishedBefore is the condition for items older than the Unix time before, or none if it is 0.
+func publishedBefore(before int64) string {
+	if before <= 0 {
+		return ``
+	}
+	return `i.published<` + strconv.FormatInt(before, 10)
 }
 
 // ItemsInThread returns cached items from followed feeds that belong to the thread rooted at root
@@ -376,10 +390,15 @@ func (s *Space) ItemsInThread(userID int64, root string) ([]TimelineItem, error)
 // FeedItems returns the cached items of one followed feed, newest first. It is empty if the user
 // does not follow that feed.
 func (s *Space) FeedItems(userID int64, feedURL string, limit int) ([]TimelineItem, error) {
+	return s.FeedItemsBefore(userID, feedURL, 0, limit)
+}
+
+// FeedItemsBefore is FeedItems for the items published before the Unix time before (0: no bound).
+func (s *Space) FeedItemsBefore(userID int64, feedURL string, before int64, limit int) ([]TimelineItem, error) {
 	if ok, err := s.IsFollowing(userID, feedURL); err != nil || !ok {
 		return nil, err
 	}
-	return s.in.itemsOf([]string{feedURL}, ``, `ORDER BY i.published DESC, i.guid LIMIT ?`, limit)
+	return s.in.itemsOf([]string{feedURL}, publishedBefore(before), `ORDER BY i.published DESC, i.guid LIMIT ?`, limit)
 }
 
 // ItemByTarget returns a cached item of a followed feed by its permalink, or ErrNotFound.

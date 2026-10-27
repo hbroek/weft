@@ -187,7 +187,8 @@ f.addEventListener('change',function(){
 <div class="meta"><div class="m-l">{{if .Own}}{{if .Tally}}<small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Link}}">{{.Tally}}</a></small>{{end}}{{else if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
 <button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Target}}">{{.Tally}}</a></small>{{end}}</form>{{end}}</div>
 <div class="m-r"><a class="ico" href="{{.ReplyHref}}" title="Reply" aria-label="Reply">{{template "ic-reply"}}</a>{{if .HasThread}}<a class="ico" href="{{.ThreadHref}}" title="Thread" aria-label="Thread">{{template "ic-thread"}}</a>{{end}}{{if .Own}}<a class="ico" href="{{.EditHref}}" title="Edit" aria-label="Edit">{{template "ic-edit"}}</a>{{end}}</div></div>
-</article>{{end}}{{else}}<p>Nothing yet. <a href="/following">Follow a feed</a>.</p>{{end}}
+</article>{{end}}{{else}}<p>{{if .Newest}}No older posts.{{else}}Nothing yet. <a href="/following">Follow a feed</a>.{{end}}</p>{{end}}
+{{if or .Older .Newest}}<nav class="pager">{{if .Older}}<a href="{{.Older}}" rel="next">Older posts</a>{{end}}{{if .Newest}}<a href="{{.Newest}}">Back to the newest</a>{{end}}</nav>{{end}}
 {{template "foot"}}{{end}}
 {{define "likers"}}{{template "head" .}}<h2>Likes</h2>
 <p><small>of <a href="{{.LikeTarget}}">{{.LikeTitle}}</a></small></p>
@@ -352,6 +353,7 @@ type pageData struct {
 	ReplyTotal                                 int         // replies in all, with the ones to replies
 	PageFeeds                                  []pageFeed  // feeds the bookmarked page advertises
 	Back                                       string      // the timeline view a reply returns to
+	Older, Newest                              string      // timeline: the next page of older posts, and the way back to the newest
 	Cheat                                      *cheatSheet // the Markdown help beside the editor
 	Advanced                                   bool        // the editor opens with title, keywords, address and the Markdown help
 	Forced                                     bool        // the owner signed in with a temporary password and must replace it

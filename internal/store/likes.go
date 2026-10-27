@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"math"
 	"time"
 
 	"github.com/hbroek/weft/internal/feed"
@@ -120,7 +121,15 @@ func (s *Space) RemoveLike(userID int64, target string) (*Like, error) {
 
 // ActiveLikes lists the user's current likes, newest first.
 func (s *Space) ActiveLikes(userID int64, limit int) ([]*Like, error) {
-	rows, err := s.db.Query(`SELECT `+likeCols+` FROM likes WHERE user_id=? AND deleted=0 ORDER BY created DESC, id DESC LIMIT ?`, userID, limit)
+	return s.ActiveLikesBefore(userID, 0, limit)
+}
+
+// ActiveLikesBefore is ActiveLikes for the likes made before the Unix time before (0: no bound).
+func (s *Space) ActiveLikesBefore(userID, before int64, limit int) ([]*Like, error) {
+	if before <= 0 {
+		before = math.MaxInt64
+	}
+	rows, err := s.db.Query(`SELECT `+likeCols+` FROM likes WHERE user_id=? AND deleted=0 AND created<? ORDER BY created DESC, id DESC LIMIT ?`, userID, before, limit)
 	if err != nil {
 		return nil, err
 	}
