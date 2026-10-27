@@ -169,3 +169,7 @@ Every phase leaves the tests passing and the server runnable.
 5. **Single-file mode.** No. After `weft split` everything runs through `-data DIR`; tests and development use a temporary folder. The `-db FILE` mode is removed once the split has been used on the real data.
 6. **Per-user size limits.** None for now. Revisit when an instance has users it does not know.
 7. **Removing `userID`.** At the end of phase 2 the argument is dropped from the `Space` method signatures (a mechanical change the compiler checks). The `user_id` column stays in the schema, always 1 and unused, so no migration is needed; it can go in a later numbered migration.
+
+## Pictures (Oct 26, 2026)
+
+A user's file may hold their pictures, in a lazily created `media` table (one row per picture: name `<hash>.<ext>`, type, size, width, height, the address a copy was made from, the bytes). New user files use 4 KB pages again; the 1 KB pages of phase 2 kept an empty file at 24 KB but make a picture span many pages. Files made earlier keep their 1 KB pages (a page size only changes with a `VACUUM`). Because the pictures are in the same file, `weft backup`, `weft export`, `weft import` and `weft move` carry them with no other change, and a user's quota is one `SUM(size)`.

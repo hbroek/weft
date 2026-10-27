@@ -251,16 +251,16 @@ func TestPoolCapAndInUse(t *testing.T) {
 	release()
 }
 
-// A user's file uses small pages, so an account costs little disk; the shared file keeps the default.
-func TestSpaceFilesUseSmallPages(t *testing.T) {
+// A user's file uses the usual 4 KB pages, which suit the pictures it may come to hold.
+func TestSpaceFilesUseFourKBPages(t *testing.T) {
 	in, _, _ := twoUsers(t)
 	var ps int
 	sp := in.SpaceForTests(t, "alice")
-	if err := sp.db.QueryRow(`PRAGMA page_size`).Scan(&ps); err != nil || ps != 1024 {
-		t.Errorf("alice.db page_size = %d (%v), want 1024", ps, err)
+	if err := sp.db.QueryRow(`PRAGMA page_size`).Scan(&ps); err != nil || ps != 4096 {
+		t.Errorf("alice.db page_size = %d (%v), want 4096", ps, err)
 	}
 	in.Close()
-	if fi, err := os.Stat(in.spacePath("alice")); err != nil || fi.Size() > 40*1024 {
-		t.Errorf("an empty user file takes %v bytes (%v), want under 40 KB", fi.Size(), err)
+	if fi, err := os.Stat(in.spacePath("alice")); err != nil || fi.Size() > 100*1024 {
+		t.Errorf("an empty user file takes %v bytes (%v), want under 100 KB", fi.Size(), err)
 	}
 }

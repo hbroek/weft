@@ -108,7 +108,7 @@ func (d pageData) mdPosts(b *strings.Builder) {
 				d.mdCard(b, p.Parent)
 			}
 		}
-		b.WriteString("\n" + strings.TrimSpace(p.Markdown) + "\n")
+		b.WriteString("\n" + strings.TrimSpace(absMedia(p.Markdown, d.SiteURL)) + "\n")
 		var meta []string
 		if len(p.Keywords) > 0 {
 			meta = append(meta, "Keywords: "+d.mdKeywords(p.Keywords, "/?keyword="))

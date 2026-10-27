@@ -44,6 +44,12 @@ type Config struct {
 	TrustProxy bool
 	// NoLimits turns the rate limits off, for load tests.
 	NoLimits bool
+	// Pictures: the largest file accepted (bytes), the most pixels in one, the longest side of a "compact"
+	// picture, and how much each user may store in all (bytes; negative for no limit). Zero means the default
+	// (5 MB, 24 million, 1600 pixels, 200 MB). A server tells itself apart from others by what it offers here.
+	// MaxUploadBytes is the largest file accepted at the Compact size, which is made smaller before it is kept.
+	MaxImageBytes, MaxUploadBytes, MaxImagePixels, CompactSide int
+	MediaQuota                                                 int64
 }
 
 type Server struct {
@@ -74,6 +80,12 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("GET /{$}", s.user(s.home))
 	s.mux.HandleFunc("GET /feed.xml", s.user(s.feed))
 	s.mux.HandleFunc("GET /posts/{slug}", s.user(s.permalink))
+	s.mux.HandleFunc("GET /media/{name}", s.user(s.mediaGet))
+	s.mux.HandleFunc("POST /media", s.user(s.mediaUpload))
+	s.mux.HandleFunc("POST /media/keep", s.user(s.mediaKeep))
+	s.mux.HandleFunc("GET /images", s.user(s.imagesPage))
+	s.mux.HandleFunc("POST /images/delete", s.user(s.imageDelete))
+	s.mux.HandleFunc("POST /api/media", s.user(s.apiMediaUpload))
 	// human UI (session cookie)
 	s.mux.HandleFunc("GET /login", s.user(s.loginForm))
 	s.mux.HandleFunc("POST /login", s.user(s.login))
@@ -164,6 +176,9 @@ type statusWriter struct {
 	status   int
 	location string
 }
+
+// Unwrap lets http.ResponseController reach the real writer, to change a deadline.
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (w *statusWriter) WriteHeader(c int) {
 	w.status = c

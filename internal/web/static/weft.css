@@ -206,3 +206,16 @@ article pre code, .node pre code, .comment pre code, #preview pre code { backgro
 .advrow { margin: 1rem 0 .25rem; }
 .advrow label { display: inline-flex; align-items: center; gap: .4rem; margin: 0; }
 .advrow small { color: var(--muted); }
+
+/* pictures in the editor and the list of images */
+.imgbar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;margin:.5rem 0 1rem}
+.imgbar label{display:inline-flex;align-items:center;gap:.4rem;margin:0}
+.imgbar #imgmsg{flex-basis:100%;margin:0}
+.imgs{list-style:none;padding:0;margin:1rem 0}
+.imgs li{display:grid;grid-template-columns:120px 1fr;gap:.25rem 1rem;align-items:start;padding:.75rem 0;border-top:1px solid var(--border)}
+.imgs img{display:block;max-width:120px;height:auto;border-radius:6px}
+.imgs form{grid-column:2}
+
+/* a long post in a list is folded to about 20 lines */
+.clip.clamped:not(.open) { max-height: 30em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.clipbtn { display: block; margin: .25rem 0 .5rem; padding: 0; border: 0; background: none; color: var(--link, inherit); font: inherit; font-size: .9rem; text-decoration: underline; cursor: pointer; }

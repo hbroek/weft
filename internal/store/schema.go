@@ -55,6 +55,17 @@ CREATE TABLE follows (
 // lazySchema is created on first use, all at once, and may already exist (a file made by weft split or
 // import has it).
 const lazySchema = `
+CREATE TABLE IF NOT EXISTS media (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  width INTEGER NOT NULL DEFAULT 0,
+  height INTEGER NOT NULL DEFAULT 0,
+  origin TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL,
+  data BLOB NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id),

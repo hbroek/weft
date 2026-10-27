@@ -12,7 +12,7 @@ import (
 //   - a read of a missing one runs against an empty in-memory copy of the schema, and finds nothing;
 //   - an INSERT into a missing one creates all of them and runs again;
 //   - an UPDATE or DELETE of a missing one has nothing to change and succeeds.
-var lazyTables = []string{"sessions", "replies", "subreplies", "likes", "likes_in", "wm_queue"}
+var lazyTables = []string{"sessions", "replies", "subreplies", "likes", "likes_in", "wm_queue", "media"}
 
 type lazyDB struct{ *sql.DB }
 

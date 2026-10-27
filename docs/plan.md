@@ -78,7 +78,23 @@ Not scheduled. A stranger who replies or likes counts as vouched for when feeds 
 ### 8. Beyond the plan (done)
 Built after iteration 7, in roughly this order: one database per user; moving to a new address; custom domains; `weft backup` and restore; reply cards with context for non-Weft parents (`weft:context` carries title, description and image) and a Markdown cheatsheet in the editor; replies shown as nested comment cards under a post; likes and replies that return to the post on the timeline; a bookmarklet that finds a page's feeds; Atom and RSS 1.0 input; keyword filters; post addresses chosen at creation; temporary passwords; per-post liked-by feeds; rate limits and timeouts; conditional feed requests with backoff.
 
-### 9. Later
+### 9. Owning your images (done)
+Images are stored in the author's own database, so a post does not break when someone else's server goes away. Decided Oct 26, 2026:
+- A lazily created `media` table in each user's file; images are addressed by their hash (`/media/<hash>.jpg`), so the same image is stored once and cached forever. Only png, jpeg, gif, webp and avif; no SVG.
+- Upload from the editor (button, drag and drop, paste) and `POST /api/media`.
+- The Markdown stores the path without a host; feeds and pages add the current host, so a move keeps every image working.
+- "Keep a copy of the images from other sites" is offered on request, never automatic: the server fetches them with the usual size caps and guards, stores them and swaps the addresses. The original address is recorded.
+- Quotas (per image and per user) are settings of the server, not fixed in the code. A server can set them high and charge for it; a free server can set them low. That is how servers tell themselves apart.
+- Every upload is sanitized: all metadata is removed (location, camera, time, thumbnails, comments), and nothing can be switched off, since an option invites an accidental leak. The orientation of a photo is kept by turning the pixels. Files that do not decode, or are too many pixels, are refused.
+- Two sizes, chosen per upload (and as the user's default): Original (the image as it is, metadata removed without recompressing) and Compact (longest side at most 1600 px, JPEG quality 80). The server sets the limits. Standard library only: jpeg, png and gif; webp and avif need a new dependency and wait.
+- New user files use 4 KB pages again (1 KB pages were chosen to keep empty files small, which does not suit images). Files made before keep their 1 KB pages.
+
+Built Oct 26, 2026: all of the above except webp and avif.
+
+### 10. Roadmap: automatic account transfers
+Moving an account between servers without doing it by hand: the account's file, followers and old address move together, with the redirect left behind. The case in mind is a person who outgrows a free server's quota and moves to a paid one (for example a "weftbig" server with large quotas), and back. `weft move` and export/import are the pieces to build on.
+
+### 11. Later
 WebSub or rssCloud. Packaging and a hosted-environment signup (with email). License. A cache for thread-page fetches. Rate limiting of public page reads, if not left to a proxy.
 
 **Action item (before production):** work through [production-optimizations.md](production-optimizations.md): measure, then decide which of its items to build. First on the list is a fetch cache for thread pages.

@@ -120,7 +120,7 @@ func (s *Server) replyContext(r *http.Request, q *req, target string) (who strin
 	}
 	if id, ok := s.localPostID(q.sp, s.base(r), target); ok {
 		if p, err := q.sp.Post(q.host.ID, id); err == nil && !p.Deleted {
-			return "your post", cardOf(p.Title, p.Markdown, false)
+			return "your post", cardOf(p.Title, absMedia(p.Markdown, s.base(r)), false)
 		}
 	}
 	if name := s.hostUser(host); name != "" && name != q.host.Name {
@@ -135,7 +135,7 @@ func (s *Server) replyContext(r *http.Request, q *req, target string) (who strin
 						if usr, err := sp.User(); err == nil {
 							who = orStr(usr.Display, name) + "’s post"
 						}
-						return who, cardOf(p.Title, p.Markdown, false)
+						return who, cardOf(p.Title, absMedia(p.Markdown, originOf(target)), false)
 					}
 				}
 			}

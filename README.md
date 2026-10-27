@@ -92,6 +92,22 @@ A post has one address and one identity, kept apart so a post can move between i
 - **Identity:** `<guid isPermaLink="false">urn:uuid:…</guid>` is a UUIDv7 made when the post is created. It is not a URL and travels with the post.
 - Likes still have instance-local addresses (`/likes/<n>`); they will get the same treatment later.
 
+## Long posts
+
+In a list of posts (the timeline, the home page, a keyword page) a post longer than about 20 lines is folded, with a Show more button. A post on its own page is never folded.
+
+## Pictures
+
+Pictures live in the author's own database file, so a post does not break when someone else's server goes away, and they move with the account (backup, `weft export`, `weft move`).
+
+- **Add** a JPEG, PNG or GIF in the editor: the Add image button, a paste, or a drop on the text box. It inserts `![image](/media/<hash>.jpg)`; type a description in place of "image". Programs use `POST /api/media` (the picture as the body, or the form field `file`; `?size=compact`, `?alt=…`) and get the path back.
+- **Sanitized, always.** The kind is read from the bytes. All metadata is removed (location, camera, time, thumbnails, comments, anything after the end of the image); a photo's orientation is applied to the pixels; a file that does not decode, or has too many pixels, is refused. SVG is not accepted. There is no way to keep the metadata.
+- **Two sizes.** *Original* leaves the picture as it is. *Compact* (the default on a phone, so its camera photos are made smaller) accepts a file up to 25 MB and makes the longest side at most 1600 pixels (JPEG quality 80), and keeps the smaller of that and the cleaned original. The choice is remembered in the browser.
+- **Addresses.** A picture is stored under the hash of its bytes, so the same picture is kept once, and its address never changes and can be cached for ever. The Markdown keeps the path without a host, so a post that moves to a new address keeps its pictures; feeds, the Markdown form of pages and the one-item feed make it a full address.
+- **Pictures from other sites.** Press "Keep copies of other sites' images" in the editor to fetch the pictures a post shows from elsewhere, store them here, and point the post at the copies (the original address is recorded). It never happens by itself; copying other people's pictures is the author's decision.
+- **Your images** (`/images`) lists them with their size, where each is used, and how much of the quota is left; a picture in use is only deleted when asked twice.
+- **Limits are the server's.** `weft serve -max-image-mb 5 -max-upload-mb 25 -media-quota-mb 200 -image-side 1600 -image-megapixels 24` (a quota of 0 is no limit). A server can set them high and charge for it, or low and be free.
+
 ## AI agent
 
 `weft-agent` is a separate program that participates as one user, through the public REST API and that user's

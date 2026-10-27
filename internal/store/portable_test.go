@@ -63,6 +63,10 @@ func TestExportImportRoundTrip(t *testing.T) {
 	alice.SetLike(alice.UID(), "http://x.example/p", "")
 	alice.Follow(alice.UID(), "http://x.example/feed")
 	alice.Enqueue(QueueOut, alice.UID(), "http://alice/p", "http://x.example/p")
+	pic := Media{Name: "0123456789abcdef0123456789abcdef.jpg", Mime: "image/jpeg", Width: 2, Height: 1, Origin: "http://x.example/a.jpg", Data: []byte("picture bytes")}
+	if _, err := alice.PutMedia(pic, 0); err != nil {
+		t.Fatal(err)
+	}
 
 	data := exportBytes(t, alice)
 	files := unzip(t, data)
@@ -97,6 +101,9 @@ func TestExportImportRoundTrip(t *testing.T) {
 	}
 	if _, err := bs.CheckPassword("correct horse"); err != nil {
 		t.Errorf("the password did not travel: %v", err)
+	}
+	if got, err := bs.Media(pic.Name); err != nil || !bytes.Equal(got.Data, pic.Data) || got.Origin != pic.Origin || got.Width != 2 {
+		t.Errorf("the pictures did not travel with the account: %+v %v", got, err)
 	}
 	var sessions int
 	bs.db.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&sessions)

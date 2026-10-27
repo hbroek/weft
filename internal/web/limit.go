@@ -236,6 +236,8 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request) bool {
 			return false
 		}
 		return !(r.Method == http.MethodPost && path == "/api/following") || use(s.lim.follow, caller)
+	case r.Method == http.MethodPost && (path == "/media" || path == "/media/keep"):
+		return use(s.lim.apiWrite, caller)
 	case r.Method == http.MethodPost && (path == "/following" || path == "/following/refresh"):
 		return use(s.lim.follow, caller)
 	}

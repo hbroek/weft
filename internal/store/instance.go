@@ -108,7 +108,7 @@ func spaceRel(name string) string {
 // owns few tables and little data, and an empty file then takes 24 KB instead of 77 KB.
 func openSpaceDB(path string) (*sql.DB, error) {
 	if fi, err := os.Stat(path); err == nil && fi.Size() == 0 {
-		if err := setPageSize(path, 1024); err != nil {
+		if err := setPageSize(path, 4096); err != nil {
 			return nil, err
 		}
 	}

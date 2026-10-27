@@ -217,7 +217,7 @@ func (s *Server) ownRows(r *http.Request, q *req) ([]tlRow, error) {
 	for _, p := range posts {
 		pu := s.postURL(r, p.ID)
 		out = append(out, tlRow{Anchor: anchorID(pu), Own: true, Parent: newParentCard(p.InReplyTo, p.Parent), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), Author: "You", AuthorHref: "/", Title: p.Title, Link: pu, InReplyTo: httpURL(p.InReplyTo),
-			Date: stampAt(p.Created), ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(p.Created), MD: p.Markdown, HTML: template.HTML(p.HTML), // goldmark safe mode
+			Date: stampAt(p.Created), ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(p.Created), MD: absMedia(p.Markdown, s.base(r)), HTML: template.HTML(p.HTML), // goldmark safe mode
 			Edited: p.Updated != nil, Keywords: p.Keywords, EditHref: "/posts/" + p.Slug + "/edit",
 			ReplyHref: "/compose?reply_to=" + url.QueryEscape(pu) + backParam(r.URL.RequestURI()), ThreadHref: threadHref(pu, ""), HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
 			Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), when: p.Created})

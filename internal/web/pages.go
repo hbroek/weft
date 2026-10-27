@@ -38,7 +38,24 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 <div class="wrap">
 {{if .Home}}{{if or .Bio .Owner}}<p class="bio">{{.Bio}}{{if .Owner}} <small><a href="/profile">Edit profile</a></small>{{end}}</p>{{end}}{{end}}
 <main>{{end}}
-{{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div></body></html>{{end}}
+{{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div>
+<script>
+(function(){
+// a post in a list that is longer than about 20 lines is folded, with a button to open it
+function fold(c){
+ if(c.dataset.fold==='1'||c.classList.contains('open'))return;
+ var fs=parseFloat(getComputedStyle(c).fontSize)||16;
+ if(c.scrollHeight<=fs*33)return;
+ c.dataset.fold='1';c.classList.add('clamped');
+ var b=document.createElement('button');b.type='button';b.className='clipbtn';b.textContent='Show more';b.setAttribute('aria-expanded','false');
+ b.addEventListener('click',function(){var o=c.classList.toggle('open');b.textContent=o?'Show less':'Show more';b.setAttribute('aria-expanded',o?'true':'false')});
+ c.after(b);
+}
+function all(){document.querySelectorAll('.clip').forEach(fold)}
+all();window.addEventListener('load',all);
+document.addEventListener('load',function(e){if(e.target.closest&&e.target.closest('.clip'))all()},true);
+})();
+</script></body></html>{{end}}
 {{define "modes"}}{{if .Modes}}<p class="modes">{{range .Modes}}{{if .Current}}<strong>{{.Label}}</strong>{{else}}<a href="{{.Href}}">{{.Label}}</a>{{end}}{{end}}</p>{{end}}{{end}}
 {{define "pagefeeds"}}{{if .PageFeeds}}<div class="pfeeds"><p><small>{{if gt (len .PageFeeds) 1}}This page offers these feeds{{else}}This page has a feed{{end}}</small></p>
 {{range .PageFeeds}}<p class="pfeed"><span class="pf-t"><strong>{{if .Title}}{{.Title}}{{else}}{{.Host}}{{end}}</strong><small>{{.URL}}</small></span>{{if .Following}}<span class="following">Following ✓</span>{{else}}<form method="post" action="/following" class="followform"><input type="hidden" name="url" value="{{.URL}}"><button>Follow</button></form>{{end}}</p>
@@ -114,7 +131,7 @@ document.querySelectorAll('form.followform').forEach(function(f){
 {{template "authorcard" $}}
 <div class="card-top">{{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{else}}<span></span>{{end}}<span class="when"><a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{if .Edited}} · edited{{end}}</span></div>
 {{if .InReplyTo}}{{if .Parent}}<p><small>In reply to</small></p>{{template "parentcard" .Parent}}<a class="u-in-reply-to" href="{{.InReplyTo}}" hidden></a>{{else}}<p><small>In reply to <a class="u-in-reply-to" href="{{.InReplyTo}}">{{.InReplyTo}}</a></small></p>{{end}}{{end}}
-<div class="e-content">{{.HTML}}</div>
+<div class="e-content{{if $.Clip}} clip{{end}}">{{.HTML}}</div>
 {{if .Keywords}}<p class="kw">{{range .Keywords}}<a class="p-category" href="/?keyword={{.}}">{{.}}</a>{{end}}</p>{{end}}
 <div class="meta"><div class="m-l">{{if .Tally}}<small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.URL}}">{{.Tally}}</a></small>{{end}}</div>
 <div class="m-r">{{if $.Owner}}{{if .HasThread}}<a class="ico" href="{{.ThreadHref}}" title="Thread" aria-label="Thread">{{template "ic-thread"}}</a>{{end}}<a class="ico" href="{{.URL}}/edit" title="Edit" aria-label="Edit">{{template "ic-edit"}}</a>{{end}}</div></div>
@@ -141,7 +158,7 @@ document.querySelectorAll('form.followform').forEach(function(f){
 <span class="when">{{if .Link}}<a href="{{.Link}}"><time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{else}}<time datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time>{{end}}{{if .Edited}} · edited{{end}}</span></div>
 {{if .Parent}}{{template "parentcard" .Parent}}{{end}}
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
-<div>{{.HTML}}</div>
+<div class="clip">{{.HTML}}</div>
 {{if .Keywords}}<p class="kw">{{range .Keywords}}{{if $.Only}}<a href="/timeline?feed={{$.Only}}&amp;keyword={{.}}" title="Posts with this keyword in this feed">{{.}}</a>{{else}}<a href="/timeline?keyword={{.}}" title="Posts with this keyword from everyone you follow">{{.}}</a>{{end}}{{end}}</p>{{end}}
 <div class="meta"><div class="m-l">{{if .Own}}{{if .Tally}}<small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Link}}">{{.Tally}}</a></small>{{end}}{{else if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
 <button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Target}}">{{.Tally}}</a></small>{{end}}</form>{{end}}</div>
@@ -159,6 +176,14 @@ document.querySelectorAll('form.followform').forEach(function(f){
 <ul>{{range .Others}}<li><a href="{{.Site}}">{{.Name}}</a> <small>{{.FeedURL}}</small>
 <form method="post" action="/following" style="display:inline"><input type="hidden" name="url" value="{{.FeedURL}}"><button class="linkbtn">Follow</button></form></li>{{end}}</ul>{{end}}
 {{if .LikeNote}}<p><small>{{.LikeNote}}</small></p>{{end}}
+{{template "foot"}}{{end}}
+{{define "images"}}{{template "head" .}}<h2>Images</h2>
+{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+<p>{{.MediaUsed}} used{{if .MediaQuota}} of {{.MediaQuota}}{{end}}. Add pictures in the <a href="/compose">editor</a>.</p>
+{{if .Images}}<ul class="imgs">{{range .Images}}<li><a href="{{.Path}}"><img src="{{.Path}}" alt="" loading="lazy" width="120"></a>
+<small>{{.Dims}} · {{.Size}} · {{.When}}{{if .Origin}} · copied from <a href="{{.Origin}}" rel="noreferrer">{{.Origin}}</a>{{end}}<br>
+<code>{{.Path}}</code> · {{if .Used}}in {{.Used}} post{{if ne .Used 1}}s{{end}}{{else}}not used{{end}}</small>
+<form method="post" action="/images/delete" style="display:inline"><input type="hidden" name="name" value="{{.Name}}">{{if .Used}}<input type="hidden" name="force" value="1"><button class="linkbtn">Delete anyway</button>{{else}}<button class="linkbtn">Delete</button>{{end}}</form></li>{{end}}</ul>{{else}}<p>No pictures yet.</p>{{end}}
 {{template "foot"}}{{end}}
 {{define "following"}}{{template "head" .}}<h2>Following</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <form method="post" action="/following"><label>Feed or site URL <input type="text" name="url" placeholder="http://bob.localhost:8080/" required></label>
@@ -207,6 +232,9 @@ document.querySelectorAll('form.followform').forEach(function(f){
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label class="adv">Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label><span class="adv">Markdown</span> <textarea name="markdown" aria-label="Markdown" required>{{.Form.Markdown}}</textarea></label>
+<p class="imgbar"><input type="file" id="imgfile" accept="image/jpeg,image/png,image/gif" hidden><button type="button" id="addimg">Add image</button>
+<label>Size <select id="imgsize"><option value="original">Original</option><option value="compact">Compact</option></select></label>
+<button type="button" id="keepimgs" hidden>Keep copies of other sites' images</button> <small><a href="/images">Your images</a></small> <small id="imgmsg" role="status"></small></p>
 <label class="adv">Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="travel, open source, weekend project"></label>
 {{if not .Delete}}<label class="adv">Address <input type="text" name="slug" id="slug" value="{{.Form.Slug}}" maxlength="80"{{if .SlugAuto}} data-auto="1"{{end}} autocapitalize="off" autocorrect="off" spellcheck="false"></label>
 <p class="adv"><small>The end of the post's link. It follows your title or first sentence until you change it, and cannot be changed once the post is published. A short code is added to make it yours alone.</small></p>{{end}}
@@ -240,6 +268,37 @@ md.addEventListener('input',function(){clearTimeout(timer);timer=setTimeout(rend
 ti.addEventListener('input',function(){title();clearTimeout(timer);timer=setTimeout(render,200)});
 if(sl)sl.addEventListener('input',function(){auto=sl.value.trim()===''});
 if(kw&&kwbox)kw.addEventListener('input',chips);
+var file=document.getElementById('imgfile'),add=document.getElementById('addimg'),size=document.getElementById('imgsize'),keep=document.getElementById('keepimgs'),msg=document.getElementById('imgmsg');
+if(file&&add){
+ var sv=null;try{sv=localStorage.getItem('weft-imgsize')}catch(e){}
+ if(sv==='compact'||sv==='original')size.value=sv;else if(window.matchMedia&&matchMedia('(pointer: coarse)').matches)size.value='compact'; // a phone: its photos are large
+ size.addEventListener('change',function(){try{localStorage.setItem('weft-imgsize',size.value)}catch(e){}});
+ function say(t){msg.textContent=t}
+ function put(text){var a=md.selectionStart||0,b=md.selectionEnd||0;md.setRangeText(text,a,b,'end');var s=a+2;md.setSelectionRange(s,s+5);md.focus();md.dispatchEvent(new Event('input'))}
+ function send(f){
+  if(!/^image\/(jpeg|png|gif)$/.test(f.type)){say('Only JPEG, PNG and GIF pictures can be added.');return}
+  var fd=new FormData();fd.append('file',f);fd.append('size',size.value);say('Adding '+(f.name||'picture')+'…');
+  fetch('/media',{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t.trim())})})
+   .then(function(j){put('![image]('+j.path+')');say('Added: '+j.width+' × '+j.height+', '+Math.round(j.size/1024)+' KB. Type a description in place of "image".')})
+   .catch(function(e){say(e.message||'The picture could not be added.')});
+ }
+ add.addEventListener('click',function(){file.click()});
+ file.addEventListener('change',function(){if(file.files[0])send(file.files[0]);file.value=''});
+ md.addEventListener('paste',function(e){var fs=e.clipboardData&&e.clipboardData.files;if(fs&&fs.length&&/^image\//.test(fs[0].type)){e.preventDefault();send(fs[0])}});
+ md.addEventListener('dragover',function(e){if(e.dataTransfer&&Array.prototype.indexOf.call(e.dataTransfer.types,'Files')>=0)e.preventDefault()});
+ md.addEventListener('drop',function(e){var fs=e.dataTransfer&&e.dataTransfer.files;if(fs&&fs.length){e.preventDefault();send(fs[0])}});
+ function other(){keep.hidden=!/!\[[^\]]*\]\(https?:\/\//.test(md.value)}
+ md.addEventListener('input',other);other();
+ keep.addEventListener('click',function(){
+  say('Copying…');
+  fetch('/media/keep',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},credentials:'same-origin',body:'markdown='+encodeURIComponent(md.value)+'&size='+encodeURIComponent(size.value)})
+   .then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t.trim())})})
+   .then(function(j){md.value=j.markdown;md.dispatchEvent(new Event('input'));
+    var t=j.kept?('Kept '+j.kept+' cop'+(j.kept==1?'y':'ies')+'.'):'Nothing was copied.';
+    if(j.failed&&j.failed.length)t+=' Not copied: '+j.failed.map(function(f){return f.url+' ('+f.error+')'}).join('; ');say(t)})
+   .catch(function(e){say(e.message||'The copies could not be made.')});
+ });
+}
 })();
 </script>
 {{if .Delete}}<form method="post" action="{{.Delete}}" onsubmit="return confirm('Delete this post?')"><button class="linkbtn">Delete post</button></form>{{end}}
@@ -294,6 +353,9 @@ type pageData struct {
 	Profile                                      struct{ Display, Bio, Avatar string }
 	Domain                                       *domainView
 	Likers, Others                               []likerRow
+	Images                                       []imageRow
+	Clip                                         bool // long posts are folded, with a button to open them (a list of posts, not one)
+	MediaUsed, MediaQuota                        string
 	LikeTarget, LikeTitle, LikeNote              string
 	ClearKeyword                                 string
 	Keyword, TopicFeed                           string       // a keyword filter on the home page, and the feed of just those posts
@@ -353,6 +415,7 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 			_, pp.Parent = s.replyContext(r, q, p.InReplyTo) // no snapshot: what this server knows of the post
 		}
 	}
+	d.Clip = len(posts) > 1
 	if len(posts) == 1 && !posts[0].Deleted {
 		d.Replies, d.ReplyTotal, d.Pending = s.repliesFor(r, q, posts[0].ID)
 		// the same links the one-item feed carries, for readers that start from the page: the post
@@ -415,7 +478,7 @@ func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
 	switch negotiate(r.Header.Get("Accept")) {
 	case "markdown":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		io.WriteString(w, p.Markdown)
+		io.WriteString(w, absMedia(p.Markdown, s.base(r)))
 		return
 	case "rss":
 		s.writeFeed(w, r, q, []*store.Post{p}, "") // this one post, as a feed item with all its weft: links
@@ -553,7 +616,7 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 		}
 		url := s.postURL(r, p.ID)
 		it := feed.Item{Title: p.Title, GUID: feed.GUID{Value: "urn:uuid:" + p.UID}, Link: url,
-			Description: p.HTML, Markdown: p.Markdown, PubDate: feed.RFC822(p.Created)}
+			Description: absMedia(p.HTML, s.base(r)), Markdown: absMedia(p.Markdown, s.base(r)), PubDate: feed.RFC822(p.Created)}
 		it.Replies = &feed.Replies{Href: url + "/replies.xml", Count: counts[p.ID]}
 		it.Likes = &feed.Likes{Count: tallies[p.ID], Href: url + "/likes.xml"}
 		it.Categories = p.Keywords

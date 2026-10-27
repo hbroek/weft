@@ -176,7 +176,7 @@ func (b *threadBuilder) reply(u string) string {
 func (b *threadBuilder) localNode(p *store.Post) *tnode {
 	u := b.s.postURL(b.r, p.ID)
 	return &tnode{URL: u, Author: b.q.host.Display, Title: p.Title, Date: stamp(p.Created), Local: true,
-		HTML: template.HTML(p.HTML), md: p.Markdown, parent: p.InReplyTo, published: p.Created, feedHint: b.own, repliesHref: u + "/replies.xml",
+		HTML: template.HTML(p.HTML), md: absMedia(p.Markdown, originOf(u)), parent: p.InReplyTo, published: p.Created, feedHint: b.own, repliesHref: u + "/replies.xml",
 		repliesCount: -1, pinfo: p.Parent, ReplyHref: b.reply(u) + "&reply_feed=" + url.QueryEscape(b.own)}
 }
 
