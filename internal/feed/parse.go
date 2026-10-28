@@ -74,10 +74,10 @@ type xmlParsed struct {
 		} `xml:"http://www.w3.org/2005/Atom link"`
 		Link         plainLinks `xml:"link"`
 		Description  string     `xml:"description"`
-		Webmention   string     `xml:"https://weftseed.com/ns/weft/0.1 webmention"`
-		Following    string     `xml:"https://weftseed.com/ns/weft/0.1 following"`
-		LikesFeed    string     `xml:"https://weftseed.com/ns/weft/0.1 likesFeed"`
-		OldReactions string     `xml:"https://weftseed.com/ns/weft/0.1 reactionsFeed"` // before likes: read as the likes feed
+		Webmention   string     `xml:"https://weftprotocol.org/ns/weft/0.1 webmention"`
+		Following    string     `xml:"https://weftprotocol.org/ns/weft/0.1 following"`
+		LikesFeed    string     `xml:"https://weftprotocol.org/ns/weft/0.1 likesFeed"`
+		OldReactions string     `xml:"https://weftprotocol.org/ns/weft/0.1 reactionsFeed"` // before likes: read as the likes feed
 		Items        []struct {
 			Title       string     `xml:"title"`
 			GUID        string     `xml:"guid"`
@@ -86,46 +86,46 @@ type xmlParsed struct {
 			PubDate     string     `xml:"pubDate"`
 			Categories  []string   `xml:"category"`
 			Markdown    string     `xml:"http://source.scripting.com/ markdown"`
-			Updated     string     `xml:"https://weftseed.com/ns/weft/0.1 updated"`
+			Updated     string     `xml:"https://weftprotocol.org/ns/weft/0.1 updated"`
 			InReplyTo   struct {
 				Href string `xml:"href,attr"`
 				Feed string `xml:"feed,attr"`
-			} `xml:"https://weftseed.com/ns/weft/0.1 inReplyTo"`
+			} `xml:"https://weftprotocol.org/ns/weft/0.1 inReplyTo"`
 			Root struct {
 				Href string `xml:"href,attr"`
 				Feed string `xml:"feed,attr"`
-			} `xml:"https://weftseed.com/ns/weft/0.1 root"`
+			} `xml:"https://weftprotocol.org/ns/weft/0.1 root"`
 			LikeOf struct {
 				Title       string `xml:"title,attr"`
 				Description string `xml:"description,attr"`
 				Image       string `xml:"image,attr"`
 				Href        string `xml:"href,attr"`
-			} `xml:"https://weftseed.com/ns/weft/0.1 likeOf"`
+			} `xml:"https://weftprotocol.org/ns/weft/0.1 likeOf"`
 			// Before there were only likes, an item could be a reaction with a polarity; a "+" is a like.
 			ReactionOf struct {
 				Href     string `xml:"href,attr"`
 				Polarity string `xml:"polarity,attr"`
-			} `xml:"https://weftseed.com/ns/weft/0.1 reactionOf"`
+			} `xml:"https://weftprotocol.org/ns/weft/0.1 reactionOf"`
 			Replies struct {
 				Href  string `xml:"href,attr"`
 				Count *int   `xml:"count,attr"`
-			} `xml:"https://weftseed.com/ns/weft/0.1 replies"`
+			} `xml:"https://weftprotocol.org/ns/weft/0.1 replies"`
 			Feed struct {
 				Href string `xml:"href,attr"`
 				Name string `xml:",chardata"`
-			} `xml:"https://weftseed.com/ns/weft/0.1 feed"`
+			} `xml:"https://weftprotocol.org/ns/weft/0.1 feed"`
 			Context struct {
 				Title       string `xml:"title,attr"`
 				Description string `xml:"description,attr"`
 				Image       string `xml:"image,attr"`
-			} `xml:"https://weftseed.com/ns/weft/0.1 context"`
+			} `xml:"https://weftprotocol.org/ns/weft/0.1 context"`
 			Likes struct {
 				Count int    `xml:"count,attr"`
 				Href  string `xml:"href,attr"`
-			} `xml:"https://weftseed.com/ns/weft/0.1 likes"`
+			} `xml:"https://weftprotocol.org/ns/weft/0.1 likes"`
 			OldReactions struct {
 				Plus int `xml:"plus,attr"`
-			} `xml:"https://weftseed.com/ns/weft/0.1 reactions"`
+			} `xml:"https://weftprotocol.org/ns/weft/0.1 reactions"`
 		} `xml:"item"`
 	} `xml:"channel"`
 }

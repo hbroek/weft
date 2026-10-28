@@ -185,7 +185,7 @@ func TestThreadLinkOnlyWhereThereIsAThread(t *testing.T) {
 	item := func(n, extra string) string {
 		return `<item><title>` + n + `</title><link>http://a.example/` + n + `</link><guid>http://a.example/` + n + `</guid><description>x</description>` + extra + `</item>`
 	}
-	xml := `<rss version="2.0" xmlns:weft="https://weftseed.com/ns/weft/0.1"><channel><title>A</title>` +
+	xml := `<rss version="2.0" xmlns:weft="https://weftprotocol.org/ns/weft/0.1"><channel><title>A</title>` +
 		item("lonely", `<weft:replies href="http://a.example/lonely/replies.xml" count="0"/>`) +
 		item("popular", `<weft:replies href="http://a.example/popular/replies.xml" count="2"/>`) +
 		item("answer", `<weft:inReplyTo href="http://a.example/popular"/><weft:replies href="http://a.example/answer/replies.xml" count="0"/>`) +

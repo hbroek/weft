@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	NSWeft = "https://weftseed.com/ns/weft/0.1"
+	NSWeft = "https://weftprotocol.org/ns/weft/0.1"
 	// NSLegacy is the placeholder URI used before the project was renamed; the parser still reads it.
 	NSLegacy = "https://example.org/ns/textcast/0.1"
 	NSSource = "http://source.scripting.com/"

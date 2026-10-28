@@ -26,7 +26,7 @@ The namespace prefix is `weft`. Parsers match on the URI, not the prefix. Feeds 
 
 ```xml
 <rss version="2.0"
-  xmlns:weft="https://weftseed.com/ns/weft/0.1"
+  xmlns:weft="https://weftprotocol.org/ns/weft/0.1"
   xmlns:source="http://source.scripting.com/"
   xmlns:atom="http://www.w3.org/2005/Atom">
 ```
@@ -254,7 +254,7 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 
 ```xml
 <rss version="2.0"
-  xmlns:weft="https://weftseed.com/ns/weft/0.1"
+  xmlns:weft="https://weftprotocol.org/ns/weft/0.1"
   xmlns:source="http://source.scripting.com/">
 <channel>
   <title>Alice</title>
@@ -317,7 +317,7 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 ### Alice's replies feed for the post, caching two levels
 
 ```xml
-<rss version="2.0" xmlns:weft="https://weftseed.com/ns/weft/0.1">
+<rss version="2.0" xmlns:weft="https://weftprotocol.org/ns/weft/0.1">
 <channel>
   <title>Replies to: RSS plus links already gives you a social web</title>
   <link>https://alice.example/posts/rss-plus-links-already-gives-you.w3kp</link>

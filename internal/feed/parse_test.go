@@ -10,7 +10,7 @@ var now = time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
 
 func TestParseWeftFeed(t *testing.T) {
 	x := `<?xml version="1.0"?>
-<rss version="2.0" xmlns:weft="https://weftseed.com/ns/weft/0.1" xmlns:source="http://source.scripting.com/">
+<rss version="2.0" xmlns:weft="https://weftprotocol.org/ns/weft/0.1" xmlns:source="http://source.scripting.com/">
 <channel><title>Bob</title><link>https://bob.example/</link><description>d</description>
 <weft:webmention>https://bob.example/wm</weft:webmention>
 <item><guid isPermaLink="true">https://bob.example/p/1</guid><link>https://bob.example/p/1</link>
