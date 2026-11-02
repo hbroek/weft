@@ -94,6 +94,7 @@ func (s *Server) domainMsg(w http.ResponseWriter, r *http.Request, q *req, errMs
 	d := s.data(r, q, "Profile")
 	d.Profile.Display, d.Profile.Bio, d.Profile.Avatar = q.host.Display, q.host.Bio, q.host.Avatar
 	d.Domain = s.domainView(r, q)
+	d.Move = s.moveView(r, q)
 	d.Domain.Error, d.Domain.Notice = errMsg, notice
 	status := http.StatusOK
 	if errMsg != "" {

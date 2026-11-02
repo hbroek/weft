@@ -135,6 +135,16 @@ func (s *Server) webmention(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Error(w, "target post not found", http.StatusBadRequest)
 		return
 	}
+	if s.st.Dir(q.host.Name).Move != "" { // the account is moving: keep the mention, to be sent on to the new server
+		if !s.st.Hold(q.host.Name, source, target) {
+			w.Header().Set("Retry-After", "300")
+			http.Error(w, "too many Webmentions are waiting; try again later", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		fmt.Fprintln(w, "queued")
+		return
+	}
 	if err := q.sp.EnqueueCapped(store.QueueIn, q.host.ID, source, target, maxInboxJobs, maxInboxJobsPerHost); err != nil {
 		if errors.Is(err, store.ErrQueueFull) { // a flood, or a sender that is far ahead of what can be checked
 			w.Header().Set("Retry-After", "300")
@@ -171,6 +181,9 @@ func (s *Server) ProcessQueues(ctx context.Context) {
 }
 
 func (s *Server) processUser(ctx context.Context, name string) {
+	if s.st.Dir(name).Move != "" {
+		return // the account is moving: its file does not change until the move ends
+	}
 	sp, release, err := s.st.Space(name)
 	if err != nil {
 		return

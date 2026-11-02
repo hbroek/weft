@@ -207,6 +207,36 @@ const spaceV2SQL = `ALTER TABLE users ADD COLUMN must_change INTEGER NOT NULL DE
 func spaceV2(tx *sql.Tx) error    { _, err := tx.Exec(spaceV2SQL); return err }
 func instanceV1(tx *sql.Tx) error { _, err := tx.Exec(instanceSchema); return err }
 
+// instanceV6 adds moving an account to another server: the state an account is in while it moves, the move
+// itself (the code's hash, the address the account will have, the copy on offer), and the Webmentions that
+// arrive meanwhile.
+func instanceV6(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+ALTER TABLE users ADD COLUMN move_state TEXT NOT NULL DEFAULT '';
+CREATE TABLE moves (
+  name TEXT PRIMARY KEY,
+  dest TEXT NOT NULL,
+  code_hash TEXT NOT NULL DEFAULT '',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  xfer_hash TEXT NOT NULL DEFAULT '',
+  expires INTEGER NOT NULL,
+  file TEXT NOT NULL DEFAULT '',
+  sha256 TEXT NOT NULL DEFAULT '',
+  size INTEGER NOT NULL DEFAULT 0,
+  schema INTEGER NOT NULL DEFAULT 0,
+  fingerprint TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE held (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  source TEXT NOT NULL,
+  target TEXT NOT NULL,
+  created INTEGER NOT NULL
+);
+CREATE INDEX held_name ON held(name);`)
+	return err
+}
+
 // instanceV5 remembers where a followed post lists everyone who liked it.
 func instanceV5(tx *sql.Tx) error {
 	_, err := tx.Exec(`ALTER TABLE items ADD COLUMN likes_href TEXT NOT NULL DEFAULT ''`)

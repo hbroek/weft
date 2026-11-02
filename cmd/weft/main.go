@@ -150,6 +150,13 @@ func main() {
 		}
 		defer st.Close()
 		if *cancel {
+			if _, err := st.MovePending(fs.Arg(0)); err == nil { // a move to another server that has not finished
+				if err := st.MoveAbort(fs.Arg(0)); err != nil {
+					log.Fatal(err)
+				}
+				fmt.Printf("the move of %s was cancelled; a running server notices within seconds\n", fs.Arg(0))
+				return
+			}
 			if err := st.Unmove(fs.Arg(0)); err != nil {
 				log.Fatal(err)
 			}

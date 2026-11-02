@@ -729,6 +729,7 @@ func (s *Server) endMoves() {
 		log.Printf("%d moved account(s): their files wait in the trash", n)
 	}
 	s.st.PurgeTrash(now)
+	s.st.ExpireMoves(now)
 }
 
 // opml publishes the follow list (the public follow graph).

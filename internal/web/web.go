@@ -66,6 +66,8 @@ type Server struct {
 	lim *limits
 	// scaled keeps recent smaller copies of large pictures.
 	scaled *scaleCache
+	// pulls are the moves of accounts to this server that are running or just ended.
+	pulls pullSet
 }
 
 func New(cfg Config, st *store.Instance) *Server {
@@ -133,6 +135,13 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("POST /domain", s.user(s.domainSet))
 	s.mux.HandleFunc("POST /domain/check", s.user(s.domainCheck))
 	s.mux.HandleFunc("POST /domain/remove", s.user(s.domainRemove))
+	s.mux.HandleFunc("POST /move/code", s.user(s.moveCode))
+	s.mux.HandleFunc("POST /move/cancel", s.user(s.moveCancel))
+	s.mux.HandleFunc("POST /move/finish", s.user(s.moveFinish))
+	s.mux.HandleFunc("POST /move/receive", s.user(s.moveReceive))
+	s.mux.HandleFunc("GET /move/status", s.user(s.moveStatus))
+	s.mux.HandleFunc("POST "+movePath+"{step}", s.user(s.moveStep))
+	s.mux.HandleFunc("GET "+movePath+"data", s.user(s.moveData))
 	s.mux.HandleFunc("GET /following", s.user(s.followingPage))
 	s.mux.HandleFunc("POST /following", s.user(s.followForm))
 	s.mux.HandleFunc("POST /following/remove", s.user(s.unfollowForm))
@@ -344,6 +353,11 @@ func (s *Server) user(h func(http.ResponseWriter, *http.Request, *req)) http.Han
 			return
 		}
 		if !s.route(w, r, name) {
+			return
+		}
+		if s.refusesChanges(name, r) {
+			w.Header().Set("Retry-After", "60")
+			http.Error(w, "This account is being moved to another server and cannot be changed now.", http.StatusServiceUnavailable)
 			return
 		}
 		sp, release, err := s.st.Space(name)

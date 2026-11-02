@@ -149,6 +149,30 @@ f.addEventListener('change',function(){
 {{else}}<form method="post" action="/domain"><label>Use your own domain <input type="text" name="domain" placeholder="weft.example.com" inputmode="url"></label>
 <p><button>Add</button></p></form>
 <p><small>Anyone who already follows you is moved to the new address by their reader. Once the domain works, you sign in again there.</small></p>{{end}}{{end}}
+{{with .Move}}<h3>Moving between servers</h3>
+{{if .Error}}<p class="err">{{.Error}}</p>{{end}}{{if .Notice}}<p>{{.Notice}}</p>{{end}}
+{{if .Code}}<p>Your move code. It is shown once and works for an hour:</p><p><code>{{.Code}}</code></p>
+<p><small>On the new server, sign in to the account you made there (it must be empty, with the same name), open Profile, and under "Move here from another server" give <strong>{{.This}}</strong> and this code. Your account will then be at <strong>{{.Dest}}</strong>, and this address will redirect there. Until you use the code nothing changes.</small></p>{{end}}
+{{if .State}}<p>A move is under way{{if eq .State "received"}}: the new server has your account, and nothing can be changed here{{end}}.</p>
+<form method="post" action="/move/cancel"><p><button>Cancel the move</button></p></form>
+{{if eq .State "received"}}<form method="post" action="/move/finish"><p><button>Finish the move</button> <small>Only if the new server says your account is there but this server was not told.</small></p></form>{{end}}
+{{else if .Waiting}}<p>A move code was made for <strong>{{.Dest}}</strong> and has not been used yet.</p>
+<form method="post" action="/move/cancel"><p><button>Cancel the move code</button></p></form>
+{{else}}<h4>Move to another server</h4>
+<form method="post" action="/move/code"><label>New server <input type="text" name="server" placeholder="weftbig.com" inputmode="url" required></label>
+<label>Your password <input type="password" name="password" autocomplete="current-password" required></label>
+<p><button>Get a move code</button> <small>Make an account with the same name on the new server first.</small></p></form>{{end}}
+{{if .Receive}}<h4>Move here from another server</h4>
+<form method="post" action="/move/receive"><label>The old server <input type="text" name="server" placeholder="weftseed.com" inputmode="url" required></label>
+<label>Move code <input type="text" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+<p><button>Move my account here</button> <small>It replaces this empty account with the one you had there.</small></p></form>
+{{else}}<p><small>To move an account here from another server, this account has to be empty; it holds {{.Why}}.</small></p>{{end}}
+{{if .Pulling}}<p><a href="/move/status">See how the move is going</a></p>{{end}}{{end}}
+{{template "foot"}}{{end}}
+{{define "movestatus"}}{{template "head" .}}<h2>Moving your account here</h2>
+{{with .Pull}}{{if .Err}}<p class="err">{{.Err}}</p>{{if not .Stuck}}<p>Nothing was changed here or on the old server. <a href="/profile">Back to your profile</a></p>{{end}}
+{{else if .Done}}<p>Done. Your account is here now, and the old address redirects to it.</p><p><a href="/">Go to your site</a></p>
+{{else}}<p>{{.Step}}…</p><p><small>This page refreshes by itself. Please do not post anything on the old server meanwhile.</small></p><script>setTimeout(function(){location.reload()},2000)</script>{{end}}{{end}}
 {{template "foot"}}{{end}}
 {{define "ic-reply"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v3"/></svg>{{end}}
 {{define "ic-thread"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{{end}}
@@ -397,6 +421,8 @@ type pageData struct {
 		Local                bool // the avatar is an uploaded picture
 	}
 	Domain                               *domainView
+	Move                                 *moveView // the profile page: moving to or from another server
+	Pull                                 *pullView // the page that shows a move to this server
 	Likers, Others                       []likerRow
 	Images                               []imageRow
 	UploadMax, ImageMax, ImageMaxCompact int  // the largest picture accepted: for a profile picture, at the Original size, at the Compact size

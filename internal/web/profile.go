@@ -136,6 +136,7 @@ func (s *Server) renderProfile(w http.ResponseWriter, r *http.Request, q *req, s
 	}
 	d.UploadMax = s.limitFor(img.Compact)
 	d.Domain = s.domainView(r, q)
+	d.Move = s.moveView(r, q)
 	s.show(w, "profile", status, d)
 }
 

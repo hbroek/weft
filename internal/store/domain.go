@@ -195,6 +195,7 @@ type Entry struct {
 	Status  string
 	MovedTo string // origin of the new home, while Status is moved
 	Domain  string // the active custom domain, if any
+	Move    string // while the account moves away: "hold", "lock" or "received"; "" otherwise
 }
 
 // dirCache holds the entries of the few users who have one, and the hosts of verified domains. A
@@ -223,14 +224,14 @@ func (in *Instance) loadDirs() (map[string]Entry, map[string]string, error) {
 		return c.byName, c.hosts, nil
 	}
 	byName, hosts := map[string]Entry{}, map[string]string{}
-	rows, err := in.rdb.Query(`SELECT name,status,moved_to FROM users WHERE status!='active'`)
+	rows, err := in.rdb.Query(`SELECT name,status,moved_to,move_state FROM users WHERE status!='active' OR move_state!=''`)
 	if err != nil {
 		return nil, nil, err
 	}
 	for rows.Next() {
 		var n string
 		var e Entry
-		if err := rows.Scan(&n, &e.Status, &e.MovedTo); err != nil {
+		if err := rows.Scan(&n, &e.Status, &e.MovedTo, &e.Move); err != nil {
 			rows.Close()
 			return nil, nil, err
 		}

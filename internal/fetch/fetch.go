@@ -237,6 +237,15 @@ func (r *Result) LooksLikeHTML() bool {
 	return strings.Contains(head, "<html") || strings.Contains(head, "<!doctype html")
 }
 
+// Stream returns a client for transfers that take long (moving an account): the same address guard, no overall
+// timeout (the request's context ends it), and no following of redirects.
+func (c *Client) Stream() *http.Client {
+	cp := *c.http
+	cp.Timeout = 0
+	cp.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &cp
+}
+
 // PostForm sends an application/x-www-form-urlencoded POST and returns the status code.
 // Any 2xx status counts as success to the caller; the body is discarded.
 func (c *Client) PostForm(ctx context.Context, rawurl string, form url.Values) (int, error) {
