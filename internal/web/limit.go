@@ -164,6 +164,7 @@ type limits struct {
 	apiWrite *rateLimiter // an API call that changes something
 	follow   *rateLimiter // following, or refreshing the follows: each fetches from other servers
 	badToken *rateLimiter // API calls refused for a missing or wrong token, per address
+	waitlist *rateLimiter // a request for the waiting list, per address
 }
 
 func newLimits() *limits {
@@ -174,6 +175,7 @@ func newLimits() *limits {
 		apiWrite: newRateLimiter(60, 30),
 		follow:   newRateLimiter(10, 10),
 		badToken: newRateLimiter(20, 20),
+		waitlist: newRateLimiter(1, 3),
 	}
 }
 

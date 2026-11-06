@@ -72,6 +72,16 @@ ol.steps li { margin: .5rem 0; }
 .pic { flex: 0 0 120px; width: 120px; height: 80px; color: var(--link); }
 @media (max-width: 480px) { .term { flex-direction: column; align-items: flex-start; } }
 .herocard { display: block; width: 100%; height: auto; border-radius: 12px; margin-top: 1.4rem; box-shadow: 0 1px 2px #26337a1f, 0 8px 24px #26337a26; }
+.counter { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin: 1rem 0; font-size: .95rem; color: var(--muted); }
+.counter b { color: var(--text); font-size: 1.4rem; }
+.counter span[hidden] { display: none; }
+form.wait { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; margin: 1rem 0; }
+form.wait label { display: block; font-weight: 600; margin-top: .8rem; }
+form.wait small { display: block; font-weight: 400; color: var(--muted); }
+form.wait input[type=text], form.wait input[type=email], form.wait textarea { width: 100%; font: inherit; padding: .5rem .6rem; margin-top: .25rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+form.wait textarea { min-height: 5rem; }
+form.wait button { margin-top: 1rem; border: 0; cursor: pointer; font: inherit; }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 code { background: var(--soft); padding: .1em .35em; border-radius: 4px; font-size: .92em; }
 .note { background: var(--soft); border-radius: 8px; padding: .8rem 1rem; font-size: .95rem; color: var(--muted); }
 footer { margin-top: 3rem; padding: 1.5rem 0 2.5rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .9rem; }
@@ -147,14 +157,34 @@ footer a { margin-right: 1rem; }
 
   <section id="signup">
     <h2>Sign up</h2>
-    <p>The simplest way to get a Weft is with a domain of your own. If you can add a DNS record to a name such as <code>weft.example.com</code>, your site lives at your own address, and it stays yours wherever you go.</p>
+    <p>The simplest way to get a Weft is with a domain of your own. If you can add DNS records to your domain, your site lives at <code>weft.</code> followed by it, such as <code>weft.example.com</code> or <code>weft.example.co.uk</code>, and it stays yours wherever you go. The name is always <code>weft.</code> plus your registered domain, never a name further down such as <code>weft.blog.example.com</code>.</p>
     <ol class="steps">
-      <li>Choose a name under a domain you own, for example <code>weft.example.com</code>, and the account name you want.</li>
+      <li>Give the domain you own. Your address is <code>weft.</code> followed by it, for example <code>weft.example.com</code>, and choose the account name you want.</li>
       <li>Add the DNS records we show you. A TXT record proves the domain is yours, and a CNAME points it at our loom (the server that hosts you).</li>
       <li>Choose a password. Your site is live at your own domain.</li>
     </ol>
     <p><strong>No domain?</strong> You can still have an account. It lives at <code>yourname.weftseed.com</code>, on our loom (the server), and works like any other. When you get a domain later, you can add it from your profile. And if you ever want to leave, <em>Move to another server</em> carries your whole spool to the new place, and we redirect the old links so nothing you have shared breaks.</p>
-    <p class="note">Sign-up is not open yet. The number of accounts is limited. For an account without a domain there will be a waiting list: tell us the name you want and where you already write (a blog, your posts, your profiles), and we let people in by hand. An account with a domain keeps working as long as the domain reaches us; if it stops, we warn you and give you time to fix it or to move away with your data. Until then, <a href="#contact">ask for an account</a>.</p>
+    <div class="counter" id="counter" aria-live="polite">
+      <span id="c-places" hidden><b id="c-left">0</b> places left of <span id="c-cap">0</span></span>
+      <span id="c-accounts" hidden><b id="c-n">0</b> accounts</span>
+      <span id="c-waiting" hidden><b id="c-w">0</b> waiting</span>
+    </div>
+
+    <h3 id="waitlist">Ask for an account</h3>
+    <p>Tell us the name you want and where you already write. We read each request by hand.</p>
+    <form class="wait" action="/waitlist" method="post">
+      <label for="f-name">Account name <small>Lowercase letters, digits and hyphens. It becomes <code>name.weftseed.com</code>.</small></label>
+      <input id="f-name" name="name" type="text" required maxlength="31" pattern="[a-z0-9][a-z0-9\-]*" autocomplete="username" autocapitalize="none" spellcheck="false">
+      <label for="f-contact">Email address <small>Only used to answer you.</small></label>
+      <input id="f-contact" name="contact" type="email" required maxlength="254" autocomplete="email">
+      <label for="f-links">Where you write <small>Links to your blog, posts or social profiles, one per line.</small></label>
+      <textarea id="f-links" name="links" required maxlength="2000"></textarea>
+      <label for="f-note">Anything else <small>Optional.</small></label>
+      <textarea id="f-note" name="note" maxlength="1000"></textarea>
+      <div class="hp" aria-hidden="true"><label>Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+      <button class="btn" type="submit">Join the waiting list</button>
+    </form>
+    <p class="note">Not open to everyone yet: we let people in from the list, by hand. If you have a domain of your own you can skip the list once domain sign-up opens (see above). An account with a domain keeps working as long as the domain reaches us; if it stops, we warn you and give you time to fix it or to move away with your data. Questions? Write to <span class="mail" data-u="hbroek" data-d="gmail.com">the operator (turn on JavaScript to see the address)</span>.</p>
   </section>
 
   <section id="run">
@@ -165,7 +195,7 @@ footer a { margin-right: 1rem; }
   <section id="contact">
     <h2>Questions</h2>
     <p>Why a domain? Spam. A domain costs a little and cannot be made by the thousand. Why a file? So the data is yours. Can I leave? Yes, at any time, with everything.</p>
-    <p>To ask for an account or say hello, write to the operator at the address on the contact page. (This page is a first version; the terms, privacy policy, FAQ and contact pages follow.)</p>
+    <p>To say hello, write to <span class="mail" data-u="hbroek" data-d="gmail.com">the operator (turn on JavaScript to see the address)</span>. (This page is a first version; the terms, privacy policy, FAQ and contact pages follow.)</p>
   </section>
 </main>
 
@@ -176,5 +206,29 @@ footer a { margin-right: 1rem; }
     <span>Weft, built on plain feeds.</span>
   </div>
 </footer>
+<script>
+// The operator's address is put together here, so it is not written out in the page for programs that collect them.
+document.querySelectorAll('.mail').forEach(function (e) {
+  var a = e.dataset.u + '@' + e.dataset.d;
+  var l = document.createElement('a');
+  l.href = 'mailto:' + a; l.textContent = a;
+  e.replaceChildren(l);
+});
+// The counter: places and people waiting, from the server. Without it the page just shows no numbers.
+fetch('/status.json').then(function (r) { return r.ok ? r.json() : null; }).then(function (s) {
+  if (!s) return;
+  var show = function (id, on) { document.getElementById(id).hidden = !on; };
+  if (s.cap) {
+    document.getElementById('c-left').textContent = Math.max(0, s.cap - s.accounts);
+    document.getElementById('c-cap').textContent = s.cap;
+    show('c-places', true);
+  } else {
+    document.getElementById('c-n').textContent = s.accounts;
+    show('c-accounts', true);
+  }
+  document.getElementById('c-w').textContent = s.waiting;
+  show('c-waiting', true);
+}).catch(function () {});
+</script>
 </body>
 </html>

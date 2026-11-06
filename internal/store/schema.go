@@ -242,6 +242,19 @@ CREATE INDEX held_name ON held(name);`)
 	return err
 }
 
+// instanceV8 is the waiting list for accounts: who asked for one, how to answer, and where they write.
+func instanceV8(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE waitlist (
+	id      INTEGER PRIMARY KEY,
+	name    TEXT NOT NULL UNIQUE,
+	contact TEXT NOT NULL UNIQUE,
+	links   TEXT NOT NULL,
+	note    TEXT NOT NULL DEFAULT '',
+	created INTEGER NOT NULL
+)`)
+	return err
+}
+
 // instanceV7 remembers where a followed post, a repost, says it first appeared.
 func instanceV7(tx *sql.Tx) error {
 	_, err := tx.Exec(`ALTER TABLE items ADD COLUMN canonical TEXT NOT NULL DEFAULT ''`)

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 // Where a user is served from, and what happens to the old address when that changes.
@@ -60,6 +62,35 @@ func CleanDomain(s string) (string, error) {
 		return "", ErrBadDomain // 192.168.0.1 is an address, not a name
 	}
 	return s, nil
+}
+
+// ErrSignupDomain is returned for a domain that may not be used to sign up: the reason is in the message.
+var ErrSignupDomain = errors.New("not a domain to sign up with")
+
+// SignupDomain checks a domain given at sign-up. It must be exactly weft. followed by the registered domain of
+// the person: weft.example.com, weft.example.co.uk. A name further down (weft.blog.example.com) or another
+// first label (www.example.com) is refused, as is a registry's own name (weft.co.uk). What a registered domain
+// is comes from the public suffix list that is part of golang.org/x/net/publicsuffix, so it is brought up to
+// date with the module (go get golang.org/x/net@latest). It returns the cleaned domain and the registered domain,
+// which is what one account per domain is counted by.
+func SignupDomain(s string) (domain, registered string, err error) {
+	bad := func(why string) (string, string, error) { return "", "", fmt.Errorf("%w: %s", ErrSignupDomain, why) }
+	d, err := CleanDomain(s)
+	if err != nil {
+		return bad("that is not a domain name")
+	}
+	first, rest, _ := strings.Cut(d, ".")
+	if first != "weft" {
+		return bad("the name must start with weft., as in weft." + rest)
+	}
+	reg, err := publicsuffix.EffectiveTLDPlusOne(rest)
+	if err != nil {
+		return bad(rest + " is a registry's name, not a domain of yours")
+	}
+	if reg != rest {
+		return bad("use weft." + reg + ", the name under your registered domain, not weft." + rest)
+	}
+	return d, reg, nil
 }
 
 // Domain is a user's custom domain. It becomes theirs (Verified) once the owner has shown control of it, by

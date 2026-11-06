@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -22,7 +23,7 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24] [-site DIR]
+  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24] [-site DIR] [-max-users N]
   weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW [-permanent]] USERNAME
                   (the password is temporary: the user must change it at the first sign-in, unless -permanent;
                   without -password one is made and shown)
@@ -33,6 +34,8 @@ func usage() {
                   TARGET is a feed or site URL, or a bare user name on this instance (alice -> http://alice.localhost:8080/).
                   The target's server must be running.
   weft user list   [-data weft]
+  weft waitlist list   [-data weft]     (who asked for an account: name, address, where they write)
+  weft waitlist remove [-data weft] ID  (answered or refused)
   weft split    -db OLD.db -data DIR     (convert a single-file database into the per-user layout in DIR; OLD.db is not changed)
   weft export   [-data weft] [-domain localhost] [-o FILE] USERNAME   (writes FILE, default USERNAME.weft.zip: the account, without sessions or API token)
   weft import   [-data weft] FILE        (creates the user in FILE; prints a new API token; refuses a name that is taken)
@@ -67,6 +70,7 @@ func main() {
 		quota := fs.Int("media-quota-mb", 200, "how much each user may store in pictures, in MB (0 for no limit)")
 		side := fs.Int("image-side", 1600, "the longest side, in pixels, of a picture uploaded at the Compact size")
 		pixels := fs.Int("image-megapixels", 24, "the most pixels (in millions) one picture may have")
+		maxUsers := fs.Int("max-users", 0, "the number of accounts the landing page says there are places for (0: no number is shown)")
 		site := fs.String("site", "", "folder of static files (the landing page) served at www.<domain>")
 		fs.Parse(os.Args[2:])
 		mediaQuota := int64(*quota) << 20
@@ -74,9 +78,43 @@ func main() {
 			mediaQuota = -1
 		}
 		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname, TrustProxy: *trustProxy, NoLimits: *noLimits,
-			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site}, *poll); err != nil {
+			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site, MaxUsers: *maxUsers}, *poll); err != nil {
 			log.Fatal(err)
 		}
+	case "waitlist":
+		if len(os.Args) < 3 || (os.Args[2] != "list" && os.Args[2] != "remove") {
+			usage()
+		}
+		fs := flag.NewFlagSet("waitlist "+os.Args[2], flag.ExitOnError)
+		db := fs.String("data", "weft", "data folder: instance.db and users/")
+		fs.Parse(os.Args[3:])
+		st, err := store.Open(*db)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer st.Close()
+		if os.Args[2] == "remove" {
+			id, err := strconv.ParseInt(fs.Arg(0), 10, 64)
+			if err != nil || fs.NArg() != 1 {
+				usage()
+			}
+			if err := st.RemoveWaiting(id); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("%d removed\n", id)
+			break
+		}
+		list, err := st.Waitlist()
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, w := range list {
+			fmt.Printf("%d  %s  %s  <%s>\n    %s\n", w.ID, w.Created.Format("2006-01-02"), w.Name, w.Contact, strings.ReplaceAll(w.Links, "\n", "\n    "))
+			if w.Note != "" {
+				fmt.Printf("    note: %s\n", w.Note)
+			}
+		}
+		fmt.Printf("%d waiting\n", len(list))
 	case "fsck":
 		fs := flag.NewFlagSet("fsck", flag.ExitOnError)
 		db := fs.String("data", "weft", "data folder: instance.db and users/")

@@ -255,7 +255,7 @@ func TestDomainsActiveMigration(t *testing.T) {
 	// back to the schema before the change
 	raw := openRaw(t, filepath.Join(dir, "instance.db"))
 	for _, q := range []string{`ALTER TABLE domains DROP COLUMN active`, `ALTER TABLE feeds DROP COLUMN etag`, `ALTER TABLE feeds DROP COLUMN last_modified`,
-		`ALTER TABLE feeds DROP COLUMN fails`, `ALTER TABLE feeds DROP COLUMN next_try`, `ALTER TABLE items DROP COLUMN canonical`, `ALTER TABLE items DROP COLUMN likes_href`, `ALTER TABLE users DROP COLUMN move_state`, `DROP TABLE moves`, `DROP TABLE held`, `PRAGMA user_version=2`} {
+		`ALTER TABLE feeds DROP COLUMN fails`, `ALTER TABLE feeds DROP COLUMN next_try`, `ALTER TABLE items DROP COLUMN canonical`, `ALTER TABLE items DROP COLUMN likes_href`, `ALTER TABLE users DROP COLUMN move_state`, `DROP TABLE moves`, `DROP TABLE held`, `DROP TABLE waitlist`, `PRAGMA user_version=2`} {
 		if _, err := raw.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}
@@ -275,5 +275,36 @@ func TestDomainsActiveMigration(t *testing.T) {
 	}
 	if e := in.Dir("alice"); e.Domain != "a.example.com" {
 		t.Errorf("Dir = %+v", e)
+	}
+}
+
+func TestSignupDomain(t *testing.T) {
+	for _, c := range []struct {
+		in, domain, registered string // domain "" when refused
+	}{
+		{"weft.example.com", "weft.example.com", "example.com"},
+		{"WEFT.Example.com.", "weft.example.com", "example.com"},
+		{"weft.example.co.uk", "weft.example.co.uk", "example.co.uk"},
+		{"weft.example.com.au", "weft.example.com.au", "example.com.au"},
+		{"weft.blog.example.com", "", ""},   // further down than the registered domain
+		{"weft.shop.example.co.uk", "", ""}, // the same under a two-part suffix
+		{"www.example.com", "", ""},         // another first label
+		{"example.com", "", ""},             // no weft.
+		{"weft.co.uk", "", ""},              // a registry's name
+		{"weft.com", "", ""},                // a top-level name
+		{"weft", "", ""},                    // not a domain
+		{"weft.192.168.0.1", "", ""},        // an address
+		{"weft.exa mple.com", "", ""},       // not a name
+	} {
+		d, reg, err := SignupDomain(c.in)
+		if c.domain == "" {
+			if !errors.Is(err, ErrSignupDomain) {
+				t.Errorf("SignupDomain(%q) = %q, %q, %v; want refused", c.in, d, reg, err)
+			}
+			continue
+		}
+		if err != nil || d != c.domain || reg != c.registered {
+			t.Errorf("SignupDomain(%q) = %q, %q, %v; want %q, %q", c.in, d, reg, err, c.domain, c.registered)
+		}
 	}
 }

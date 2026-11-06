@@ -52,6 +52,8 @@ type Config struct {
 	MediaQuota                                                 int64
 	// SiteDir is a folder of static files (the landing page) served at www.<BaseDomain>. Empty serves nothing there.
 	SiteDir string
+	// MaxUsers is the number of accounts the landing page says there are places for (0: it names no number).
+	MaxUsers int
 }
 
 type Server struct {
@@ -419,13 +421,4 @@ func (s *Server) bearer(r *http.Request, q *req) error {
 		return errors.New("invalid token for this host")
 	}
 	return nil
-}
-
-// landing serves the static files of the landing page, for GET and HEAD only.
-func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	http.FileServer(http.Dir(s.cfg.SiteDir)).ServeHTTP(w, r)
 }
