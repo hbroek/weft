@@ -71,6 +71,15 @@ html:not([data-theme]) .th .t-auto, html[data-theme="light"] .th .t-light, html[
 article, .node { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: .9rem 1.1rem; overflow-wrap: anywhere; }
 article { margin: 1rem 0; }
 time { color: var(--muted); font-size: .85em; }
+/* headings written in a post. Browsers make an <h1> inside <article> smaller than usual (as small as an <h2> when
+   the article is nested), so "#" came out no bigger than "##". A fixed scale keeps the order, below the post's title. */
+:is(.e-content, .clip, .node, .comment, #preview-body) :is(h1, h2, h3, h4, h5, h6) { line-height: 1.25; margin: 1.1em 0 .4em; }
+:is(.e-content, .clip, .node, .comment, #preview-body) h1 { font-size: 1.4rem; }
+:is(.e-content, .clip, .node, .comment, #preview-body) h2 { font-size: 1.25rem; }
+:is(.e-content, .clip, .node, .comment, #preview-body) h3 { font-size: 1.1rem; }
+:is(.e-content, .clip, .node, .comment, #preview-body) :is(h4, h5, h6) { font-size: 1rem; }
+/* the editor's preview shows the title the way a published post does (an h2 there), above any heading in the text */
+#preview-title { font-size: 1.5em; line-height: 1.25; margin: 0 0 .5rem; }
 article img, .node img, .comment img, #preview img { max-width: min(100%, calc(28rem * var(--r, 100))); max-height: 28rem; height: auto; object-fit: contain; border-radius: 8px; }
 ul.thread, ul.thread ul { list-style: none; padding-left: 1rem; border-left: 2px solid var(--border); }
 .node { margin: .75rem 0; }
@@ -113,6 +122,7 @@ article.likeevent { display: flex; flex-wrap: wrap; align-items: baseline; gap: 
 .tally a:hover { text-decoration: underline; }
 
 /* keyword chips */
+.repost { margin: .5rem 0 0; color: var(--muted); }
 .kw { display: flex; flex-wrap: wrap; gap: .35rem; margin: .5rem 0 0; }
 .kw span, .kw a { text-decoration: none; background: var(--chip); border-radius: 999px; padding: .05rem .65rem; font-size: .85em; color: var(--text); }
 .kw a:hover { background: var(--chip-hover); }
@@ -205,6 +215,7 @@ article pre code, .node pre code, .comment pre code, #preview pre code { backgro
 
 /* the editor starts with the Markdown box alone; "Advanced" adds the title, keywords, address and Markdown help */
 .ed:not(:has(#adv:checked)) .adv, .ed:not(:has(#adv:checked)) .cheats { display: none; }
+.ed:not(:has(#repost:checked)) .repostfield { display: none; }
 .advrow { margin: 1rem 0 .25rem; }
 .advrow label { display: inline-flex; align-items: center; gap: .4rem; margin: 0; }
 .advrow small { color: var(--muted); }

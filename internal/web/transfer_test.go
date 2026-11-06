@@ -44,7 +44,7 @@ func (ts *twoServers) password(i *instance) string { return "password-" + i.host
 // serverOf is how a person names a server in the form: the host and port, without the user's name.
 func serverOf(i *instance) string { return strings.TrimPrefix(i.host, "alice.") }
 
-var codeRE = regexp.MustCompile(`<code>([a-z0-9]{5}(?:-[a-z0-9]{5}){4})</code>`)
+var codeRE = regexp.MustCompile(`<code id="movecode">([a-z0-9]{5}(?:-[a-z0-9]{5}){4})</code>`)
 
 func (ts *twoServers) code(t *testing.T) string {
 	t.Helper()

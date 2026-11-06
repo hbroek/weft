@@ -35,6 +35,7 @@ type ParsedItem struct {
 	InReplyTo              string    // weft:inReplyTo href, if any
 	InReplyToFeed          string
 	Root, RootFeed         string // weft:root
+	Canonical              string // weft:canonical href: where the item, a repost, first appeared
 	// weft:likeOf: set when the item is a like rather than a post.
 	LikeOf             string
 	Likes              int      // weft:likes count
@@ -97,6 +98,9 @@ type xmlParsed struct {
 				IsPermaLink string `xml:"isPermaLink,attr"`
 				FeedURL     string `xml:"feedUrl,attr"`
 			} `xml:"http://source.scripting.com/ inReplyTo"`
+			Canonical struct {
+				Href string `xml:"href,attr"`
+			} `xml:"https://weftprotocol.org/ns/weft/0.1 canonical"`
 			Root struct {
 				Href string `xml:"href,attr"`
 				Feed string `xml:"feed,attr"`
@@ -221,6 +225,7 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 				pi.InReplyToFeed = httpAddress(strings.TrimSpace(it.SrcInReplyTo.FeedURL))
 			}
 		}
+		pi.Canonical = httpAddress(strings.TrimSpace(it.Canonical.Href))
 		pi.RepliesCount = -1
 		if it.Replies.Count != nil {
 			pi.RepliesCount = *it.Replies.Count

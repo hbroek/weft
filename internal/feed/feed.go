@@ -132,6 +132,7 @@ type Item struct {
 	LikeOf      *LikeRef `xml:"weft:likeOf"`
 	Likes       *Likes   `xml:"weft:likes"`
 	Feed        *FeedRef `xml:"weft:feed"`
+	Canonical   *Ref     `xml:"weft:canonical"` // a repost: where the content first appeared
 
 	// the source-namespace forms of weft:inReplyTo and weft:replies, filled in by Marshal
 	SrcInReplyTo *SrcInReplyTo `xml:"source:inReplyTo"`

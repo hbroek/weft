@@ -28,7 +28,8 @@ type tlRow struct {
 	ReplyWho                                                    string // whose post it replies to, for "replying to …"
 	Target, FeedURL, Tally, TallyTip, ThreadHref                string
 	Mine                                                        bool
-	HasThread                                                   bool // it replies to something or has replies
+	Canonical, CanonicalHost                                    string // a repost: where it first appeared
+	HasThread                                                   bool   // it replies to something or has replies
 	HTML                                                        template.HTML
 	Edited                                                      bool
 	Keywords                                                    []string
@@ -206,7 +207,7 @@ func (s *Server) rows(r *http.Request, q *req, feedURL string, pg *tlPage) ([]tl
 		}
 		out = append(out, tlRow{Anchor: anchorID(itemTarget(it)), Parent: newParentCard(it.InReplyTo, it.Parent), Avatar: httpURL(it.FeedImage), Initial: initial(author), Author: author, AuthorHref: "/timeline?feed=" + url.QueryEscape(it.FeedURL), Title: it.Title, Link: httpURL(it.Link), InReplyTo: httpURL(it.InReplyTo),
 			Date: stampAt(it.Published), ISO: it.Published.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(it.Published), MD: orStr(it.Markdown, it.Text), HTML: remoteHTML(it), Edited: it.Updated != nil, Keywords: it.Keywords,
-			ReplyHref: replyHref(it, r.URL.RequestURI()), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(n), TallyTip: likedBy(names, n),
+			ReplyHref: replyHref(it, r.URL.RequestURI()), ThreadHref: threadHref(itemTarget(it), ""), HasThread: it.InReplyTo != "" || it.RepliesCount != 0, Canonical: httpURL(it.Canonical), CanonicalHost: siteHost(httpURL(it.Canonical)), Target: itemTarget(it), FeedURL: it.FeedURL, Tally: likesText(n), TallyTip: likedBy(names, n),
 			Mine: mine, when: it.Published})
 	}
 	return out, items, nil
@@ -304,7 +305,7 @@ func (s *Server) ownRows(r *http.Request, q *req, pg *tlPage) ([]tlRow, error) {
 	out := make([]tlRow, 0, len(posts))
 	for _, p := range posts {
 		pu := s.postURL(r, p.ID)
-		out = append(out, tlRow{Anchor: anchorID(pu), Own: true, Parent: newParentCard(p.InReplyTo, p.Parent), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), Author: "You", AuthorHref: "/", Title: p.Title, Link: pu, InReplyTo: httpURL(p.InReplyTo),
+		out = append(out, tlRow{Anchor: anchorID(pu), Own: true, Canonical: p.Canonical, CanonicalHost: siteHost(p.Canonical), Parent: newParentCard(p.InReplyTo, p.Parent), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), Author: "You", AuthorHref: "/", Title: p.Title, Link: pu, InReplyTo: httpURL(p.InReplyTo),
 			Date: stampAt(p.Created), ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Ago: ago(p.Created), MD: absMedia(p.Markdown, s.base(r)), HTML: template.HTML(p.HTML), // goldmark safe mode
 			Edited: p.Updated != nil, Keywords: p.Keywords, EditHref: "/posts/" + p.Slug + "/edit",
 			ReplyHref: "/compose?reply_to=" + url.QueryEscape(pu) + backParam(r.URL.RequestURI()), ThreadHref: threadHref(pu, ""), HasThread: p.InReplyTo != "" || counts[p.ID] > 0,

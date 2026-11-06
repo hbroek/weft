@@ -314,3 +314,23 @@ func TestMarshalWritesSourceInReplyToAndComments(t *testing.T) {
 		t.Errorf("round trip: %v %+v", err, p)
 	}
 }
+
+func TestParseReadsCanonical(t *testing.T) {
+	rss := `<rss version="2.0" xmlns:weft="` + NSWeft + `"><channel><title>t</title>
+<item><link>https://a.example/1</link><weft:canonical href="https://orig.example/essay"/></item>
+<item><link>https://a.example/2</link><weft:canonical href="javascript:alert(1)"/></item>
+<item><link>https://a.example/3</link></item></channel></rss>`
+	p, err := Parse([]byte(rss), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Items[0].Canonical != "https://orig.example/essay" || p.Items[1].Canonical != "" || p.Items[2].Canonical != "" {
+		t.Errorf("rss: %q %q %q", p.Items[0].Canonical, p.Items[1].Canonical, p.Items[2].Canonical)
+	}
+	atom := `<feed xmlns="http://www.w3.org/2005/Atom"><title>t</title><entry><id>1</id><title>e</title>
+<link rel="alternate" href="https://a.example/1"/><link rel="canonical" href="https://orig.example/essay"/></entry></feed>`
+	p, err = Parse([]byte(atom), now)
+	if err != nil || p.Items[0].Canonical != "https://orig.example/essay" || p.Items[0].Link != "https://a.example/1" {
+		t.Errorf("atom: %v %+v", err, p.Items)
+	}
+}

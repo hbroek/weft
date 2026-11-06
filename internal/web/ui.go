@@ -199,7 +199,7 @@ func (s *Server) editor(w http.ResponseWriter, r *http.Request, q *req, status i
 	}
 	// the advanced fields are folded away unless they hold something: a title or keywords (from the
 	// bookmarklet, an edit or a form sent back with a message) or an address the author wrote
-	d.Advanced = d.Form.Title != "" || d.Form.Keywords != "" || (del == "" && !d.SlugAuto && d.Form.Slug != "")
+	d.Advanced = d.Form.Title != "" || d.Form.Keywords != "" || d.Form.Canonical != "" || (del == "" && !d.SlugAuto && d.Form.Slug != "")
 	s.show(w, "editor", status, d)
 }
 
@@ -228,19 +228,20 @@ func (s *Server) composeForm(w http.ResponseWriter, r *http.Request, q *req) {
 	v := r.URL.Query()
 	title, body, kws := strings.TrimSpace(v.Get("title")), v.Get("body"), feed.SplitKeywords(v.Get("keywords"))
 	var d func(*pageData)
+	var canon, note string // a repost starts with its canonical link set; note says what could not be done
 	if page := httpURL(v.Get("page")); page != "" {
 		// the bookmarklet's page: a bookmark card, a reply to it (the default when the page can take a
-		// Webmention), or a like of it
+		// Webmention), a like of it, or a repost of its text
 		info := feed.ParentInfo{Title: v.Get("ptitle"), Description: v.Get("pdesc"), Image: v.Get("pimg")}.Clean()
 		mode := v.Get("mode")
-		if mode != "reply" && mode != "bookmark" && mode != "like" {
+		if mode != "reply" && mode != "bookmark" && mode != "like" && mode != "repost" {
 			mode = "bookmark"
 			if v.Get("wm") == "1" {
 				mode = "reply"
 			}
 		}
 		var modes []modeLink
-		for _, m := range []struct{ key, label string }{{"bookmark", "Bookmark"}, {"reply", "Reply"}, {"like", "Like"}} {
+		for _, m := range []struct{ key, label string }{{"bookmark", "Bookmark"}, {"reply", "Reply"}, {"like", "Like"}, {"repost", "Repost"}} {
 			q2 := url.Values{}
 			for k, vs := range v {
 				q2[k] = vs
@@ -262,11 +263,25 @@ func (s *Server) composeForm(w http.ResponseWriter, r *http.Request, q *req) {
 			r.Form.Set("ptitle", info.Title)
 			r.Form.Set("pdesc", info.Description)
 			r.Form.Set("pimg", info.Image)
+		case "repost":
+			src := s.repostSource(r.Context(), page)
+			title, body, canon = orStr(src.Title, info.Title), src.Markdown, src.Canonical
+			if body == "" { // nothing could be read: a card with the link, to paste the text under
+				body = bookmarkBody(page, info)
+				note = "The text of that page could not be read, so the form holds a card with its link. Paste the text you want to repost."
+			} else {
+				body = repostLine(canon) + body
+			}
 		default:
 			title, body = info.Title, bookmarkBody(page, info)
 		}
 	}
-	s.editor(w, r, q, http.StatusOK, "New post", "/compose", "Publish", "", title, body, kws, "", d)
+	s.editor(w, r, q, http.StatusOK, "New post", "/compose", "Publish", "", title, body, kws, note, func(dd *pageData) {
+		if d != nil {
+			d(dd)
+		}
+		dd.Form.Canonical = canon
+	})
 }
 
 // bookmarkBody is the Markdown of a bookmark card: the page's image, a quoted description and a link.
@@ -288,9 +303,10 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	title, body, kws := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown"), feed.SplitKeywords(r.FormValue("keywords"))
 	slug := strings.TrimSpace(r.FormValue("slug"))
-	p, msg := s.create(r, q.host, title, body, slug, kws, httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed")), parentFromForm(r))
+	canon := formCanonical(r)
+	p, msg := s.create(r, q.host, title, body, slug, kws, canon, httpURL(r.FormValue("reply_to")), httpURL(r.FormValue("reply_feed")), parentFromForm(r))
 	if msg != "" {
-		s.editor(w, r, q, http.StatusBadRequest, "New post", "/compose", "Publish", "", title, body, kws, msg, func(d *pageData) { d.Form.Slug = slug })
+		s.editor(w, r, q, http.StatusBadRequest, "New post", "/compose", "Publish", "", title, body, kws, msg, func(d *pageData) { d.Form.Slug, d.Form.Canonical = slug, canon })
 		return
 	}
 	if p.InReplyTo != "" { // a reply belongs to a conversation: back to the timeline, at the post it answers
@@ -319,7 +335,7 @@ func (s *Server) ownPost(w http.ResponseWriter, r *http.Request, q *req) *store.
 func (s *Server) editForm(w http.ResponseWriter, r *http.Request, q *req) {
 	if p := s.ownPost(w, r, q); p != nil {
 		path := "/posts/" + p.Slug
-		s.editor(w, r, q, http.StatusOK, "Edit post", path+"/edit", "Save", path+"/delete", p.Title, p.Markdown, p.Keywords, "")
+		s.editor(w, r, q, http.StatusOK, "Edit post", path+"/edit", "Save", path+"/delete", p.Title, p.Markdown, p.Keywords, "", func(d *pageData) { d.Form.Canonical = p.Canonical })
 	}
 }
 
@@ -330,8 +346,9 @@ func (s *Server) edit(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	title, body, kws := strings.TrimSpace(r.FormValue("title")), r.FormValue("markdown"), feed.SplitKeywords(r.FormValue("keywords"))
 	path := "/posts/" + p.Slug
-	if _, msg := s.update(r, q.host, p.ID, title, body, kws); msg != "" {
-		s.editor(w, r, q, http.StatusBadRequest, "Edit post", path+"/edit", "Save", path+"/delete", title, body, kws, msg)
+	canon := formCanonical(r)
+	if _, msg := s.update(r, q.host, p.ID, title, body, kws, canon); msg != "" {
+		s.editor(w, r, q, http.StatusBadRequest, "Edit post", path+"/edit", "Save", path+"/delete", title, body, kws, msg, func(d *pageData) { d.Form.Canonical = canon })
 		return
 	}
 	http.Redirect(w, r, "/posts/"+p.Slug, http.StatusSeeOther)
@@ -351,15 +368,19 @@ func (s *Server) deleteForm(w http.ResponseWriter, r *http.Request, q *req) {
 
 // create validates, renders and stores a new post, and for a reply, links it into its thread
 // and queues a Webmention to the parent. msg is a user-facing validation error.
-func (s *Server) create(r *http.Request, u *store.User, title, markdown, slug string, keywords []string, replyTo, replyFeed string, parent feed.ParentInfo) (*store.Post, string) {
+func (s *Server) create(r *http.Request, u *store.User, title, markdown, slug string, keywords []string, canonical, replyTo, replyFeed string, parent feed.ParentInfo) (*store.Post, string) {
 	if strings.TrimSpace(markdown) == "" {
 		return nil, "Write something first."
+	}
+	canonical, msg := cleanCanonical(canonical)
+	if msg != "" {
+		return nil, msg
 	}
 	html, err := md.Render(markdown)
 	if err != nil {
 		return nil, err.Error()
 	}
-	n := store.NewPost{UserID: u.ID, Title: title, Markdown: markdown, HTML: html, Keywords: keywords, Slug: slug}
+	n := store.NewPost{UserID: u.ID, Title: title, Markdown: markdown, HTML: html, Keywords: keywords, Slug: slug, Canonical: canonical}
 	if replyTo != "" {
 		if parent.Empty() {
 			parent = s.parentSnapshot(r, reqOf(r), replyTo)
@@ -382,6 +403,31 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown, slug st
 	return p, ""
 }
 
+// maxCanonical is the longest canonical address accepted.
+const maxCanonical = 2000
+
+// cleanCanonical checks the address a post says it first appeared at: empty (an original), or an http(s) address.
+// The second result is a sentence for the author when it cannot be used.
+func cleanCanonical(s string) (string, string) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", ""
+	}
+	if len(s) > maxCanonical || httpURL(s) == "" || strings.ContainsAny(s, " \t\r\n") {
+		return "", "The canonical link must be a web address that starts with http:// or https://."
+	}
+	return httpURL(s), ""
+}
+
+// formCanonical is the canonical address typed in the editor. It counts only while "This is a repost" is checked,
+// so unchecking the box removes it.
+func formCanonical(r *http.Request) string {
+	if r.FormValue("repost") != "1" {
+		return ""
+	}
+	return r.FormValue("canonical")
+}
+
 // slugMessage is the sentence for an address that cannot be used.
 func slugMessage(err error) (string, bool) {
 	switch {
@@ -392,15 +438,19 @@ func slugMessage(err error) (string, bool) {
 }
 
 // update replaces a post's content and, for a reply, tells the parent it changed.
-func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdown string, keywords []string) (*store.Post, string) {
+func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdown string, keywords []string, canonical string) (*store.Post, string) {
 	if strings.TrimSpace(markdown) == "" {
 		return nil, "Write something first."
+	}
+	canonical, msg := cleanCanonical(canonical)
+	if msg != "" {
+		return nil, msg
 	}
 	html, err := md.Render(markdown)
 	if err != nil {
 		return nil, err.Error()
 	}
-	p, err := reqOf(r).sp.UpdatePost(u.ID, id, title, markdown, html, keywords)
+	p, err := reqOf(r).sp.UpdatePost(u.ID, id, title, markdown, html, keywords, canonical)
 	if err != nil {
 		return nil, err.Error()
 	}

@@ -204,7 +204,12 @@ func spaceV1(tx *sql.Tx) error { _, err := tx.Exec(spaceSchema); return err }
 // the first sign-in. It is separate from spaceSchema because a file made before it has to get it too.
 const spaceV2SQL = `ALTER TABLE users ADD COLUMN must_change INTEGER NOT NULL DEFAULT 0;`
 
-func spaceV2(tx *sql.Tx) error    { _, err := tx.Exec(spaceV2SQL); return err }
+func spaceV2(tx *sql.Tx) error { _, err := tx.Exec(spaceV2SQL); return err }
+
+// spaceV3SQL adds a post's canonical address: where the content first appeared, for a post that republishes it.
+const spaceV3SQL = `ALTER TABLE posts ADD COLUMN canonical TEXT NOT NULL DEFAULT '';`
+
+func spaceV3(tx *sql.Tx) error    { _, err := tx.Exec(spaceV3SQL); return err }
 func instanceV1(tx *sql.Tx) error { _, err := tx.Exec(instanceSchema); return err }
 
 // instanceV6 adds moving an account to another server: the state an account is in while it moves, the move
@@ -234,6 +239,12 @@ CREATE TABLE held (
   created INTEGER NOT NULL
 );
 CREATE INDEX held_name ON held(name);`)
+	return err
+}
+
+// instanceV7 remembers where a followed post, a repost, says it first appeared.
+func instanceV7(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE items ADD COLUMN canonical TEXT NOT NULL DEFAULT ''`)
 	return err
 }
 

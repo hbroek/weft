@@ -91,7 +91,7 @@ func TestMustChangeMigration(t *testing.T) {
 	in.AddUser("alice", "", "")
 	in.Close()
 	raw := openRaw(t, filepath.Join(dir, spaceRel("alice")))
-	for _, q := range []string{`ALTER TABLE users DROP COLUMN must_change`, `PRAGMA user_version=1`} {
+	for _, q := range []string{`ALTER TABLE posts DROP COLUMN canonical`, `ALTER TABLE users DROP COLUMN must_change`, `PRAGMA user_version=1`} {
 		if _, err := raw.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}

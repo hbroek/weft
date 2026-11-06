@@ -53,6 +53,16 @@ type atomLink struct {
 	Type string `xml:"type,attr"`
 }
 
+// canonicalLink is the address a link with rel="canonical" gives: where the entry first appeared.
+func canonicalLink(links []atomLink) string {
+	for _, l := range links {
+		if strings.EqualFold(strings.TrimSpace(l.Rel), "canonical") {
+			return httpAddress(strings.TrimSpace(l.Href))
+		}
+	}
+	return ""
+}
+
 // alternate picks the address of the page the entry or feed is about: the link whose rel is
 // "alternate" (the default when there is none), preferring a web page over another media type.
 func alternate(links []atomLink) string {
@@ -127,7 +137,7 @@ func parseAtom(data []byte, now time.Time) (*Parsed, error) {
 			pub = now
 		}
 		it := ParsedItem{GUID: strings.TrimSpace(guid), UID: strings.TrimSpace(e.ID), Link: link, Title: e.Title.plain(),
-			Text: body, Published: pub, RepliesCount: -1}
+			Text: body, Published: pub, RepliesCount: -1, Canonical: canonicalLink(e.Links)}
 		if e.Published != "" {
 			if u := parseDate(e.Updated); !u.IsZero() && u.After(pub) {
 				it.Updated = u

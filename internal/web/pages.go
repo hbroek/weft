@@ -151,7 +151,11 @@ f.addEventListener('change',function(){
 <p><small>Anyone who already follows you is moved to the new address by their reader. Once the domain works, you sign in again there.</small></p>{{end}}{{end}}
 {{with .Move}}<h3>Moving between servers</h3>
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}{{if .Notice}}<p>{{.Notice}}</p>{{end}}
-{{if .Code}}<p>Your move code. It is shown once and works for an hour:</p><p><code>{{.Code}}</code></p>
+{{if .Code}}<p>Your move code. It is shown once and works for an hour:</p><p><code id="movecode">{{.Code}}</code> <button type="button" id="copycode">Copy</button> <small id="copymsg" role="status"></small></p>
+<script>(function(){var b=document.getElementById('copycode'),c=document.getElementById('movecode'),m=document.getElementById('copymsg');
+function done(t){m.textContent=t}
+function old(){var r=document.createRange();r.selectNodeContents(c);var s=getSelection();s.removeAllRanges();s.addRange(r);try{done(document.execCommand('copy')?'Copied.':'Press Ctrl/Cmd+C to copy.')}catch(e){done('Press Ctrl/Cmd+C to copy.')}}
+b.addEventListener('click',function(){if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(c.textContent.trim()).then(function(){done('Copied.')},old);else old()})})()</script>
 <p><small>On the new server, sign in to the account you made there (it must be empty, with the same name), open Profile, and under "Move here from another server" give <strong>{{.This}}</strong> and this code. Your account will then be at <strong>{{.Dest}}</strong>, and this address will redirect there. Until you use the code nothing changes.</small></p>{{end}}
 {{if .State}}<p>A move is under way{{if eq .State "received"}}: the new server has your account, and nothing can be changed here{{end}}.</p>
 <form method="post" action="/move/cancel"><p><button>Cancel the move</button></p></form>
@@ -191,6 +195,7 @@ f.addEventListener('change',function(){
 <div class="card-top">{{if .Title}}<h2 class="p-name"><a class="u-url" href="{{.URL}}">{{.Title}}</a></h2>{{else}}<span></span>{{end}}<span class="when"><a class="u-url" href="{{.URL}}"><time class="dt-published" datetime="{{.ISO}}" title="{{.Date}}">{{.Ago}}</time></a>{{if .Edited}} · edited{{end}}</span></div>
 {{if .InReplyTo}}{{if .Parent}}<p><small>In reply to</small></p>{{template "parentcard" .Parent}}<a class="u-in-reply-to" href="{{.InReplyTo}}" hidden></a>{{else}}<p><small>In reply to <a class="u-in-reply-to" href="{{.InReplyTo}}">{{.InReplyTo}}</a></small></p>{{end}}{{end}}
 <div class="e-content{{if $.Clip}} clip{{end}}">{{.HTML}}</div>
+{{if .Canonical}}<p class="repost"><small>Originally published at <a class="u-repost-of" href="{{.Canonical}}">{{.CanonicalHost}}</a></small></p>{{end}}
 {{if .Keywords}}<p class="kw">{{range .Keywords}}<a class="p-category" href="/?keyword={{.}}">{{.}}</a>{{end}}</p>{{end}}
 <div class="meta"><div class="m-l">{{if .Tally}}<small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.URL}}">{{.Tally}}</a></small>{{end}}</div>
 <div class="m-r">{{if $.Owner}}{{if .HasThread}}<a class="ico" href="{{.ThreadHref}}" title="Thread" aria-label="Thread">{{template "ic-thread"}}</a>{{end}}<a class="ico" href="{{.URL}}/edit" title="Edit" aria-label="Edit">{{template "ic-edit"}}</a>{{end}}</div></div>
@@ -218,6 +223,7 @@ f.addEventListener('change',function(){
 {{if .Parent}}{{template "parentcard" .Parent}}{{end}}
 {{if .Title}}<h3>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</h3>{{end}}
 <div class="clip">{{.HTML}}</div>
+{{if .Canonical}}<p class="repost"><small>Originally published at <a href="{{.Canonical}}">{{.CanonicalHost}}</a></small></p>{{end}}
 {{if .Keywords}}<p class="kw">{{range .Keywords}}{{if $.Only}}<a href="/timeline?feed={{$.Only}}&amp;keyword={{.}}" title="Posts with this keyword in this feed">{{.}}</a>{{else}}<a href="/timeline?keyword={{.}}" title="Posts with this keyword from everyone you follow">{{.}}</a>{{end}}{{end}}</p>{{end}}
 <div class="meta"><div class="m-l">{{if .Own}}{{if .Tally}}<small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Link}}">{{.Tally}}</a></small>{{end}}{{else if .Target}}<form method="post" action="{{if .Mine}}/unlike{{else}}/like{{end}}" class="react"><input type="hidden" name="target" value="{{.Target}}"><input type="hidden" name="feed" value="{{.FeedURL}}">
 <button class="likebtn" aria-pressed="{{if .Mine}}true{{else}}false{{end}}" title="{{if .Mine}}Unlike{{else}}Like{{end}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/></svg><span class="sr">{{if .Mine}}Unlike{{else}}Like{{end}}</span></button>{{if .Tally}} <small class="tally" title="{{.TallyTip}}"><a href="/liked-by?target={{.Target}}">{{.Tally}}</a></small>{{end}}</form>{{end}}</div>
@@ -298,7 +304,10 @@ f.addEventListener('change',function(){
 <label class="adv">Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="travel, open source, weekend project"></label>
 {{if not .Delete}}<label class="adv">Address <input type="text" name="slug" id="slug" value="{{.Form.Slug}}" maxlength="80"{{if .SlugAuto}} data-auto="1"{{end}} autocapitalize="off" autocorrect="off" spellcheck="false"></label>
 <p class="adv"><small>The end of the post's link. It follows your title or first sentence until you change it, and cannot be changed once the post is published. A short code is added to make it yours alone.</small></p>{{end}}
-<p class="advrow"><label><input type="checkbox" id="adv"{{if .Advanced}} checked{{end}}> Advanced</label> <small>title, keywords, address and Markdown help</small></p>
+<p class="adv"><label><input type="checkbox" id="repost" name="repost" value="1"{{if .Form.Canonical}} checked{{end}}> This is a repost (it first appeared somewhere else)</label></p>
+<label class="adv repostfield">Canonical link <input type="text" name="canonical" value="{{.Form.Canonical}}" inputmode="url" maxlength="2000" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://example.com/the-original-post"></label>
+<p class="adv repostfield"><small>The address of the original. This post will say where it first appeared, and its feed and page will point at it.</small></p>
+<p class="advrow"><label><input type="checkbox" id="adv"{{if .Advanced}} checked{{end}}> Advanced</label> <small>title, keywords, address, repost link and Markdown help</small></p>
 <p><button>{{.Button}}</button></p></form>
 <h3>Preview</h3>
 <article id="preview" class="h-entry"><h3 id="preview-title"{{if not .Form.Title}} hidden{{end}}>{{.Form.Title}}</h3><div id="preview-body">{{if .Preview}}{{.Preview}}{{else}}<p class="empty">Nothing to preview yet.</p>{{end}}</div>
@@ -372,6 +381,7 @@ type pagePost struct {
 	HTML                       template.HTML
 	Edited                     bool
 	InReplyTo                  string
+	Canonical, CanonicalHost   string // where a reposted post first appeared
 	Keywords                   []string
 	Tally, TallyTip            string
 	Parent                     *parentCard // the page this post replies to, when the reply carries a snapshot of it
@@ -433,7 +443,7 @@ type pageData struct {
 	Keyword, TopicFeed                   string       // a keyword filter on the home page, and the feed of just those posts
 	Bookmarklet                          template.URL // javascript: link that sends the current page to /compose; owner's home page only
 	LikesToggle                          string
-	Form                                 struct{ Title, Markdown, Keywords, Slug string }
+	Form                                 struct{ Title, Markdown, Keywords, Slug, Canonical string }
 	SlugAuto                             bool // the address is the suggestion, to follow the title and text until it is reworded
 }
 
@@ -485,7 +495,7 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 			Title: p.Title, URL: s.postURL(r, p.ID), HTML: template.HTML(p.HTML), // rendered by goldmark in safe mode
 			ISO: p.Created.UTC().Format("2006-01-02T15:04:05Z"), Date: stampAt(p.Created), Ago: ago(p.Created), Markdown: p.Markdown,
 			Edited: p.Updated != nil, InReplyTo: p.InReplyTo, Parent: newParentCard(p.InReplyTo, p.Parent), Keywords: p.Keywords, Tally: likesText(tallies[p.ID]), TallyTip: likedBy(likers[p.ID], tallies[p.ID]), ThreadHref: threadHref(s.postURL(r, p.ID), ""),
-			HasThread: p.InReplyTo != "" || counts[p.ID] > 0,
+			HasThread: p.InReplyTo != "" || counts[p.ID] > 0, Canonical: p.Canonical, CanonicalHost: siteHost(p.Canonical),
 		})
 		if pp := &d.Posts[len(d.Posts)-1]; p.InReplyTo != "" && pp.Parent == nil {
 			_, pp.Parent = s.replyContext(r, q, p.InReplyTo) // no snapshot: what this server knows of the post
@@ -502,6 +512,9 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 			d.Links = append(d.Links, feed.AtomLink{Rel: "in-reply-to", Href: posts[0].InReplyTo})
 		}
 		d.Links = append(d.Links, feed.AtomLink{Rel: "replies", Type: "application/rss+xml", Href: u + "/replies.xml"})
+		if posts[0].Canonical != "" { // a repost names the page it first appeared at; an original names nothing
+			d.Links = append(d.Links, feed.AtomLink{Rel: "canonical", Href: posts[0].Canonical})
+		}
 	}
 	for _, f := range tweak {
 		f(&d)
@@ -703,6 +716,9 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 			Description: absMedia(p.HTML, s.base(r)), Markdown: absMedia(p.Markdown, s.base(r)), PubDate: feed.RFC822(p.Created)}
 		it.Replies = &feed.Replies{Href: url + "/replies.xml", Count: counts[p.ID]}
 		it.Likes = &feed.Likes{Count: tallies[p.ID], Href: url + "/likes.xml"}
+		if p.Canonical != "" {
+			it.Canonical = &feed.Ref{Href: p.Canonical}
+		}
 		it.Categories = p.Keywords
 		if p.InReplyTo != "" {
 			it.InReplyTo = &feed.Ref{Href: p.InReplyTo, Feed: p.InReplyToFeed}

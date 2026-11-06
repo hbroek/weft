@@ -143,8 +143,16 @@ func (in *Instance) MovePrepare(name, code, dest string) (string, error) {
 	var exp, tries int64
 	var state string
 	err := in.db.QueryRow(`SELECT m.code_hash,m.dest,m.expires,m.attempts,u.move_state FROM moves m JOIN users u ON u.name=m.name WHERE m.name=?`, name).Scan(&hash, &want, &exp, &tries, &state)
-	if err != nil || hash == "" || state != "" || time.Now().Unix() > exp {
-		return "", ErrMoveCode
+	// the reasons are for the server's log; the caller answers every one of them the same
+	switch {
+	case err != nil:
+		return "", fmt.Errorf("%w: no move code was made for this account", ErrMoveCode)
+	case hash == "":
+		return "", fmt.Errorf("%w: the code was already used", ErrMoveCode)
+	case state != "":
+		return "", fmt.Errorf("%w: a move is already under way (state %q)", ErrMoveCode, state)
+	case time.Now().Unix() > exp:
+		return "", fmt.Errorf("%w: the code expired", ErrMoveCode)
 	}
 	dest, derr := Origin(dest)
 	ok := subtle.ConstantTimeCompare([]byte(hash), []byte(hashOf(cleanCode(code)))) == 1
@@ -154,7 +162,10 @@ func (in *Instance) MovePrepare(name, code, dest string) (string, error) {
 		} else {
 			in.db.Exec(`UPDATE moves SET attempts=attempts+1 WHERE name=?`, name)
 		}
-		return "", ErrMoveCode
+		if ok {
+			return "", fmt.Errorf("%w: the code was made for %s, but the new server says %s", ErrMoveCode, want, dest)
+		}
+		return "", fmt.Errorf("%w: the code is wrong (attempt %d of %d)", ErrMoveCode, tries+1, moveMaxTries)
 	}
 	tok, err := newToken()
 	if err != nil {

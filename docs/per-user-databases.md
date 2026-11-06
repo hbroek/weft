@@ -1,5 +1,7 @@
 # Plan: one SQLite database per user
 
+**Name.** A user's database is called a *spool*: the place where that person's posts, replies, likes, follows and pictures are saved in one file, named in the weaving vocabulary of Weft, thread and loom (the server). The Go type is still `Space`; it can be renamed to `Spool` in a mechanical change. In text for people, say "outbox" for the Webmention queue so it is not confused with the spool.
+
 Status: proposal, Oct 21, 2026. Nothing here is built yet. The WAL cap and the clean shutdown that this plan relies on are already in (`0a04210`).
 
 ## Why

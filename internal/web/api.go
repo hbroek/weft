@@ -19,6 +19,9 @@ type postReq struct {
 	// Slug is an optional address for the post: the end of its permalink. It is cleaned to lowercase letters,
 	// digits and hyphens, and cannot be changed after the post is made.
 	Slug string `json:"slug"`
+	// Canonical is optional: the web address where the content first appeared, for a post that republishes it.
+	// An edit replaces it, so leaving it out of an edit removes it.
+	Canonical string `json:"canonical"`
 	// InReplyTo makes the post a reply to the post at this permalink. InReplyToFeed is an
 	// optional hint: the parent's feed URL.
 	InReplyTo     string `json:"in_reply_to"`
@@ -70,7 +73,7 @@ func (s *Server) apiCreate(w http.ResponseWriter, r *http.Request, q *req) {
 	if in.Context != nil {
 		parent = feed.ParentInfo{Title: in.Context.Title, Description: in.Context.Description, Image: in.Context.Image}
 	}
-	p, msg := s.create(r, q.host, in.Title, in.Markdown, in.Slug, feed.Keywords(in.Keywords), httpURL(in.InReplyTo), httpURL(in.InReplyToFeed), parent)
+	p, msg := s.create(r, q.host, in.Title, in.Markdown, in.Slug, feed.Keywords(in.Keywords), in.Canonical, httpURL(in.InReplyTo), httpURL(in.InReplyToFeed), parent)
 	if msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
@@ -92,7 +95,7 @@ func (s *Server) apiUpdate(w http.ResponseWriter, r *http.Request, q *req) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, msg := s.update(r, q.host, id, in.Title, in.Markdown, feed.Keywords(in.Keywords)); msg != "" {
+	if _, msg := s.update(r, q.host, id, in.Title, in.Markdown, feed.Keywords(in.Keywords), in.Canonical); msg != "" {
 		code := http.StatusBadRequest
 		if msg == "not found" {
 			code = http.StatusNotFound

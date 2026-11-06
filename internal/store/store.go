@@ -54,6 +54,8 @@ type Post struct {
 	InReplyTo, InReplyToFeed, Root, RootFeed string
 	Keywords                                 []string
 	Parent                                   feed.ParentInfo // optional title, description and image of the page replied to
+	// Canonical is the address where the content first appeared, for a post that republishes it ("" for an original).
+	Canonical string
 }
 
 // NewPost is the input for AddPost.
@@ -63,6 +65,7 @@ type NewPost struct {
 	InReplyTo, InReplyToFeed, Root, RootFeed string
 	Keywords                                 []string
 	Parent                                   feed.ParentInfo // optional title, description and image of the page replied to
+	Canonical                                string          // see Post.Canonical; an http(s) address, or ""
 	// Slug is the words of the address the author chose, if any (see CleanSlug); empty means the words are
 	// taken from the title or the first sentence. The short code that makes it unique is added either way.
 	Slug string
@@ -132,8 +135,8 @@ func (s *Space) AddPost(n NewPost) (*Post, error) {
 	}
 	for try := 0; try < 8; try++ { // a collision in the 4-character code is rare; draw again
 		slug = words + slugSep + Suffix()
-		res, err = s.db.Exec(`INSERT INTO posts(user_id,uid,slug,title,markdown,html,created,in_reply_to,in_reply_to_feed,root,root_feed,keywords,parent_title,parent_desc,parent_image) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			n.UserID, uid, slug, n.Title, n.Markdown, n.HTML, now.Unix(), n.InReplyTo, n.InReplyToFeed, n.Root, n.RootFeed, packKeywords(n.Keywords), parent.Title, parent.Description, parent.Image)
+		res, err = s.db.Exec(`INSERT INTO posts(user_id,uid,slug,title,markdown,html,created,in_reply_to,in_reply_to_feed,root,root_feed,keywords,parent_title,parent_desc,parent_image,canonical) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			n.UserID, uid, slug, n.Title, n.Markdown, n.HTML, now.Unix(), n.InReplyTo, n.InReplyToFeed, n.Root, n.RootFeed, packKeywords(n.Keywords), parent.Title, parent.Description, parent.Image, n.Canonical)
 		if err == nil || !strings.Contains(err.Error(), "UNIQUE") {
 			break
 		}
@@ -143,7 +146,7 @@ func (s *Space) AddPost(n NewPost) (*Post, error) {
 	}
 	id, _ := res.LastInsertId()
 	return &Post{ID: id, UserID: n.UserID, UID: uid, Slug: slug, Title: n.Title, Markdown: n.Markdown, HTML: n.HTML, Created: time.Unix(now.Unix(), 0),
-		InReplyTo: n.InReplyTo, InReplyToFeed: n.InReplyToFeed, Root: n.Root, RootFeed: n.RootFeed, Keywords: feed.Keywords(n.Keywords), Parent: parent}, nil
+		InReplyTo: n.InReplyTo, InReplyToFeed: n.InReplyToFeed, Root: n.Root, RootFeed: n.RootFeed, Keywords: feed.Keywords(n.Keywords), Parent: parent, Canonical: n.Canonical}, nil
 }
 
 // backfillIdentity gives posts made before uid and slug existed an identity.
@@ -172,7 +175,7 @@ func scanPost(r interface{ Scan(...any) error }) (*Post, error) {
 	var del int
 	var kw string
 	if err := r.Scan(&p.ID, &p.UserID, &p.UID, &p.Slug, &p.Title, &p.Markdown, &p.HTML, &created, &updated, &del,
-		&p.InReplyTo, &p.InReplyToFeed, &p.Root, &p.RootFeed, &kw, &p.Parent.Title, &p.Parent.Description, &p.Parent.Image); err != nil {
+		&p.InReplyTo, &p.InReplyToFeed, &p.Root, &p.RootFeed, &kw, &p.Parent.Title, &p.Parent.Description, &p.Parent.Image, &p.Canonical); err != nil {
 		return nil, err
 	}
 	p.Keywords = unpackKeywords(kw)
@@ -185,7 +188,7 @@ func scanPost(r interface{ Scan(...any) error }) (*Post, error) {
 	return p, nil
 }
 
-const postCols = `id,user_id,uid,slug,title,markdown,html,created,updated,deleted,in_reply_to,in_reply_to_feed,root,root_feed,keywords,parent_title,parent_desc,parent_image`
+const postCols = `id,user_id,uid,slug,title,markdown,html,created,updated,deleted,in_reply_to,in_reply_to_feed,root,root_feed,keywords,parent_title,parent_desc,parent_image,canonical`
 
 // packKeywords stores keywords one per line; a keyword never holds a newline.
 func packKeywords(k []string) string { return strings.Join(feed.Keywords(k), "\n") }
@@ -277,9 +280,9 @@ func (s *Space) PostsWithKeyword(userID int64, kw string, limit, offset int) ([]
 }
 
 // UpdatePost replaces a post's title, content and keywords and stamps its update time.
-func (s *Space) UpdatePost(userID, id int64, title, markdown, html string, keywords []string) (*Post, error) {
-	res, err := s.db.Exec(`UPDATE posts SET title=?,markdown=?,html=?,keywords=?,updated=? WHERE user_id=? AND id=? AND deleted=0`,
-		title, markdown, html, packKeywords(keywords), time.Now().Unix(), userID, id)
+func (s *Space) UpdatePost(userID, id int64, title, markdown, html string, keywords []string, canonical string) (*Post, error) {
+	res, err := s.db.Exec(`UPDATE posts SET title=?,markdown=?,html=?,keywords=?,canonical=?,updated=? WHERE user_id=? AND id=? AND deleted=0`,
+		title, markdown, html, packKeywords(keywords), canonical, time.Now().Unix(), userID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +295,7 @@ func (s *Space) UpdatePost(userID, id int64, title, markdown, html string, keywo
 // DeletePost tombstones a post and discards its content. The id stays reserved so the
 // permalink can answer 410 Gone.
 func (s *Space) DeletePost(userID, id int64) error {
-	res, err := s.db.Exec(`UPDATE posts SET deleted=1,title='',markdown='',html='',keywords='',parent_title='',parent_desc='',parent_image='',updated=? WHERE user_id=? AND id=? AND deleted=0`,
+	res, err := s.db.Exec(`UPDATE posts SET deleted=1,title='',markdown='',html='',keywords='',canonical='',parent_title='',parent_desc='',parent_image='',updated=? WHERE user_id=? AND id=? AND deleted=0`,
 		time.Now().Unix(), userID, id)
 	if err != nil {
 		return err

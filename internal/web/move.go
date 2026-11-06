@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -75,6 +76,7 @@ func (s *Server) serverAddress(name, typed string) (string, bool) {
 	if t == "" || strings.ContainsAny(t, "/?# @\\") {
 		return "", false
 	}
+	t = strings.TrimPrefix(t, strings.ToLower(name)+".") // the address of the account, as seen in the browser, is meant too
 	if _, err := store.Origin(s.cfg.Scheme + "://" + t); err != nil {
 		return "", false
 	}
@@ -143,6 +145,7 @@ func (s *Server) movePrepare(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	tok, err := s.st.MovePrepare(name, r.Header.Get("X-Weft-Move-Code"), in.To)
 	if err != nil {
+		log.Printf("move of %s refused: %v", name, err)
 		http.Error(w, "move code not accepted", http.StatusForbidden)
 		return
 	}
@@ -494,7 +497,11 @@ func (s *Server) moveJSON(ctx context.Context, old, step, token string, hdr map[
 	defer res.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("the old server refused (%s): %s", res.Status, strings.TrimSpace(string(data)))
+		hint := ""
+		if res.StatusCode == http.StatusNotFound {
+			hint = " (check the old server's address: give the server, such as weftseed.com, and the move code made there)"
+		}
+		return fmt.Errorf("the old server refused (%s): %s%s", res.Status, strings.TrimSpace(string(data)), hint)
 	}
 	if out != nil {
 		return json.Unmarshal(data, out)

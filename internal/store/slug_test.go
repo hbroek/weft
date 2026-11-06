@@ -67,7 +67,7 @@ func TestPostsKeepTheirIdentityAndOldPostsGetOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	// editing keeps uid and slug
-	if _, err := sp.UpdatePost(u.ID, p.ID, "A completely different title", "y", "y", nil); err != nil {
+	if _, err := sp.UpdatePost(u.ID, p.ID, "A completely different title", "y", "y", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	q, _ := sp.Post(u.ID, p.ID)
@@ -146,5 +146,37 @@ func TestChosenSlug(t *testing.T) {
 	// without chosen words they come from the post, as before
 	if q, err := alice.AddPost(NewPost{UserID: uid, Title: "Made for me", Markdown: "x", HTML: "x"}); err != nil || !strings.HasPrefix(q.Slug, "made-for-me.") {
 		t.Errorf("made slug: %v %v", q, err)
+	}
+}
+
+// A post's canonical address is stored, replaced by an edit, and dropped with the rest when the post is deleted.
+func TestPostCanonicalAddress(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.AddUser("alice", "Alice", ""); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := st.UserByName("alice")
+	sp := st.SpaceForTests(t, "alice")
+	p, err := sp.AddPost(NewPost{UserID: u.ID, Title: "Copy", Markdown: "x", HTML: "x", Canonical: "https://orig.example/a"})
+	if err != nil || p.Canonical != "https://orig.example/a" {
+		t.Fatalf("add: %v %+v", err, p)
+	}
+	if got, _ := sp.Post(u.ID, p.ID); got.Canonical != "https://orig.example/a" {
+		t.Errorf("stored %q", got.Canonical)
+	}
+	if got, _ := sp.UpdatePost(u.ID, p.ID, "Copy", "x", "x", nil, "https://orig.example/b"); got.Canonical != "https://orig.example/b" {
+		t.Errorf("edit left %q", got.Canonical)
+	}
+	if got, _ := sp.UpdatePost(u.ID, p.ID, "Copy", "x", "x", nil, ""); got.Canonical != "" {
+		t.Errorf("an edit without it left %q", got.Canonical)
+	}
+	sp.UpdatePost(u.ID, p.ID, "Copy", "x", "x", nil, "https://orig.example/c")
+	sp.DeletePost(u.ID, p.ID)
+	if got, _ := sp.Post(u.ID, p.ID); got.Canonical != "" {
+		t.Errorf("a deleted post kept %q", got.Canonical)
 	}
 }
