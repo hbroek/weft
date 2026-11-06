@@ -84,6 +84,13 @@ form.wait input[type=text], form.wait input[type=email], form.wait textarea { wi
 form.wait textarea { min-height: 5rem; }
 form.wait button { margin-top: 1rem; border: 0; cursor: pointer; font: inherit; }
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+details.ask { margin: 1rem 0; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+details.ask > summary { cursor: pointer; padding: .8rem 1.1rem; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+details.ask > summary::-webkit-details-marker { display: none; }
+details.ask > summary::after { content: "+"; font-size: 1.4rem; line-height: 1; color: var(--accent); }
+details.ask[open] > summary::after { content: "\2212"; }
+details.ask > p, details.ask > form { margin-left: 1.1rem; margin-right: 1.1rem; }
+details.ask > form.wait { border: 0; padding: 0; margin-bottom: 1.1rem; background: none; }
 code { background: var(--soft); padding: .1em .35em; border-radius: 4px; font-size: .92em; }
 .note { background: var(--soft); border-radius: 8px; padding: .8rem 1rem; font-size: .95rem; color: var(--muted); }
 footer { margin-top: 3rem; padding: 1.5rem 0 2.5rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .9rem; }
@@ -165,6 +172,8 @@ footer a { margin-right: 1rem; }
       <div class="card"><h3>3. Your own server</h3><p>Can't wait? Nothing stops you from running your own loom, today, and still following and replying to everyone.</p></div>
     </div>
 
+    <p class="note">The first two ways share one limit: a single number of places, for accounts with a domain and from the waiting list together. Your own server is outside it.</p>
+
     <h3>1. With a domain of your own</h3>
     <p>If you can add DNS records to your domain, your site lives at <code>weft.</code> followed by it, such as <code>weft.example.com</code> or <code>weft.example.co.uk</code>, and it stays yours wherever you go. The name is always <code>weft.</code> plus your registered domain, never a name further down such as <code>weft.blog.example.com</code>.</p>
     <ol class="steps">
@@ -180,8 +189,9 @@ footer a { margin-right: 1rem; }
       <span id="c-waiting" hidden><b id="c-w">0</b> waiting</span>
     </div>
 
-    <h4 id="waitlist">Ask for an account</h4>
-    <p>Tell us the name you want and where you already write. Each request goes onto the list, and we read the list by hand.</p>
+    <details class="ask" id="waitlist">
+      <summary>Ask for an account</summary>
+      <p>Tell us the name you want and where you already write. Each request goes onto the list, and we read the list by hand.</p>
     <form class="wait" action="/waitlist" method="post">
       <label for="f-name">Account name <small>Lowercase letters, digits and hyphens. It becomes <code>name.weftseed.com</code>.</small></label>
       <input id="f-name" name="name" type="text" required maxlength="31" pattern="[a-z0-9][a-z0-9\-]*" autocomplete="username" autocapitalize="none" spellcheck="false">
@@ -194,12 +204,13 @@ footer a { margin-right: 1rem; }
       <div class="hp" aria-hidden="true"><label>Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
       <button class="btn" type="submit">Join the waiting list</button>
     </form>
+    </details>
     <p class="note"><strong>No guarantees.</strong> The number of accounts is limited, and joining the list does not guarantee that an account will be issued, or an answer by any date. We let people in from the list by hand, and we may never get to your request. An account with a domain keeps working as long as the domain reaches us; if it stops, we warn you and give you time to fix it or to move away with your data. Questions? Write to <span class="mail" data-u="hbroek" data-d="gmail.com">the operator (turn on JavaScript to see the address)</span>.</p>
   </section>
 
   <section id="run">
     <h2>3. Run your own server</h2>
-    <p>This is the way that needs nobody's permission, and you can begin right now. Weft is one program with no outside services to set up. Start it (you are now running a loom), point a wildcard DNS name at it, and add people with <code>weft user add</code>. Your server and ours can follow, reply to and like each other. The program and its documentation are on <a href="https://github.com/hbroek/weft">GitHub</a>, and the feed extensions are described at <a href="https://weftprotocol.org">weftprotocol.org</a>.</p>
+    <p>This is the way that needs nobody's permission, and you can begin right now. Weft is one program with no outside services to set up. Start it (you are now running a loom), point a wildcard DNS name at it, and add people with <code>weft user add</code>. Your server and ours can follow, reply to and like each other. Running a server does not oblige you to take in other people: it can be only for you, or for you and your friends. We do recommend opening it up, though. The more places there are to have a Weft, the less any one of them matters, and nobody has to wait for a place. The program and its documentation are on <a href="https://github.com/hbroek/weft">GitHub</a>, and the feed extensions are described at <a href="https://weftprotocol.org">weftprotocol.org</a>.</p>
   </section>
 
   <section id="contact">
@@ -217,6 +228,7 @@ footer a { margin-right: 1rem; }
   </div>
 </footer>
 <script>
+if (location.hash === '#waitlist') { var d = document.getElementById('waitlist'); if (d) d.open = true; }
 // The operator's address is put together here, so it is not written out in the page for programs that collect them.
 document.querySelectorAll('.mail').forEach(function (e) {
   var a = e.dataset.u + '@' + e.dataset.d;
