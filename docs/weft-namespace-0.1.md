@@ -35,7 +35,7 @@ Reused namespaces:
 
 | Prefix | Used for |
 | --- | --- |
-| `source:` | `source:markdown`, the post's original Markdown (Dave Winer's Source namespace) |
+| `source:` | `source:markdown`, the post's original Markdown; `source:inReplyTo` and `source:comments`, written next to `weft:inReplyTo` and `weft:replies` (Dave Winer's Source namespace) |
 | `atom:` | `atom:link rel="self"` and `rel="hub"` for WebSub pings |
 | RSS 2.0 core | `<cloud>` for rssCloud pings, `<category>` for keywords, `<enclosure>` for media, and the channel `<image>` (its `<url>`) as the author's avatar |
 
@@ -65,6 +65,8 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 | `<description>` | Required | Rendered HTML of the post. Pictures and links in it are full addresses (`https://alice.example/media/<hash>.jpg`), not paths, since a feed is read away from the site. The same holds for `<source:markdown>`. An author's own pictures may be stored on the author's server and referred to there; a reader may show them from that address. |
 | `<title>` | Optional | Include only if the author gave one. Apps must not invent titles from the first line. |
 | `<source:markdown>` | Recommended | The original Markdown, unaltered. |
+| `<source:inReplyTo>` | Optional | The address of the post this one answers, as text, with `feedUrl` when the parent's feed is known. Weft writes it with every `weft:inReplyTo`, for readers that know only the source namespace. A reader that finds no `weft:inReplyTo` uses it; an identifier that is not an address (`isPermaLink="false"`) cannot be followed and is ignored. |
+| `<source:comments>` | Optional | `count` and `feedUrl` of the item's replies feed. Written with every `weft:replies`. Weft does not read it. |
 | `<pubDate>` | Required | First publication time. |
 | `<weft:updated>` | Optional | Time of the latest edit, RFC 822 format like `pubDate`. Present only on edited items. |
 | `<category>` | Optional | Keywords: one element per keyword or phrase, as typed by the author (not Markdown, not hashtags). Writers should publish at most 10 of up to 50 characters, with no commas, and readers should apply the same limits to what other hosts publish. A reader decides how to show them; Weft shows them as chips under the post, and serves a topic feed at `feed.xml?category=<keyword>` (the posts with that keyword, matched ignoring case, paged like the main feed). The query is a convenience, not part of the format: a reader follows the feed address it is given. |

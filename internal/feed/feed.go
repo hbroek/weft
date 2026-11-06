@@ -74,6 +74,21 @@ type Replies struct {
 	Count int    `xml:"count,attr"`
 }
 
+// SrcInReplyTo is source:inReplyTo, Dave Winer's counterpart of weft:inReplyTo: the parent's address as
+// text, and the parent's feed when known. Weft writes it next to weft:inReplyTo so that readers that only
+// know the source namespace can thread the reply.
+type SrcInReplyTo struct {
+	Feed string `xml:"feedUrl,attr,omitempty"`
+	Href string `xml:",chardata"`
+}
+
+// SrcComments is source:comments: how many comments an item has and the feed that lists them. Weft
+// writes it next to weft:replies.
+type SrcComments struct {
+	Count int    `xml:"count,attr"`
+	Feed  string `xml:"feedUrl,attr"`
+}
+
 type Channel struct {
 	Title         string        `xml:"title"`
 	Link          string        `xml:"link"`
@@ -117,6 +132,10 @@ type Item struct {
 	LikeOf      *LikeRef `xml:"weft:likeOf"`
 	Likes       *Likes   `xml:"weft:likes"`
 	Feed        *FeedRef `xml:"weft:feed"`
+
+	// the source-namespace forms of weft:inReplyTo and weft:replies, filled in by Marshal
+	SrcInReplyTo *SrcInReplyTo `xml:"source:inReplyTo"`
+	SrcComments  *SrcComments  `xml:"source:comments"`
 }
 
 func New(c Channel) *RSS {
@@ -126,6 +145,15 @@ func New(c Channel) *RSS {
 func RFC822(t time.Time) string { return t.UTC().Format(time.RFC1123Z) }
 
 func (r *RSS) Marshal() ([]byte, error) {
+	for i := range r.Channel.Items {
+		it := &r.Channel.Items[i]
+		if it.InReplyTo != nil && it.InReplyTo.Href != "" && it.SrcInReplyTo == nil {
+			it.SrcInReplyTo = &SrcInReplyTo{Feed: it.InReplyTo.Feed, Href: it.InReplyTo.Href}
+		}
+		if it.Replies != nil && it.Replies.Href != "" && it.SrcComments == nil {
+			it.SrcComments = &SrcComments{Count: it.Replies.Count, Feed: it.Replies.Href}
+		}
+	}
 	b, err := xml.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return nil, err

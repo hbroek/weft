@@ -91,6 +91,12 @@ type xmlParsed struct {
 				Href string `xml:"href,attr"`
 				Feed string `xml:"feed,attr"`
 			} `xml:"https://weftprotocol.org/ns/weft/0.1 inReplyTo"`
+			// Dave Winer's source namespace; used when the item has no weft:inReplyTo
+			SrcInReplyTo struct {
+				Href        string `xml:",chardata"`
+				IsPermaLink string `xml:"isPermaLink,attr"`
+				FeedURL     string `xml:"feedUrl,attr"`
+			} `xml:"http://source.scripting.com/ inReplyTo"`
 			Root struct {
 				Href string `xml:"href,attr"`
 				Feed string `xml:"feed,attr"`
@@ -207,6 +213,13 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 		}
 		if pi.LikeOf == "" && strings.TrimSpace(it.ReactionOf.Polarity) != "-" {
 			pi.LikeOf = strings.TrimSpace(it.ReactionOf.Href)
+		}
+		if pi.InReplyTo == "" && !strings.EqualFold(strings.TrimSpace(it.SrcInReplyTo.IsPermaLink), "false") {
+			// only an address can be followed; an identifier that is not one (isPermaLink="false") is left out
+			pi.InReplyTo = httpAddress(strings.TrimSpace(it.SrcInReplyTo.Href))
+			if pi.InReplyTo != "" {
+				pi.InReplyToFeed = httpAddress(strings.TrimSpace(it.SrcInReplyTo.FeedURL))
+			}
 		}
 		pi.RepliesCount = -1
 		if it.Replies.Count != nil {

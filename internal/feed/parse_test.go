@@ -265,3 +265,52 @@ func TestParseAtom(t *testing.T) {
 		t.Errorf("a feed element outside the Atom namespace should not parse")
 	}
 }
+
+func TestParseReadsSourceInReplyTo(t *testing.T) {
+	data := `<rss version="2.0" xmlns:source="http://source.scripting.com/" xmlns:weft="` + NSWeft + `"><channel><title>t</title>
+<item><link>https://a.example/1</link><source:inReplyTo feedUrl="https://demo.rss.chat/users/dave/rss.xml" feedTitle="Dave">https://demo.rss.chat/?id=798</source:inReplyTo></item>
+<item><link>https://a.example/2</link><source:inReplyTo isPermaLink="false">did:plc:iwl32vekohccji6khfdt3clw</source:inReplyTo></item>
+<item><link>https://a.example/3</link><weft:inReplyTo href="https://w.example/p"/><source:inReplyTo>https://other.example/q</source:inReplyTo></item>
+</channel></rss>`
+	p, err := Parse([]byte(data), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Items[0]; got.InReplyTo != "https://demo.rss.chat/?id=798" || got.InReplyToFeed != "https://demo.rss.chat/users/dave/rss.xml" {
+		t.Errorf("source:inReplyTo with feedUrl: %q, %q", got.InReplyTo, got.InReplyToFeed)
+	}
+	if got := p.Items[1].InReplyTo; got != "" {
+		t.Errorf("an identifier that is not an address was taken as one: %q", got)
+	}
+	if got := p.Items[2].InReplyTo; got != "https://w.example/p" {
+		t.Errorf("weft:inReplyTo should win, got %q", got)
+	}
+}
+
+func TestMarshalWritesSourceInReplyToAndComments(t *testing.T) {
+	r := New(Channel{Title: "t", Items: []Item{{
+		GUID: GUID{Value: "g"}, Link: "https://a.example/1",
+		InReplyTo: &Ref{Href: "https://b.example/p", Feed: "https://b.example/rss.xml"},
+		Replies:   &Replies{Href: "https://a.example/1/replies.xml", Count: 0},
+	}, {GUID: GUID{Value: "h"}, Link: "https://a.example/2"}}})
+	b, err := r.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, want := range []string{
+		`<source:inReplyTo feedUrl="https://b.example/rss.xml">https://b.example/p</source:inReplyTo>`,
+		`<source:comments count="0" feedUrl="https://a.example/1/replies.xml"></source:comments>`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %s in\n%s", want, s)
+		}
+	}
+	if strings.Count(s, "<source:inReplyTo") != 1 || strings.Count(s, "<source:comments") != 1 {
+		t.Errorf("an item without a reply target or replies feed got source elements:\n%s", s)
+	}
+	p, err := Parse(b, time.Now())
+	if err != nil || p.Items[0].InReplyTo != "https://b.example/p" {
+		t.Errorf("round trip: %v %+v", err, p)
+	}
+}
