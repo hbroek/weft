@@ -25,6 +25,8 @@ type Waiting struct {
 	Links   string // where the person writes: profiles, a blog, posts
 	Note    string
 	Created time.Time
+	// Reviewed is set when the operator has read the request; the request stays on the list until it is answered.
+	Reviewed bool
 }
 
 // JoinWaitlist adds a request. The name must be a name an account could have and must not be taken; the
@@ -61,7 +63,7 @@ func (in *Instance) JoinWaitlist(name, contact, links, note string) error {
 
 // Waitlist lists the requests, oldest first.
 func (in *Instance) Waitlist() ([]Waiting, error) {
-	rows, err := in.rdb.Query(`SELECT id,name,contact,links,note,created FROM waitlist ORDER BY id`)
+	rows, err := in.rdb.Query(`SELECT id,name,contact,links,note,created,reviewed FROM waitlist ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -70,13 +72,25 @@ func (in *Instance) Waitlist() ([]Waiting, error) {
 	for rows.Next() {
 		var w Waiting
 		var t int64
-		if err := rows.Scan(&w.ID, &w.Name, &w.Contact, &w.Links, &w.Note, &t); err != nil {
+		if err := rows.Scan(&w.ID, &w.Name, &w.Contact, &w.Links, &w.Note, &t, &w.Reviewed); err != nil {
 			return nil, err
 		}
 		w.Created = time.Unix(t, 0)
 		out = append(out, w)
 	}
 	return out, rows.Err()
+}
+
+// SetReviewed marks a request as read, or as not read.
+func (in *Instance) SetReviewed(id int64, reviewed bool) error {
+	res, err := in.db.Exec(`UPDATE waitlist SET reviewed=? WHERE id=?`, reviewed, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("%w: nobody with number %d is waiting", ErrNotFound, id)
+	}
+	return nil
 }
 
 // RemoveWaiting takes a request off the list: it was answered, or refused.

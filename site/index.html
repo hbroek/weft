@@ -56,6 +56,8 @@ nav a { margin-left: 1rem; font-size: .95rem; }
 h1 { font-size: 2.2rem; line-height: 1.2; margin: 0 0 1rem; }
 h2 { font-size: 1.5rem; margin: 2.5rem 0 .6rem; }
 h3 { font-size: 1.1rem; margin: 0 0 .3rem; }
+h4 { font-size: 1rem; margin: 1.4rem 0 .2rem; }
+#signup > h3 { margin-top: 2rem; }
 .lead { font-size: 1.2rem; color: var(--muted); margin: 0 0 1.4rem; }
 .btn { display: inline-block; background: var(--btn-bg); color: var(--btn-text); padding: .6rem 1.1rem; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 0 .5rem .5rem 0; }
 .btn.alt { background: transparent; color: var(--link); border: 1px solid var(--border); }
@@ -156,22 +158,30 @@ footer a { margin-right: 1rem; }
   </section>
 
   <section id="signup">
-    <h2>Sign up</h2>
-    <p>The simplest way to get a Weft is with a domain of your own. If you can add DNS records to your domain, your site lives at <code>weft.</code> followed by it, such as <code>weft.example.com</code> or <code>weft.example.co.uk</code>, and it stays yours wherever you go. The name is always <code>weft.</code> plus your registered domain, never a name further down such as <code>weft.blog.example.com</code>.</p>
+    <h2>Three ways to start wefting</h2>
+    <div class="grid">
+      <div class="card"><h3>1. Your own domain</h3><p>Your site lives at <code>weft.</code> plus a domain you own. It stays yours wherever you go.</p></div>
+      <div class="card"><h3>2. The waiting list</h3><p>No domain? Ask for an account at <code>yourname.weftseed.com</code>. Places are limited, and there is no guarantee that an account will be issued.</p></div>
+      <div class="card"><h3>3. Your own server</h3><p>Can't wait? Nothing stops you from running your own loom, today, and still following and replying to everyone.</p></div>
+    </div>
+
+    <h3>1. With a domain of your own</h3>
+    <p>If you can add DNS records to your domain, your site lives at <code>weft.</code> followed by it, such as <code>weft.example.com</code> or <code>weft.example.co.uk</code>, and it stays yours wherever you go. The name is always <code>weft.</code> plus your registered domain, never a name further down such as <code>weft.blog.example.com</code>.</p>
     <ol class="steps">
       <li>Give the domain you own. Your address is <code>weft.</code> followed by it, for example <code>weft.example.com</code>, and choose the account name you want.</li>
       <li>Add the DNS records we show you. A TXT record proves the domain is yours, and a CNAME points it at our loom (the server that hosts you).</li>
       <li>Choose a password. Your site is live at your own domain.</li>
     </ol>
-    <p><strong>No domain?</strong> You can still have an account. It lives at <code>yourname.weftseed.com</code>, on our loom (the server), and works like any other. When you get a domain later, you can add it from your profile. And if you ever want to leave, <em>Move to another server</em> carries your whole spool to the new place, and we redirect the old links so nothing you have shared breaks.</p>
+    <h3>2. From the waiting list</h3>
+    <p>No domain? You can still ask for an account. It lives at <code>yourname.weftseed.com</code>, on our loom (the server), and works like any other. When you get a domain later, you can add it from your profile. And if you ever want to leave, <em>Move to another server</em> carries your whole spool to the new place, and we redirect the old links so nothing you have shared breaks.</p>
     <div class="counter" id="counter" aria-live="polite">
       <span id="c-places" hidden><b id="c-left">0</b> places left of <span id="c-cap">0</span></span>
       <span id="c-accounts" hidden><b id="c-n">0</b> accounts</span>
       <span id="c-waiting" hidden><b id="c-w">0</b> waiting</span>
     </div>
 
-    <h3 id="waitlist">Ask for an account</h3>
-    <p>Tell us the name you want and where you already write. We read each request by hand.</p>
+    <h4 id="waitlist">Ask for an account</h4>
+    <p>Tell us the name you want and where you already write. Each request goes onto the list, and we read the list by hand.</p>
     <form class="wait" action="/waitlist" method="post">
       <label for="f-name">Account name <small>Lowercase letters, digits and hyphens. It becomes <code>name.weftseed.com</code>.</small></label>
       <input id="f-name" name="name" type="text" required maxlength="31" pattern="[a-z0-9][a-z0-9\-]*" autocomplete="username" autocapitalize="none" spellcheck="false">
@@ -184,12 +194,12 @@ footer a { margin-right: 1rem; }
       <div class="hp" aria-hidden="true"><label>Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
       <button class="btn" type="submit">Join the waiting list</button>
     </form>
-    <p class="note">Not open to everyone yet: we let people in from the list, by hand. If you have a domain of your own you can skip the list once domain sign-up opens (see above). An account with a domain keeps working as long as the domain reaches us; if it stops, we warn you and give you time to fix it or to move away with your data. Questions? Write to <span class="mail" data-u="hbroek" data-d="gmail.com">the operator (turn on JavaScript to see the address)</span>.</p>
+    <p class="note"><strong>No guarantees.</strong> The number of accounts is limited, and joining the list does not guarantee that an account will be issued, or an answer by any date. We let people in from the list by hand, and we may never get to your request. An account with a domain keeps working as long as the domain reaches us; if it stops, we warn you and give you time to fix it or to move away with your data. Questions? Write to <span class="mail" data-u="hbroek" data-d="gmail.com">the operator (turn on JavaScript to see the address)</span>.</p>
   </section>
 
   <section id="run">
-    <h2>Run your own</h2>
-    <p>Weft is one program with no outside services to set up. Start it (you are now running a loom), point a wildcard DNS name at it, and add people with <code>weft user add</code>. Your server and ours can follow, reply to and like each other. The program and its documentation are on <a href="https://github.com/hbroek/weft">GitHub</a>, and the feed extensions are described at <a href="https://weftprotocol.org">weftprotocol.org</a>.</p>
+    <h2>3. Run your own server</h2>
+    <p>This is the way that needs nobody's permission, and you can begin right now. Weft is one program with no outside services to set up. Start it (you are now running a loom), point a wildcard DNS name at it, and add people with <code>weft user add</code>. Your server and ours can follow, reply to and like each other. The program and its documentation are on <a href="https://github.com/hbroek/weft">GitHub</a>, and the feed extensions are described at <a href="https://weftprotocol.org">weftprotocol.org</a>.</p>
   </section>
 
   <section id="contact">

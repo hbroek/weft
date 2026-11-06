@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	"github.com/hbroek/weft/internal/store"
@@ -34,7 +35,8 @@ func usage() {
                   TARGET is a feed or site URL, or a bare user name on this instance (alice -> http://alice.localhost:8080/).
                   The target's server must be running.
   weft user list   [-data weft]
-  weft waitlist list   [-data weft]     (who asked for an account: name, address, where they write)
+  weft waitlist list   [-data weft] [-new] [-full]  (a table of who asked for an account: reviewed mark, name, email, where they write; -new: only those not reviewed)
+  weft waitlist review [-data weft] [-undo] ID  (mark a request as read; -undo takes the mark off)
   weft waitlist remove [-data weft] ID  (answered or refused)
   weft split    -db OLD.db -data DIR     (convert a single-file database into the per-user layout in DIR; OLD.db is not changed)
   weft export   [-data weft] [-domain localhost] [-o FILE] USERNAME   (writes FILE, default USERNAME.weft.zip: the account, without sessions or API token)
@@ -82,17 +84,31 @@ func main() {
 			log.Fatal(err)
 		}
 	case "waitlist":
-		if len(os.Args) < 3 || (os.Args[2] != "list" && os.Args[2] != "remove") {
+		if len(os.Args) < 3 || (os.Args[2] != "list" && os.Args[2] != "remove" && os.Args[2] != "review") {
 			usage()
 		}
 		fs := flag.NewFlagSet("waitlist "+os.Args[2], flag.ExitOnError)
 		db := fs.String("data", "weft", "data folder: instance.db and users/")
+		undo := fs.Bool("undo", false, "review: take the reviewed mark off")
+		onlyNew := fs.Bool("new", false, "list: only the requests not yet reviewed")
+		full := fs.Bool("full", false, "list: show the links and the note in full, not cut to one line")
 		fs.Parse(os.Args[3:])
 		st, err := store.Open(*db)
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer st.Close()
+		if os.Args[2] == "review" {
+			id, err := strconv.ParseInt(fs.Arg(0), 10, 64)
+			if err != nil || fs.NArg() != 1 {
+				usage()
+			}
+			if err := st.SetReviewed(id, !*undo); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("%d marked %s\n", id, map[bool]string{true: "not reviewed", false: "reviewed"}[*undo])
+			break
+		}
 		if os.Args[2] == "remove" {
 			id, err := strconv.ParseInt(fs.Arg(0), 10, 64)
 			if err != nil || fs.NArg() != 1 {
@@ -108,13 +124,29 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		for _, w := range list {
-			fmt.Printf("%d  %s  %s  <%s>\n    %s\n", w.ID, w.Created.Format("2006-01-02"), w.Name, w.Contact, strings.ReplaceAll(w.Links, "\n", "\n    "))
-			if w.Note != "" {
-				fmt.Printf("    note: %s\n", w.Note)
+		tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(tw, "ID\tDATE\tREVIEWED\tNAME\tEMAIL\tWHERE THEY WRITE\tNOTE")
+		oneLine := func(s string) string {
+			s = strings.Join(strings.Fields(s), " ")
+			if r := []rune(s); !*full && len(r) > 70 {
+				s = string(r[:69]) + "…"
 			}
+			return s
 		}
-		fmt.Printf("%d waiting\n", len(list))
+		shown := 0
+		for _, w := range list {
+			if *onlyNew && w.Reviewed {
+				continue
+			}
+			mark := "-"
+			if w.Reviewed {
+				mark = "yes"
+			}
+			shown++
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", w.ID, w.Created.Format("2006-01-02"), mark, w.Name, w.Contact, oneLine(w.Links), oneLine(w.Note))
+		}
+		tw.Flush()
+		fmt.Printf("%d shown, %d waiting\n", shown, len(list))
 	case "fsck":
 		fs := flag.NewFlagSet("fsck", flag.ExitOnError)
 		db := fs.String("data", "weft", "data folder: instance.db and users/")

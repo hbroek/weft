@@ -37,6 +37,24 @@ func TestWaitlist(t *testing.T) {
 	if len(list) != 1 || list[0].Name != "bob" || list[0].Links != "https://bob.example/blog" {
 		t.Fatalf("list = %+v", list)
 	}
+	if list[0].Reviewed {
+		t.Error("a new request is marked reviewed")
+	}
+	if err := in.SetReviewed(list[0].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if l, _ := in.Waitlist(); !l[0].Reviewed {
+		t.Error("the request is not marked reviewed")
+	}
+	if err := in.SetReviewed(list[0].ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if l, _ := in.Waitlist(); l[0].Reviewed {
+		t.Error("the mark was not taken off")
+	}
+	if err := in.SetReviewed(999, true); !errors.Is(err, ErrNotFound) {
+		t.Errorf("reviewing nobody: %v", err)
+	}
 	if err := in.RemoveWaiting(list[0].ID); err != nil {
 		t.Fatal(err)
 	}

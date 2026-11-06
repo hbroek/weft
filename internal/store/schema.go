@@ -242,6 +242,12 @@ CREATE INDEX held_name ON held(name);`)
 	return err
 }
 
+// instanceV9 lets the operator mark a request as read.
+func instanceV9(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE waitlist ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0`)
+	return err
+}
+
 // instanceV8 is the waiting list for accounts: who asked for one, how to answer, and where they write.
 func instanceV8(tx *sql.Tx) error {
 	_, err := tx.Exec(`CREATE TABLE waitlist (
