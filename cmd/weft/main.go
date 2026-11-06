@@ -22,7 +22,7 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24]
+  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24] [-site DIR]
   weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW [-permanent]] USERNAME
                   (the password is temporary: the user must change it at the first sign-in, unless -permanent;
                   without -password one is made and shown)
@@ -67,13 +67,14 @@ func main() {
 		quota := fs.Int("media-quota-mb", 200, "how much each user may store in pictures, in MB (0 for no limit)")
 		side := fs.Int("image-side", 1600, "the longest side, in pixels, of a picture uploaded at the Compact size")
 		pixels := fs.Int("image-megapixels", 24, "the most pixels (in millions) one picture may have")
+		site := fs.String("site", "", "folder of static files (the landing page) served at www.<domain>")
 		fs.Parse(os.Args[2:])
 		mediaQuota := int64(*quota) << 20
 		if *quota == 0 {
 			mediaQuota = -1
 		}
 		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname, TrustProxy: *trustProxy, NoLimits: *noLimits,
-			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota}, *poll); err != nil {
+			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site}, *poll); err != nil {
 			log.Fatal(err)
 		}
 	case "fsck":

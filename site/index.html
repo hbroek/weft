@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weft: write on the open web, from a place that is yours</title>
+<meta name="description" content="Weft is a place to write on the open web. Your posts, replies and likes live in one file you own, and your site is your own domain.">
+<link rel="canonical" href="https://www.weftseed.com/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#26337a">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Weft">
+<meta property="og:title" content="Weft: write on the open web, from a place that is yours">
+<meta property="og:description" content="Your posts, replies and likes live in one file you own. Your site is your own domain, and anyone with a feed reader can follow you.">
+<meta property="og:url" content="https://www.weftseed.com/">
+<meta property="og:image" content="https://www.weftseed.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Weft: an orange thread woven through indigo threads">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Weft: write on the open web, from a place that is yours">
+<meta name="twitter:description" content="Your posts, replies and likes live in one file you own. Your site is your own domain.">
+<meta name="twitter:image" content="https://www.weftseed.com/og.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"WebSite","@id":"https://www.weftseed.com/#site","url":"https://www.weftseed.com/","name":"Weft","description":"Weft is a place to write on the open web. Your posts, replies and likes live in one file you own, and your site is your own domain."},
+{"@type":"SoftwareApplication","name":"Weft","applicationCategory":"CommunicationApplication","operatingSystem":"Linux, macOS, Windows","description":"A single-program server for writing, replying, liking and reposting over plain RSS feeds and Webmention, with portable accounts.","url":"https://www.weftseed.com/","codeRepository":"https://github.com/hbroek/weft"}
+]}
+</script>
+<style>
+:root {
+  --bg: #eef0fa; --card: #fff; --text: #1a1f3d; --muted: #5b6188; --border: #26337a22;
+  --link: #26337a; --accent: #f08a4b; --btn-bg: #26337a; --btn-text: #eef0fa; --soft: #26337a0f;
+  --header: #26337a; --header-text: #eef0fa;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11142b; --card: #1b2150; --text: #eef0fa; --muted: #a4abd8; --border: #eef0fa1f;
+    --link: #f08a4b; --btn-bg: #f08a4b; --btn-text: #11142b; --soft: #eef0fa14;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 system-ui, sans-serif; }
+a { color: var(--link); }
+.wrap { max-width: 46rem; margin: 0 auto; padding: 0 16px; }
+header { background: var(--header); color: var(--header-text); }
+header .wrap { display: flex; align-items: center; justify-content: space-between; padding-top: .8rem; padding-bottom: .8rem; gap: 1rem; flex-wrap: wrap; }
+header a { color: var(--header-text); text-decoration: none; }
+.brand { font-weight: 700; font-size: 1.3rem; letter-spacing: .02em; }
+.brand b { color: var(--accent); }
+nav a { margin-left: 1rem; font-size: .95rem; }
+.hero { padding: 3rem 0 2rem; }
+h1 { font-size: 2.2rem; line-height: 1.2; margin: 0 0 1rem; }
+h2 { font-size: 1.5rem; margin: 2.5rem 0 .6rem; }
+h3 { font-size: 1.1rem; margin: 0 0 .3rem; }
+.lead { font-size: 1.2rem; color: var(--muted); margin: 0 0 1.4rem; }
+.btn { display: inline-block; background: var(--btn-bg); color: var(--btn-text); padding: .6rem 1.1rem; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 0 .5rem .5rem 0; }
+.btn.alt { background: transparent; color: var(--link); border: 1px solid var(--border); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; margin: 1rem 0; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; }
+.card p { margin: 0; color: var(--muted); font-size: .97rem; }
+.term { border-left: 4px solid var(--accent); padding: .2rem 0 .2rem 1rem; margin: 1.1rem 0; }
+.term p { margin: 0; }
+ol.steps { padding-left: 1.2rem; }
+ol.steps li { margin: .5rem 0; }
+.icon { width: 44px; height: 44px; color: var(--link); margin-bottom: .4rem; }
+.icon .t, .pic .t { stroke: var(--accent); }
+.term { display: flex; gap: 1.2rem; align-items: center; }
+.pic { flex: 0 0 120px; width: 120px; height: 80px; color: var(--link); }
+@media (max-width: 480px) { .term { flex-direction: column; align-items: flex-start; } }
+.herocard { display: block; width: 100%; height: auto; border-radius: 12px; margin-top: 1.4rem; box-shadow: 0 1px 2px #26337a1f, 0 8px 24px #26337a26; }
+code { background: var(--soft); padding: .1em .35em; border-radius: 4px; font-size: .92em; }
+.note { background: var(--soft); border-radius: 8px; padding: .8rem 1rem; font-size: .95rem; color: var(--muted); }
+footer { margin-top: 3rem; padding: 1.5rem 0 2.5rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .9rem; }
+footer a { margin-right: 1rem; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="/">Weft<b>.</b></a>
+    <nav>
+      <a href="#concepts">Concepts</a>
+      <a href="#signup">Sign up</a>
+      <a href="#run">Run your own</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <h1>Write on the open web, from a place that is yours.</h1>
+    <p class="lead">Weft is a home for your posts, replies and likes. Your site lives at your own domain, everything you write sits in one file you can take with you, and anyone with a feed reader can follow you.</p>
+    <a class="btn" href="#signup">Get a Weft</a>
+    <a class="btn alt" href="#concepts">How it works</a>
+    <img class="herocard" src="/og.svg" width="1200" height="630" alt="Weft: an orange thread woven through indigo threads">
+  </section>
+
+  <section id="what">
+    <h2>What Weft is</h2>
+    <p>Weft is a small server for people who write. You post short notes or long articles in Markdown. Each post has an address that never changes, and your site is an ordinary RSS feed, so it works with the readers people already use. Weft adds what a feed lacks: replies, likes and conversations that reach across sites.</p>
+    <p>It grows out of <em>textcasting</em>, the idea that text should travel as freely as podcasts do, through plain feeds that nobody owns.</p>
+  </section>
+
+  <section id="concepts">
+    <h2>The ideas, in the words we use</h2>
+    <p>The name comes from weaving. The <em>weft</em> is the thread that runs across and ties the lengthwise threads together. Posts, replies and likes are the threads that tie one person's site to another's.</p>
+
+    <div class="term">
+      <svg class="pic" viewBox="0 0 120 80" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="45" cy="16" rx="20" ry="6"/><ellipse cx="45" cy="64" rx="20" ry="6"/><path d="M33 22v36M57 22v36"/><path d="M33 30h24M33 38h24M33 46h24" class="t"/><path d="M57 46c14 0 14 14 28 14s12-12 24-12" class="t"/></svg>
+      <div><h3>Spool</h3>
+      <p>Your spool is where your posts, replies, likes, follows and pictures are saved. It is one file, and it is yours: download it any time, back it up, or carry it to another server.</p>
+    </div>
+    </div>
+    <div class="term">
+      <svg class="pic" viewBox="0 0 120 80" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="8" width="92" height="64" rx="3"/><path d="M34 8v64M50 8v64M66 8v64M82 8v64M98 8v64" stroke-opacity=".45"/><path d="M14 40h20c6 0 6 10 16 10s6-10 16-10 6 10 16 10 6-10 16-10h8" class="t" stroke-width="3.2"/></svg>
+      <div><h3>Loom (the server)</h3>
+      <p>The loom is the server that hosts your site. It weaves spools into sites: it serves your pages and your feed, finds out when someone replies or likes, and fetches the feeds you follow.</p>
+    </div>
+    </div>
+    <div class="term">
+      <svg class="pic" viewBox="0 0 120 80" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="22" r="9"/><circle cx="96" cy="22" r="9"/><circle cx="60" cy="60" r="9"/><path d="M33 22h54M29 30l24 22M91 30L67 52" class="t"/></svg>
+      <div><h3>Federation</h3>
+      <p>There is no single Weft company or network. Anyone can run a loom (a Weft server), and looms talk to each other over open standards: RSS feeds to read, and <a href="https://www.w3.org/TR/webmention/">Webmention</a> to say "this replied to you" or "this liked your post". You can follow, reply to and like people on other looms, and on sites that are not Weft at all.</p>
+    </div>
+    </div>
+    <div class="term">
+      <svg class="pic" viewBox="0 0 120 80" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 24h30v38H10z"/><path d="M10 24l5-8h20l5 8"/><path d="M50 43h24" class="t"/><path d="M66 35l8 8-8 8" class="t"/><path d="M80 24h30v38H80z" stroke-dasharray="5 4"/></svg>
+      <div><h3>Portability</h3>
+      <p>Because your spool is one file and your address is your own domain, leaving is easy. <em>Download my data</em> gives you everything. <em>Move to another server</em> carries your whole spool, your pictures included, to another loom (server), and leaves a redirect behind so the old address keeps working.</p>
+    </div>
+    </div>
+
+    <h2>What you can do</h2>
+    <div class="grid">
+      <div class="card"><svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6h18l8 8v28H12z"/><path d="M30 6v8h8"/><path d="M18 24h14M18 30h14M18 36h8" class="t"/></svg><h3>Post</h3><p>Write in Markdown, short or long. Add pictures by pasting or uploading; they are stored in your spool, so a post never breaks when someone else's server disappears.</p></div>
+      <div class="card"><svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10h32v22H22l-9 8v-8H8z"/><path d="M18 21h12" class="t"/><path d="M24 16l-6 5 6 5" class="t"/></svg><h3>Reply</h3><p>Answer a post anywhere on the web. Your reply is a post on your own site that points at the one it answers, and the other side is told. Conversations show as threads.</p></div>
+      <div class="card"><svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M24 6 42 24 24 42 6 24z"/><path d="M24 15 33 24 24 33 15 24z" class="t"/></svg><h3>Like</h3><p>One plain signal: this was worth reading. No dislikes, no counts to chase. Every post has a feed of who liked it.</p></div>
+      <div class="card"><svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 22v-4a6 6 0 0 1 6-6h20"/><path d="M30 6l6 6-6 6"/><path d="M38 26v4a6 6 0 0 1-6 6H12" class="t"/><path d="M18 42l-6-6 6-6" class="t"/></svg><h3>Repost</h3><p>Share someone's post with your own words on top. The copy carries a canonical link back to the original, so readers can see where it came from, and the original stays the original.</p></div>
+      <div class="card"><svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="36" r="3"/><path d="M10 22a16 16 0 0 1 16 16M10 10a28 28 0 0 1 28 28" class="t"/></svg><h3>Follow</h3><p>Follow any feed, Weft or not, and read them together in one timeline.</p></div>
+      <div class="card"><svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="14" width="14" height="20" rx="2"/><rect x="30" y="14" width="14" height="20" rx="2" stroke-dasharray="4 4"/><path d="M23 24h5" class="t"/><path d="M26 20l4 4-4 4" class="t"/></svg><h3>Move</h3><p>Change servers without losing your followers or your history, with a short lock instead of a long outage.</p></div>
+    </div>
+  </section>
+
+  <section id="signup">
+    <h2>Sign up</h2>
+    <p>The simplest way to get a Weft is with a domain of your own. If you can add a DNS record to a name such as <code>weft.example.com</code>, your site lives at your own address, and it stays yours wherever you go.</p>
+    <ol class="steps">
+      <li>Choose a name under a domain you own, for example <code>weft.example.com</code>, and the account name you want.</li>
+      <li>Add the DNS records we show you. A TXT record proves the domain is yours, and a CNAME points it at our loom (the server that hosts you).</li>
+      <li>Choose a password. Your site is live at your own domain.</li>
+    </ol>
+    <p><strong>No domain?</strong> You can still have an account. It lives at <code>yourname.weftseed.com</code>, on our loom (the server), and works like any other. When you get a domain later, you can add it from your profile. And if you ever want to leave, <em>Move to another server</em> carries your whole spool to the new place, and we redirect the old links so nothing you have shared breaks.</p>
+    <p class="note">Sign-up is not open yet. The number of accounts is limited. For an account without a domain there will be a waiting list: tell us the name you want and where you already write (a blog, your posts, your profiles), and we let people in by hand. An account with a domain keeps working as long as the domain reaches us; if it stops, we warn you and give you time to fix it or to move away with your data. Until then, <a href="#contact">ask for an account</a>.</p>
+  </section>
+
+  <section id="run">
+    <h2>Run your own</h2>
+    <p>Weft is one program with no outside services to set up. Start it (you are now running a loom), point a wildcard DNS name at it, and add people with <code>weft user add</code>. Your server and ours can follow, reply to and like each other. The program and its documentation are on <a href="https://github.com/hbroek/weft">GitHub</a>, and the feed extensions are described at <a href="https://weftprotocol.org">weftprotocol.org</a>.</p>
+  </section>
+
+  <section id="contact">
+    <h2>Questions</h2>
+    <p>Why a domain? Spam. A domain costs a little and cannot be made by the thousand. Why a file? So the data is yours. Can I leave? Yes, at any time, with everything.</p>
+    <p>To ask for an account or say hello, write to the operator at the address on the contact page. (This page is a first version; the terms, privacy policy, FAQ and contact pages follow.)</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a href="https://github.com/hbroek/weft">Source</a>
+    <a href="https://weftprotocol.org">Protocol</a>
+    <span>Weft, built on plain feeds.</span>
+  </div>
+</footer>
+</body>
+</html>

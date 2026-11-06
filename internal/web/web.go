@@ -50,6 +50,8 @@ type Config struct {
 	// MaxUploadBytes is the largest file accepted at the Compact size, which is made smaller before it is kept.
 	MaxImageBytes, MaxUploadBytes, MaxImagePixels, CompactSide int
 	MediaQuota                                                 int64
+	// SiteDir is a folder of static files (the landing page) served at www.<BaseDomain>. Empty serves nothing there.
+	SiteDir string
 }
 
 type Server struct {
@@ -164,6 +166,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w, done := withGzip(w, r)
 	defer done()
+	if s.cfg.SiteDir != "" {
+		if h, _ := splitHost(r.Host); h == "www."+s.cfg.BaseDomain {
+			s.landing(w, r)
+			return
+		}
+	}
 	if s.lim != nil && strings.HasPrefix(r.URL.Path, "/api/") { // a wrong token counts against the caller
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		s.serve(sw, r)
@@ -411,4 +419,13 @@ func (s *Server) bearer(r *http.Request, q *req) error {
 		return errors.New("invalid token for this host")
 	}
 	return nil
+}
+
+// landing serves the static files of the landing page, for GET and HEAD only.
+func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	http.FileServer(http.Dir(s.cfg.SiteDir)).ServeHTTP(w, r)
 }

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#26337a"/>
+  <g stroke="#eef0fa" stroke-opacity=".22" stroke-width="10" stroke-linecap="round">
+    <path d="M700 0V630M760 0V630M820 0V630M880 0V630M940 0V630M1000 0V630M1060 0V630M1120 0V630M1180 0V630"/>
+  </g>
+  <path d="M640 150H1200M640 270H1200M640 390H1200M640 510H1200" stroke="#eef0fa" stroke-opacity=".12" stroke-width="10" stroke-linecap="round"/>
+  <path d="M640 330C700 330 700 330 730 330S760 210 790 210S820 330 850 330S880 450 910 450S940 330 970 330S1000 210 1030 210S1060 330 1090 330S1120 450 1150 450H1200" fill="none" stroke="#f08a4b" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="80" y="300" font-family="Georgia, 'Times New Roman', serif" font-size="150" font-weight="700" fill="#eef0fa">Weft<tspan fill="#f08a4b">.</tspan></text>
+  <text x="84" y="380" font-family="system-ui, Helvetica, Arial, sans-serif" font-size="38" fill="#eef0fa" fill-opacity=".9">Write on the open web,</text>
+  <text x="84" y="432" font-family="system-ui, Helvetica, Arial, sans-serif" font-size="38" fill="#eef0fa" fill-opacity=".9">from a place that is yours.</text>
+</svg>
