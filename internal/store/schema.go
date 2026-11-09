@@ -242,6 +242,20 @@ CREATE INDEX held_name ON held(name);`)
 	return err
 }
 
+// instanceV10 keeps sign-ups that wait for their DNS record: the person has chosen a name and a domain and been
+// given a token to put in the domain's DNS, and has no account yet.
+func instanceV10(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE signups (
+	id         TEXT PRIMARY KEY,
+	name       TEXT NOT NULL,
+	domain     TEXT NOT NULL,
+	registered TEXT NOT NULL,
+	token      TEXT NOT NULL,
+	created    INTEGER NOT NULL
+)`)
+	return err
+}
+
 // instanceV9 lets the operator mark a request as read.
 func instanceV9(tx *sql.Tx) error {
 	_, err := tx.Exec(`ALTER TABLE waitlist ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0`)

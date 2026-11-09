@@ -165,6 +165,8 @@ type limits struct {
 	follow   *rateLimiter // following, or refreshing the follows: each fetches from other servers
 	badToken *rateLimiter // API calls refused for a missing or wrong token, per address
 	waitlist *rateLimiter // a request for the waiting list, per address
+	signup   *rateLimiter // the start of a sign-up, per address
+	dnsCheck *rateLimiter // a look at a sign-up's DNS record, per address
 }
 
 func newLimits() *limits {
@@ -176,6 +178,8 @@ func newLimits() *limits {
 		follow:   newRateLimiter(10, 10),
 		badToken: newRateLimiter(20, 20),
 		waitlist: newRateLimiter(1, 3),
+		signup:   newRateLimiter(1, 5),
+		dnsCheck: newRateLimiter(6, 12),
 	}
 }
 

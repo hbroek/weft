@@ -26,6 +26,9 @@ const (
 // landing serves the landing page's files, the counts at /status.json and the waiting list's form at /waitlist.
 func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
+	case "/signup", "/signup/check", "/signup/finish":
+		s.signup(w, r)
+		return
 	case "/status.json":
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -39,6 +42,10 @@ func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
 		}
 		s.joinWaitlist(w, r)
 	default:
+		if s.cfg.SiteDir == "" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -54,7 +61,7 @@ func (s *Server) status(w http.ResponseWriter) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	out := map[string]int{"accounts": accounts, "waiting": waiting}
+	out := map[string]any{"accounts": accounts, "waiting": waiting, "signups": s.cfg.Signups}
 	if s.cfg.MaxUsers > 0 {
 		out["cap"] = s.cfg.MaxUsers
 	}
@@ -63,14 +70,25 @@ func (s *Server) status(w http.ResponseWriter) {
 	json.NewEncoder(w).Encode(out)
 }
 
-// reply writes a small page, in the colours of the landing page, with a way back.
-func reply(w http.ResponseWriter, code int, title, msg string) {
+// shell writes a small page, in the colours of the landing page. body is HTML the caller has made safe.
+func shell(w http.ResponseWriter, code int, title, body string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
 	fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>%s</title>
-<style>body{margin:0;font:17px/1.6 system-ui,sans-serif;background:#eef0fa;color:#1a1f3d}main{max-width:36rem;margin:0 auto;padding:3rem 16px}a{color:#26337a}
-@media(prefers-color-scheme:dark){body{background:#11142b;color:#eef0fa}a{color:#f08a4b}}</style></head><body><main><h1>%s</h1><p>%s</p><p><a href="/#signup">Back to the sign-up page</a></p></main></body></html>`,
-		html.EscapeString(title), html.EscapeString(title), html.EscapeString(msg))
+<style>body{margin:0;font:17px/1.6 system-ui,sans-serif;background:#eef0fa;color:#1a1f3d}main{max-width:36rem;margin:0 auto;padding:2rem 16px 3rem}a{color:#26337a}
+h1{font-size:1.7rem;line-height:1.25}label{display:block;font-weight:600;margin-top:.9rem}small{display:block;font-weight:400;color:#5b6188}
+input{width:100%%;box-sizing:border-box;font:inherit;padding:.5rem .6rem;margin-top:.25rem;border:1px solid #26337a33;border-radius:6px;background:#fff;color:inherit}
+button{margin-top:1.1rem;border:0;cursor:pointer;font:inherit;font-weight:600;background:#26337a;color:#eef0fa;padding:.6rem 1.1rem;border-radius:8px}
+code{background:#26337a12;padding:.1em .35em;border-radius:4px;overflow-wrap:anywhere}.err{background:#fbe9e7;color:#8c1d18;padding:.6rem .8rem;border-radius:8px}
+table{border-collapse:collapse;margin:.5rem 0}td,th{text-align:left;padding:.3rem .8rem .3rem 0;vertical-align:top}th{color:#5b6188;font-weight:600}
+@media(prefers-color-scheme:dark){body{background:#11142b;color:#eef0fa}a{color:#f08a4b}small,th{color:#a4abd8}input{background:#141937;border-color:#eef0fa40}button{background:#f08a4b;color:#11142b}code{background:#eef0fa14}.err{background:#4a1d1a;color:#ffb4ab}}</style></head><body><main><h1>%s</h1>%s</main></body></html>`,
+		html.EscapeString(title), html.EscapeString(title), body)
+}
+
+// reply writes a message page with a way back to the sign-up section.
+func reply(w http.ResponseWriter, code int, title, msg string) {
+	shell(w, code, title, "<p>"+html.EscapeString(msg)+`</p><p><a href="/#signup">Back to the sign-up page</a></p>`)
 }
 
 // joinWaitlist takes the form of the waiting list.

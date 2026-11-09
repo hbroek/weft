@@ -54,6 +54,9 @@ type Config struct {
 	SiteDir string
 	// MaxUsers is the number of accounts the landing page says there are places for (0: it names no number).
 	MaxUsers int
+	// Signups turns on the self-service sign-up at www.<BaseDomain>/signup: a person who controls weft.<their domain>
+	// makes an account without the operator. Off unless asked for.
+	Signups bool
 }
 
 type Server struct {
@@ -168,7 +171,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w, done := withGzip(w, r)
 	defer done()
-	if s.cfg.SiteDir != "" {
+	if s.cfg.SiteDir != "" || s.cfg.Signups {
 		if h, _ := splitHost(r.Host); h == "www."+s.cfg.BaseDomain {
 			s.landing(w, r)
 			return

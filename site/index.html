@@ -181,6 +181,7 @@ footer a { margin-right: 1rem; }
       <li>Add the DNS records we show you. A TXT record proves the domain is yours, and a CNAME points it at our loom (the server that hosts you).</li>
       <li>Choose a password. Your site is live at your own domain.</li>
     </ol>
+    <p id="signup-open" hidden><a class="btn" href="/signup">Sign up with your domain</a></p>
     <h3>2. From the waiting list</h3>
     <p>No domain? You can still ask for an account. It lives at <code>yourname.weftseed.com</code>, on our loom (the server), and works like any other. When you get a domain later, you can add it from your profile. And if you ever want to leave, <em>Move to another server</em> carries your whole spool to the new place, and we redirect the old links so nothing you have shared breaks.</p>
     <div class="counter" id="counter" aria-live="polite">
@@ -239,6 +240,7 @@ document.querySelectorAll('.mail').forEach(function (e) {
 // The counter: places and people waiting, from the server. Without it the page just shows no numbers.
 fetch('/status.json').then(function (r) { return r.ok ? r.json() : null; }).then(function (s) {
   if (!s) return;
+  if (s.signups) document.getElementById('signup-open').hidden = false;
   var show = function (id, on) { document.getElementById(id).hidden = !on; };
   if (s.cap) {
     document.getElementById('c-left').textContent = Math.max(0, s.cap - s.accounts);

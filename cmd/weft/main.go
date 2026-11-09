@@ -24,7 +24,7 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24] [-site DIR] [-max-users N]
+  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24] [-site DIR] [-max-users N] [-signups]
   weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW [-permanent]] USERNAME
                   (the password is temporary: the user must change it at the first sign-in, unless -permanent;
                   without -password one is made and shown)
@@ -73,6 +73,7 @@ func main() {
 		side := fs.Int("image-side", 1600, "the longest side, in pixels, of a picture uploaded at the Compact size")
 		pixels := fs.Int("image-megapixels", 24, "the most pixels (in millions) one picture may have")
 		maxUsers := fs.Int("max-users", 0, "the number of accounts the landing page says there are places for (0: no number is shown)")
+		signups := fs.Bool("signups", false, "let people sign up with weft.<their domain> at www.<domain>/signup (off: the operator makes the accounts)")
 		site := fs.String("site", "", "folder of static files (the landing page) served at www.<domain>")
 		fs.Parse(os.Args[2:])
 		mediaQuota := int64(*quota) << 20
@@ -80,7 +81,7 @@ func main() {
 			mediaQuota = -1
 		}
 		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname, TrustProxy: *trustProxy, NoLimits: *noLimits,
-			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site, MaxUsers: *maxUsers}, *poll); err != nil {
+			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site, MaxUsers: *maxUsers, Signups: *signups}, *poll); err != nil {
 			log.Fatal(err)
 		}
 	case "waitlist":
