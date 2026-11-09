@@ -242,6 +242,13 @@ CREATE INDEX held_name ON held(name);`)
 	return err
 }
 
+// instanceV11 marks the operator's accounts. An administrator can sign in to the administration pages, and
+// does not count toward the cap on accounts.
+func instanceV11(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE users ADD COLUMN admin INTEGER NOT NULL DEFAULT 0`)
+	return err
+}
+
 // instanceV10 keeps sign-ups that wait for their DNS record: the person has chosen a name and a domain and been
 // given a token to put in the domain's DNS, and has no account yet.
 func instanceV10(tx *sql.Tx) error {

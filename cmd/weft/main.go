@@ -24,7 +24,7 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24] [-site DIR] [-max-users N] [-signups]
+  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24] [-site DIR] [-max-users N] [-signups] [-admin] [-admin-public]
   weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW [-permanent]] USERNAME
                   (the password is temporary: the user must change it at the first sign-in, unless -permanent;
                   without -password one is made and shown)
@@ -35,6 +35,9 @@ func usage() {
                   TARGET is a feed or site URL, or a bare user name on this instance (alice -> http://alice.localhost:8080/).
                   The target's server must be running.
   weft user list   [-data weft]
+  weft user admin  [-data weft] [-off] USERNAME   (marks the account as an administrator's: it can sign in to the administration pages and is not counted toward -max-users; -off takes the mark off)
+  weft user suspend|restore [-data weft] USERNAME   (switch an account off, every address answers 410, or on again; restore also brings back a removed account while its file is in the trash)
+  weft user remove [-data weft] -yes USERNAME   (delete an account: it answers 410, the file waits 30 days in trash/, the name stays taken; administrators cannot be removed)
   weft waitlist list   [-data weft] [-new] [-full]  (a table of who asked for an account: reviewed mark, name, email, where they write; -new: only those not reviewed)
   weft waitlist review [-data weft] [-undo] ID  (mark a request as read; -undo takes the mark off)
   weft waitlist remove [-data weft] ID  (answered or refused)
@@ -73,6 +76,8 @@ func main() {
 		side := fs.Int("image-side", 1600, "the longest side, in pixels, of a picture uploaded at the Compact size")
 		pixels := fs.Int("image-megapixels", 24, "the most pixels (in millions) one picture may have")
 		maxUsers := fs.Int("max-users", 0, "the number of accounts the landing page says there are places for (0: no number is shown)")
+		admin := fs.Bool("admin", false, "serve the administration pages (for accounts marked with weft user admin) on the -internal address")
+		adminPublic := fs.Bool("admin-public", false, "with -admin, also serve them at admin.<domain> on the public address: only behind something that checks who asks (Cloudflare Access, a VPN)")
 		signups := fs.Bool("signups", false, "let people sign up with weft.<their domain> at www.<domain>/signup (off: the operator makes the accounts)")
 		site := fs.String("site", "", "folder of static files (the landing page) served at www.<domain>")
 		fs.Parse(os.Args[2:])
@@ -81,7 +86,7 @@ func main() {
 			mediaQuota = -1
 		}
 		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname, TrustProxy: *trustProxy, NoLimits: *noLimits,
-			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site, MaxUsers: *maxUsers, Signups: *signups}, *poll); err != nil {
+			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site, MaxUsers: *maxUsers, Signups: *signups, Admin: *admin, AdminPublic: *adminPublic}, *poll); err != nil {
 			log.Fatal(err)
 		}
 	case "waitlist":
@@ -355,7 +360,7 @@ func main() {
 			log.Fatal(err)
 		}
 	case "user":
-		if len(os.Args) < 3 || (os.Args[2] != "add" && os.Args[2] != "passwd" && os.Args[2] != "token" && os.Args[2] != "list" && os.Args[2] != "follow" && os.Args[2] != "set") {
+		if len(os.Args) < 3 || (os.Args[2] != "add" && os.Args[2] != "passwd" && os.Args[2] != "token" && os.Args[2] != "list" && os.Args[2] != "follow" && os.Args[2] != "set" && os.Args[2] != "admin" && os.Args[2] != "suspend" && os.Args[2] != "restore" && os.Args[2] != "remove") {
 			usage()
 		}
 		fs := flag.NewFlagSet("user "+os.Args[2], flag.ExitOnError)
@@ -368,6 +373,8 @@ func main() {
 		domain := fs.String("domain", "localhost", "follow: base domain for bare user names")
 		scheme := fs.String("scheme", "http", "follow: scheme for bare user names")
 		port := fs.String("port", "8080", "follow: port for bare user names (empty for none)")
+		off := fs.Bool("off", false, "admin: take the administrator mark off")
+		yes := fs.Bool("yes", false, "remove: do not ask")
 		fs.Parse(os.Args[3:])
 		want := 1
 		if os.Args[2] == "list" {
@@ -452,6 +459,36 @@ func main() {
 			if failed {
 				os.Exit(1)
 			}
+			return
+		case "admin":
+			if err := st.SetAdmin(fs.Arg(0), !*off); err != nil {
+				log.Fatal(err)
+			}
+			if *off {
+				fmt.Printf("%s is no longer an administrator\n", fs.Arg(0))
+			} else {
+				fmt.Printf("%s is an administrator: they can sign in to the administration pages (weft serve -admin) and do not count toward the cap\n", fs.Arg(0))
+			}
+			return
+		case "suspend", "restore", "remove":
+			// The change is in instance.db; a running server sees it within ten seconds, and moves a removed
+			// account's file to the trash within a minute.
+			var err error
+			switch os.Args[2] {
+			case "suspend":
+				err = st.Suspend(fs.Arg(0))
+			case "restore":
+				err = st.Restore(fs.Arg(0))
+			default:
+				if !*yes {
+					log.Fatalf("remove %s: its addresses answer \"gone\" and its file waits %d days in the trash, then is deleted; the name stays taken. Run it again with -yes to do it", fs.Arg(0), store.TrashDays)
+				}
+				err = st.Remove(fs.Arg(0))
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("%s: %s done\n", fs.Arg(0), os.Args[2])
 			return
 		case "list":
 			names, err := st.UserNames()
@@ -554,6 +591,17 @@ func serve(addr, internal, dataDir string, cfg web.Config, poll time.Duration) e
 		log.Printf("warning: the directory and the files disagree; run `weft fsck -data %s`", dataDir)
 	}
 	srv := web.New(cfg, st)
+	if cfg.Admin {
+		switch {
+		case internal == "" && !cfg.AdminPublic:
+			log.Printf("warning: -admin has nowhere to be served: give -internal ADDRESS (a private address) or -admin-public")
+		case cfg.AdminPublic:
+			log.Printf("the administration pages are at admin.%s on the public address: keep them behind Cloudflare Access or a VPN", cfg.BaseDomain)
+		}
+		if internal != "" {
+			log.Printf("the administration pages are at http://%s/ (private address)", internal)
+		}
+	}
 
 	stopSignals, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

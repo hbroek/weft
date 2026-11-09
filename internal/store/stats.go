@@ -29,7 +29,7 @@ func (in *Instance) Stats() Stats {
 	st.WriteInUse, st.WriteWait = w.InUse, w.WaitDuration
 	count := func(q string, into *int) { in.rdb.QueryRow(q).Scan(into) }
 	count(`SELECT COUNT(*) FROM users`, &st.Users)
-	count(`SELECT COUNT(*) FROM users WHERE status='moved'`, &st.Moved)
+	count(`SELECT COUNT(*) FROM users WHERE status IN ('moved','removed')`, &st.Moved)
 	if files, err := os.ReadDir(in.TrashDir()); err == nil {
 		st.TrashFiles = len(files)
 	}

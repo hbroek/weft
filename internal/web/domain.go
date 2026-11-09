@@ -240,6 +240,9 @@ func (s *Server) Internal() http.Handler {
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("GET /metrics", s.metrics)
+	if s.cfg.Admin {
+		mux.Handle("/", s.adminMux()) // the administration pages: anything the two lines above do not answer
+	}
 	return mux
 }
 

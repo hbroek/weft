@@ -57,6 +57,10 @@ type Config struct {
 	// Signups turns on the self-service sign-up at www.<BaseDomain>/signup: a person who controls weft.<their domain>
 	// makes an account without the operator. Off unless asked for.
 	Signups bool
+	// Admin turns on the administration pages for the accounts marked as administrators (weft user admin). They are
+	// served on the private listener (-internal) and, with AdminPublic, also at admin.<BaseDomain> on the public
+	// one, which should then be behind something that checks who asks (Cloudflare Access, a VPN).
+	Admin, AdminPublic bool
 }
 
 type Server struct {
@@ -171,6 +175,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w, done := withGzip(w, r)
 	defer done()
+	if s.cfg.Admin && s.cfg.AdminPublic {
+		if h, _ := splitHost(r.Host); h == "admin."+s.cfg.BaseDomain {
+			s.adminMux().ServeHTTP(w, r)
+			return
+		}
+	}
 	if s.cfg.SiteDir != "" || s.cfg.Signups {
 		if h, _ := splitHost(r.Host); h == "www."+s.cfg.BaseDomain {
 			s.landing(w, r)
@@ -313,6 +323,11 @@ func moveRedirect(w http.ResponseWriter, r *http.Request, to, cache string) {
 // sees a permanent redirect knows the feed moved.
 func (s *Server) route(w http.ResponseWriter, r *http.Request, name string) bool {
 	e := s.st.Dir(name)
+	if e.Status == store.StatusSuspended || e.Status == store.StatusRemoved {
+		w.Header().Set("Cache-Control", "no-store")
+		http.Error(w, "This account is not available.", http.StatusGone)
+		return false
+	}
 	if e.Status == store.StatusMoved {
 		moveRedirect(w, r, e.MovedTo, redirectCache)
 		return false

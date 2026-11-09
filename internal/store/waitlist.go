@@ -105,9 +105,10 @@ func (in *Instance) RemoveWaiting(id int64) error {
 	return nil
 }
 
-// Counts reports how many accounts are served here and how many people wait.
+// Counts reports how many accounts count toward the cap and how many people wait. The operator's own accounts
+// (administrators) are exempt, and so are accounts that have moved away or been removed.
 func (in *Instance) Counts() (accounts, waiting int, err error) {
-	if err = in.rdb.QueryRow(`SELECT COUNT(*) FROM users WHERE status!='moved'`).Scan(&accounts); err != nil {
+	if err = in.rdb.QueryRow(`SELECT COUNT(*) FROM users WHERE status NOT IN ('moved','removed') AND admin=0`).Scan(&accounts); err != nil {
 		return
 	}
 	err = in.rdb.QueryRow(`SELECT COUNT(*) FROM waitlist`).Scan(&waiting)

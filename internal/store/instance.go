@@ -228,7 +228,7 @@ func (in *Instance) AddUser(name, display, bio string) (token string, err error)
 
 // UserNames lists the names of the users who are served here, oldest first.
 func (in *Instance) UserNames() ([]string, error) {
-	rows, err := in.rdb.Query(`SELECT name FROM users WHERE status!='moved' ORDER BY created, name`)
+	rows, err := in.rdb.Query(`SELECT name FROM users WHERE status NOT IN ('moved','removed') ORDER BY created, name`)
 	if err != nil {
 		return nil, err
 	}

@@ -86,7 +86,7 @@ func (in *Instance) CheckDirectory() ([]Problem, error) {
 	}
 	slices.Sort(names)
 	for _, n := range names {
-		if want[n] != StatusMoved && !have[n] {
+		if want[n] != StatusMoved && want[n] != StatusRemoved && !have[n] {
 			out = append(out, Problem{Name: n, What: "the user has no file"})
 		}
 	}

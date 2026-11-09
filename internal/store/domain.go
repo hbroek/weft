@@ -35,6 +35,12 @@ var (
 const (
 	StatusActive = "active"
 	StatusMoved  = "moved"
+	// StatusSuspended: the operator has switched the account off. Every address answers 410; the file stays
+	// where it is, and the operator can switch it on again.
+	StatusSuspended = "suspended"
+	// StatusRemoved: the operator has deleted the account. Like a move, its file goes to the trash for TrashDays
+	// and the name stays taken, but nothing redirects: every address answers 410.
+	StatusRemoved = "removed"
 )
 
 // TrashDays is how long the file of a user who moved away is kept before it is deleted.
@@ -361,7 +367,7 @@ func (in *Instance) trashed(name string) []string {
 // was already there. It fails once the file is gone.
 func (in *Instance) Unmove(name string) error {
 	var status string
-	if err := in.db.QueryRow(`SELECT status FROM users WHERE name=?`, name).Scan(&status); err != nil || status != StatusMoved {
+	if err := in.db.QueryRow(`SELECT status FROM users WHERE name=?`, name).Scan(&status); err != nil || (status != StatusMoved && status != StatusRemoved && status != StatusSuspended) {
 		return ErrNotFound
 	}
 	restored := false
@@ -393,7 +399,7 @@ func (in *Instance) Unmove(name string) error {
 // using waits for the next call. Only the server process may call it: it is the one that holds the
 // files open.
 func (in *Instance) TrashMoved(now time.Time) (int, error) {
-	rows, err := in.db.Query(`SELECT name FROM users WHERE status='moved'`)
+	rows, err := in.db.Query(`SELECT name FROM users WHERE status IN ('moved','removed')`)
 	if err != nil {
 		return 0, err
 	}
