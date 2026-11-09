@@ -85,7 +85,7 @@ func (in *Instance) StartSignup(name, domain, email string) (*Signup, error) {
 		return nil, err
 	}
 	now := time.Now()
-	in.db.Exec(`DELETE FROM signups WHERE created<=?`, now.Add(-SignupTTL).Unix())
+	in.purgeSignups(now)
 	var n int
 	in.rdb.QueryRow(`SELECT COUNT(*) FROM signups`).Scan(&n)
 	if n >= MaxPendingSignups {

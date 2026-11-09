@@ -184,6 +184,18 @@ func TestSignupWithADomain(t *testing.T) {
 	if e := s.st.EmailOf("bob"); e != "bob@example.org" {
 		t.Errorf("the account keeps the email from the form: %q", e)
 	}
+	// the refusals and the missing record were logged, with no email address in them
+	logged, _ := s.st.SignupFailures(100)
+	kinds := map[string]int{}
+	for _, f := range logged {
+		kinds[f.Kind]++
+		if strings.Contains(f.Name+f.Domain+f.Detail, "example.org") { // the addresses typed in the forms above
+			t.Errorf("an email address in the log: %+v", f)
+		}
+	}
+	if kinds["refused"] < 6 || kinds["no record"] < 2 {
+		t.Errorf("the log lacks the failures: %v", kinds)
+	}
 	// the sign-up is used up
 	if w := check("/signup/finish", url.Values{"password": {"a good password"}, "password2": {"a good password"}}); w.Code != 410 {
 		t.Errorf("a second finish: %d, want 410", w.Code)

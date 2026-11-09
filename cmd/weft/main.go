@@ -25,7 +25,7 @@ import (
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24] [-site DIR] [-max-users N] [-signups] [-admin] [-admin-public]
-  weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW [-permanent]] USERNAME
+  weft user add [-admin] [-over-cap] [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW [-permanent]] USERNAME
                   (the password is temporary: the user must change it at the first sign-in, unless -permanent;
                   without -password one is made and shown)
   weft user set [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-email ADDRESS] USERNAME   (changes only the fields given; -avatar "" removes it)
@@ -373,6 +373,8 @@ func main() {
 		domain := fs.String("domain", "localhost", "follow: base domain for bare user names")
 		scheme := fs.String("scheme", "http", "follow: scheme for bare user names")
 		port := fs.String("port", "8080", "follow: port for bare user names (empty for none)")
+		asAdmin := fs.Bool("admin", false, "add: make the account an administrator's (the operator's own, exempt from the cap)")
+		overCap := fs.Bool("over-cap", false, "add: make the account although all the places under -max-users are taken")
 		email := fs.String("email", "", "add, set: where a mail connector warns the owner (nothing sends mail by itself yet)")
 		off := fs.Bool("off", false, "admin: take the administrator mark off")
 		yes := fs.Bool("yes", false, "remove: do not ask")
@@ -525,9 +527,17 @@ func main() {
 			setUserPassword(sp, fs.Arg(0), *pw, *permanent)
 			return
 		}
+		if limit, counted := st.Cap(); limit > 0 && counted >= limit && !*asAdmin && !*overCap {
+			log.Fatalf("all %d places are taken (the server's -max-users). Raise -max-users, or add -over-cap to make this account anyway, or -admin for the operator's own account, which is not counted", limit)
+		}
 		tok, err := st.AddUser(fs.Arg(0), *display, *bio)
 		if err != nil {
 			log.Fatal(err)
+		}
+		if *asAdmin {
+			if err := st.SetAdmin(fs.Arg(0), true); err != nil {
+				log.Fatal(err)
+			}
 		}
 		sp, u := space(fs.Arg(0))
 		setUserPassword(sp, fs.Arg(0), *pw, *permanent)
@@ -600,6 +610,9 @@ func serve(addr, internal, dataDir string, cfg web.Config, poll time.Duration) e
 			log.Printf("directory check: %s", p)
 		}
 		log.Printf("warning: the directory and the files disagree; run `weft fsck -data %s`", dataDir)
+	}
+	if err := st.RememberCap(cfg.MaxUsers); err != nil { // so that weft user add, run by hand, can respect it
+		log.Printf("keeping the cap: %v", err)
 	}
 	srv := web.New(cfg, st)
 	if cfg.Admin {

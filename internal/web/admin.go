@@ -176,6 +176,7 @@ type adminData struct {
 	Lapsed                     int
 	Waiting                    []store.Waiting
 	Sign                       []store.Signup
+	Failures                   []store.SignupFailure
 	SiteBase                   string
 	Created                    *createdAccount
 	Confirm                    string
@@ -408,6 +409,7 @@ func (s *Server) adminSignups(w http.ResponseWriter, r *http.Request, who string
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	d.Failures, _ = s.st.SignupFailures(200)
 	s.adminShow(w, "signups", http.StatusOK, d)
 }
 
@@ -535,5 +537,9 @@ form.inline{display:inline;margin:0}
 {{define "signups"}}{{template "top" .}}
 <p class="mute">People who chose a name and a domain and have not yet put the record in their DNS. A sign-up lapses after an hour and holds no place in the cap.</p>
 <div class="wrap"><table><tr><th>Name</th><th>Domain</th><th>Started</th></tr>
-{{range .Sign}}<tr><td>{{.Name}}</td><td>{{.Domain}}</td><td>{{when .Created}}</td></tr>{{else}}<tr><td colspan="3">None waiting.</td></tr>{{end}}</table></div>{{template "bottom"}}{{end}}
+{{range .Sign}}<tr><td>{{.Name}}</td><td>{{.Domain}}</td><td>{{when .Created}}</td></tr>{{else}}<tr><td colspan="3">None waiting.</td></tr>{{end}}</table></div>
+<h2>Sign-ups that did not end in an account</h2>
+<p class="mute">The name and the domain that were tried, and why it stopped: a form that was refused, a DNS record that was not there, an hour that ran out. The last 1000 entries, nothing older than 30 days. No email addresses and no callers' addresses are kept.</p>
+<div class="wrap"><table><tr><th>When</th><th>Name</th><th>Domain</th><th>What</th><th>Why</th></tr>
+{{range .Failures}}<tr><td>{{when .At}}</td><td>{{.Name}}</td><td>{{.Domain}}</td><td>{{.Kind}}</td><td>{{.Detail}}</td></tr>{{else}}<tr><td colspan="5">None.</td></tr>{{end}}</table></div>{{template "bottom"}}{{end}}
 `

@@ -242,6 +242,27 @@ CREATE INDEX held_name ON held(name);`)
 	return err
 }
 
+// instanceV14 adds the settings the running server leaves for commands run by hand (the cap on accounts), and the
+// log of sign-ups that did not end in an account.
+func instanceV14(tx *sql.Tx) error {
+	for _, q := range []string{
+		`CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+		`CREATE TABLE signup_failures (
+	id     INTEGER PRIMARY KEY,
+	at     INTEGER NOT NULL,
+	name   TEXT NOT NULL,
+	domain TEXT NOT NULL,
+	kind   TEXT NOT NULL,
+	detail TEXT NOT NULL
+)`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // instanceV13 keeps the email address a person gave when signing up, until the account is made.
 func instanceV13(tx *sql.Tx) error {
 	_, err := tx.Exec(`ALTER TABLE signups ADD COLUMN email TEXT NOT NULL DEFAULT ''`)

@@ -12,7 +12,7 @@ import (
 // There are two lists because there are two kinds of file: one per user, and the instance's own.
 var (
 	spaceMigrations    = []func(tx *sql.Tx) error{spaceV1, spaceV2, spaceV3}
-	instanceMigrations = []func(tx *sql.Tx) error{instanceV1, instanceV2, instanceV3, instanceV4, instanceV5, instanceV6, instanceV7, instanceV8, instanceV9, instanceV10, instanceV11, instanceV12, instanceV13}
+	instanceMigrations = []func(tx *sql.Tx) error{instanceV1, instanceV2, instanceV3, instanceV4, instanceV5, instanceV6, instanceV7, instanceV8, instanceV9, instanceV10, instanceV11, instanceV12, instanceV13, instanceV14}
 )
 
 // SpaceSchemaVersion and InstanceSchemaVersion are the versions a file has after it is opened.

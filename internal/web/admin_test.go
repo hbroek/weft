@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hbroek/weft/internal/store"
 )
 
 func adminReq(s *Server, method, path, cookie, body string, header ...string) *httptest.ResponseRecorder {
@@ -173,6 +175,12 @@ func TestAdminPages(t *testing.T) {
 	}
 	if w := adminReq(s, "POST", "/waitlist/"+itoa(id)+"/remove", cookie, ""); w.Code != 303 {
 		t.Errorf("remove a request: %d", w.Code)
+	}
+
+	// the sign-ups page shows the failed ones
+	st.LogSignupFailure("zed", "weft.zed.example", store.FailNoRecord, "the record was not there")
+	if w := adminReq(s, "GET", "/signups", cookie, ""); w.Code != 200 || !strings.Contains(w.Body.String(), "weft.zed.example") || !strings.Contains(w.Body.String(), "no record") {
+		t.Errorf("sign-ups page: %d", w.Code)
 	}
 
 	// taking the mark off ends the session at once

@@ -111,8 +111,12 @@ func (s *Server) signupStart(w http.ResponseWriter, r *http.Request) {
 	domain := strings.ToLower(strings.TrimSpace(r.PostFormValue("domain")))
 	name := strings.ToLower(strings.TrimSpace(r.PostFormValue("name")))
 	email := strings.TrimSpace(r.PostFormValue("email"))
-	fail := func(msg string) { s.signupForm(w, http.StatusBadRequest, domain, name, email, msg) }
+	fail := func(msg string) {
+		s.st.LogSignupFailure(name, domain, store.FailRefused, msg)
+		s.signupForm(w, http.StatusBadRequest, domain, name, email, msg)
+	}
 	if s.full() {
+		s.st.LogSignupFailure(name, domain, store.FailFull, "all places are taken")
 		s.signupForm(w, http.StatusOK, domain, name, email, "")
 		return
 	}
@@ -135,9 +139,11 @@ func (s *Server) signupStart(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrDomainTaken):
 		fail("That domain already has an account here (one account for each registered domain), or somebody is signing up with it now.")
 	case errors.Is(err, store.ErrSignupsBusy):
+		s.st.LogSignupFailure(name, domain, store.FailError, "too many sign-ups waiting")
 		reply(w, http.StatusServiceUnavailable, "Busy", "Too many people are signing up right now. Please try again in a little while.")
 	default:
 		log.Printf("sign-up: %v", err)
+		s.st.LogSignupFailure(name, domain, store.FailError, err.Error())
 		reply(w, http.StatusInternalServerError, "That did not work", "Something went wrong on our side. Please try again later.")
 	}
 }
@@ -185,6 +191,7 @@ func (s *Server) signupPassword(w http.ResponseWriter, sg *store.Signup, errMsg 
 
 func (s *Server) signupCheck(w http.ResponseWriter, r *http.Request, sg *store.Signup) {
 	if !s.owns(r.Context(), &store.Domain{Domain: sg.Domain, Token: sg.Token}) {
+		s.st.LogSignupFailure(sg.Name, sg.Domain, store.FailNoRecord, "the TXT record was not found when the person pressed the button")
 		s.signupInstructions(w, sg, "The record is not there yet. Check the name and the value, and try again in a few minutes.")
 		return
 	}
@@ -201,19 +208,23 @@ func (s *Server) signupFinish(w http.ResponseWriter, r *http.Request, sg *store.
 		s.signupPassword(w, sg, "The password must be at least 8 characters.")
 		return
 	case !s.owns(r.Context(), &store.Domain{Domain: sg.Domain, Token: sg.Token}):
+		s.st.LogSignupFailure(sg.Name, sg.Domain, store.FailNoRecord, "the TXT record was gone at the last step")
 		s.signupInstructions(w, sg, "The record is not there any more. Add it again, and press the button.")
 		return
 	case s.full():
+		s.st.LogSignupFailure(sg.Name, sg.Domain, store.FailFull, "all places were taken at the last step")
 		s.signupForm(w, http.StatusOK, "", "", "", "")
 		return
 	}
 	switch err := s.st.FinishSignup(sg, pw); {
 	case err == nil:
 	case errors.Is(err, store.ErrNameTaken), errors.Is(err, store.ErrDomainTaken):
+		s.st.LogSignupFailure(sg.Name, sg.Domain, store.FailRefused, "the name or the domain was taken at the last step")
 		reply(w, http.StatusConflict, "Somebody was first", "The name or the domain was taken while you were signing up. Please start again.")
 		return
 	default:
 		log.Printf("sign-up of %s: %v", sg.Name, err)
+		s.st.LogSignupFailure(sg.Name, sg.Domain, store.FailError, err.Error())
 		reply(w, http.StatusInternalServerError, "That did not work", "Something went wrong on our side. Please try again later.")
 		return
 	}
