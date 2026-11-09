@@ -172,6 +172,8 @@ type adminData struct {
 	Accounts                   []store.Account
 	From, Next, Prev, Count    int
 	HasPrev, HasNext           bool
+	Lapsing                    []store.Lapse
+	Lapsed                     int
 	Waiting                    []store.Waiting
 	Sign                       []store.Signup
 	SiteBase                   string
@@ -218,6 +220,12 @@ func (s *Server) adminOverview(w http.ResponseWriter, r *http.Request, who strin
 	}
 	if p, err := s.st.PendingSignups(); err == nil {
 		d.Pending = len(p)
+	}
+	d.Lapsing, _ = s.st.Lapsing()
+	for _, l := range d.Lapsing {
+		if l.Lapsed {
+			d.Lapsed++
+		}
 	}
 	d.Held = s.st.HeldCount()
 	d.Disk = s.st.DiskUse()
@@ -470,8 +478,13 @@ form.inline{display:inline;margin:0}
 <div class="card"><b>{{.Tally.Moved}}</b><span>moved to other servers</span></div>
 <div class="card"><b>{{.Wait}}</b><span>on the <a href="/waitlist">waiting list</a>, {{.NewWait}} not read</span></div>
 <div class="card"><b>{{.Pending}}</b><span><a href="/signups">sign-ups</a> waiting for DNS{{if not .Signups}} (sign-up is off){{end}}</span></div>
+<div class="card"><b>{{.Lapsed}}</b><span>in the grace period: their domain stopped verifying</span></div>
 <div class="card"><b>{{.Held}}</b><span>mentions held for moving accounts</span></div>
 </div>
+{{if .Lapsing}}<h2>Domains that failed a check</h2>
+<div class="wrap"><table><tr><th>Account</th><th>Domain</th><th>State</th><th>Ends</th></tr>
+{{range .Lapsing}}<tr><td>{{.Name}}</td><td>{{.Domain}}</td><td>{{if .Lapsed}}lapsed since {{dayt .Since}}{{else}}{{.Fails}} of 3 checks failed{{end}}{{if .Admin}} <small>(administrator: never ended this way)</small>{{end}}</td><td>{{if .Lapsed}}{{dayt .Deadline}}{{else}}—{{end}}</td></tr>{{end}}</table></div>
+<p class="mute">Checked once a day: the TXT record and that the domain reaches this server. Three failed checks in a row start the grace period; a pass starts it over.</p>{{end}}
 <h2>Disk</h2>
 <div class="cards">
 <div class="card"><b>{{size .Disk.Spools}}</b><span>users' files</span></div>

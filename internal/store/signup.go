@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ type Signup struct {
 	Name       string // the account name
 	Domain     string // weft.<registered>
 	Registered string // the registered domain, which is what one account is counted by
+	Email      string // where the owner is warned if the domain stops working; kept in the account
 	Token      string // goes in the TXT record of _weft.<Domain>, as weft-verify=<Token>
 	Created    time.Time
 }
@@ -52,10 +54,30 @@ func (in *Instance) registeredTaken(reg string) bool {
 	return n > 0
 }
 
+// ErrEmail is returned for an email address that is not a single plain address.
+var ErrEmail = errors.New("not an email address")
+
+// MaxEmail is the longest address kept.
+const MaxEmail = 254
+
+// CleanEmail checks an email address: one plain address, as in name@example.com, without a display name.
+func CleanEmail(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	a, err := mail.ParseAddress(s)
+	if err != nil || a.Address != s || len(s) > MaxEmail || !strings.Contains(a.Address[strings.LastIndex(a.Address, "@"):], ".") {
+		return "", ErrEmail
+	}
+	return s, nil
+}
+
 // StartSignup records a sign-up. The domain is checked with SignupDomain and the name with CheckName; the name
 // must be free and the registered domain unused, by an account and by another sign-up that is still waiting.
-func (in *Instance) StartSignup(name, domain string) (*Signup, error) {
+func (in *Instance) StartSignup(name, domain, email string) (*Signup, error) {
 	if err := CheckName(name); err != nil {
+		return nil, err
+	}
+	email, err := CleanEmail(email)
+	if err != nil {
 		return nil, err
 	}
 	domain, reg, err := SignupDomain(domain)
@@ -84,19 +106,19 @@ func (in *Instance) StartSignup(name, domain string) (*Signup, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := in.db.Exec(`INSERT INTO signups(id,name,domain,registered,token,created) VALUES(?,?,?,?,?,?)`,
-		id, name, domain, reg, token, now.Unix()); err != nil {
+	if _, err := in.db.Exec(`INSERT INTO signups(id,name,domain,registered,token,email,created) VALUES(?,?,?,?,?,?,?)`,
+		id, name, domain, reg, token, email, now.Unix()); err != nil {
 		return nil, err
 	}
-	return &Signup{ID: id, Name: name, Domain: domain, Registered: reg, Token: token, Created: now}, nil
+	return &Signup{ID: id, Name: name, Domain: domain, Registered: reg, Token: token, Email: email, Created: now}, nil
 }
 
 // SignupByID returns a sign-up that has not lapsed, or ErrNotFound.
 func (in *Instance) SignupByID(id string) (*Signup, error) {
 	sg := &Signup{ID: id}
 	var c int64
-	err := in.rdb.QueryRow(`SELECT name,domain,registered,token,created FROM signups WHERE id=? AND created>?`,
-		id, time.Now().Add(-SignupTTL).Unix()).Scan(&sg.Name, &sg.Domain, &sg.Registered, &sg.Token, &c)
+	err := in.rdb.QueryRow(`SELECT name,domain,registered,token,email,created FROM signups WHERE id=? AND created>?`,
+		id, time.Now().Add(-SignupTTL).Unix()).Scan(&sg.Name, &sg.Domain, &sg.Registered, &sg.Token, &sg.Email, &c)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -126,12 +148,15 @@ func (in *Instance) FinishSignup(sg *Signup, password string) error {
 		return err
 	}
 	err = sp.SetPassword(password)
+	if err == nil && sg.Email != "" {
+		_, err = sp.db.Exec(`UPDATE users SET email=? WHERE name=?`, sg.Email, sg.Name)
+	}
 	release()
 	if err != nil {
 		undo()
 		return err
 	}
-	if _, err := in.db.Exec(`INSERT INTO domains(domain,name,token,verified,created) VALUES(?,?,?,1,?)`,
+	if _, err := in.db.Exec(`INSERT INTO domains(domain,name,token,verified,bound,created) VALUES(?,?,?,1,1,?)`,
 		sg.Domain, sg.Name, sg.Token, time.Now().Unix()); err != nil {
 		undo()
 		if strings.Contains(err.Error(), "UNIQUE") {

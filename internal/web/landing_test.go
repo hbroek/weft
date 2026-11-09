@@ -105,7 +105,7 @@ func TestSignupWithADomain(t *testing.T) {
 	}
 
 	start := func(domain, name string) *httptest.ResponseRecorder {
-		return postForm(s, "www.localhost", "/signup", url.Values{"domain": {domain}, "name": {name}}.Encode())
+		return postForm(s, "www.localhost", "/signup", url.Values{"domain": {domain}, "name": {name}, "email": {"bob@example.org"}}.Encode())
 	}
 	for name, c := range map[string][2]string{
 		"a name further down":   {"weft.blog.example.com", "bob"},
@@ -117,6 +117,13 @@ func TestSignupWithADomain(t *testing.T) {
 	} {
 		if w := start(c[0], c[1]); w.Code != 400 {
 			t.Errorf("%s: %d, want 400", name, w.Code)
+		}
+	}
+
+	for name, email := range map[string]string{"no email": "", "not an address": "bob", "a list": "a@example.org, b@example.org", "a display name": "Bob <bob@example.org>", "no dot": "bob@localhost"} {
+		w := postForm(s, "www.localhost", "/signup", url.Values{"domain": {"weft.example.co.uk"}, "name": {"bob"}, "email": {email}}.Encode())
+		if w.Code != 400 || !strings.Contains(w.Body.String(), "email address") {
+			t.Errorf("%s: %d, want 400 about the email", name, w.Code)
 		}
 	}
 
@@ -173,6 +180,9 @@ func TestSignupWithADomain(t *testing.T) {
 	}
 	if d, err := s.st.DomainOf("bob"); err != nil || !d.Verified || d.Domain != "weft.example.co.uk" {
 		t.Errorf("the domain: %+v %v", d, err)
+	}
+	if e := s.st.EmailOf("bob"); e != "bob@example.org" {
+		t.Errorf("the account keeps the email from the form: %q", e)
 	}
 	// the sign-up is used up
 	if w := check("/signup/finish", url.Values{"password": {"a good password"}, "password2": {"a good password"}}); w.Code != 410 {

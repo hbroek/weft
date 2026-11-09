@@ -28,7 +28,7 @@ func usage() {
   weft user add [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW [-permanent]] USERNAME
                   (the password is temporary: the user must change it at the first sign-in, unless -permanent;
                   without -password one is made and shown)
-  weft user set [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] USERNAME   (changes only the fields given; -avatar "" removes it)
+  weft user set [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-email ADDRESS] USERNAME   (changes only the fields given; -avatar "" removes it)
   weft user passwd [-data weft] [-password PW [-permanent]] USERNAME   (temporary like add: the user changes it at the next sign-in; without -password one is made and shown)
   weft user token  [-data weft] USERNAME      (issues a new API token, invalidating the old one)
   weft user follow [-data weft] [-domain localhost] [-scheme http] [-port 8080] USERNAME TARGET...
@@ -373,6 +373,7 @@ func main() {
 		domain := fs.String("domain", "localhost", "follow: base domain for bare user names")
 		scheme := fs.String("scheme", "http", "follow: scheme for bare user names")
 		port := fs.String("port", "8080", "follow: port for bare user names (empty for none)")
+		email := fs.String("email", "", "add, set: where a mail connector warns the owner (nothing sends mail by itself yet)")
 		off := fs.Bool("off", false, "admin: take the administrator mark off")
 		yes := fs.Bool("yes", false, "remove: do not ask")
 		fs.Parse(os.Args[3:])
@@ -433,6 +434,11 @@ func main() {
 			}
 			if err := sp.UpdateProfile(u.ID, d, b, a); err != nil {
 				log.Fatal(err)
+			}
+			if given["email"] {
+				if err := st.SetEmail(fs.Arg(0), *email); err != nil {
+					log.Fatal(err)
+				}
 			}
 			return
 		case "follow":
@@ -527,6 +533,11 @@ func main() {
 		setUserPassword(sp, fs.Arg(0), *pw, *permanent)
 		if *avatar != "" {
 			if err := sp.UpdateProfile(u.ID, u.Display, u.Bio, *avatar); err != nil {
+				log.Fatal(err)
+			}
+		}
+		if *email != "" {
+			if err := st.SetEmail(fs.Arg(0), *email); err != nil {
 				log.Fatal(err)
 			}
 		}

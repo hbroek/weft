@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -23,7 +24,15 @@ type domainView struct {
 	Target            string // the CNAME target to advertise, if the instance has one
 	Points            bool   // the domain's CNAME already points at Target
 	Dev               bool   // the server is in development mode: reachable only from this computer
+	Bound             bool   // the account signed up with this domain and depends on it
+	Lapse             *lapseView
 	Error, Notice     string
+}
+
+// lapseView is what the profile page says about a domain that failed its checks.
+type lapseView struct {
+	*store.Lapse
+	Left, Grace int
 }
 
 const txtPrefix = "weft-verify="
@@ -76,6 +85,10 @@ func (s *Server) domainView(r *http.Request, q *req) *domainView {
 	if d, err := s.st.DomainOf(q.host.Name); err == nil {
 		v.Domain, v.Verified, v.Active = d.Domain, d.Verified, d.Active
 		v.TXTName, v.TXTValue = "_weft."+d.Domain, txtPrefix+d.Token
+		v.Bound = s.st.IsBound(q.host.Name)
+		if l := s.st.LapseOf(q.host.Name); l != nil {
+			v.Lapse = &lapseView{Lapse: l, Left: max(0, store.FailuresToLapse-l.Fails), Grace: store.GraceDays}
+		}
 		if !d.Active {
 			v.Points = s.points(r.Context(), d.Domain)
 		}
@@ -117,6 +130,9 @@ func (s *Server) domainSet(w http.ResponseWriter, r *http.Request, q *req) {
 		msg := "Could not save the domain."
 		if err == store.ErrDomainTaken {
 			msg = "Somebody else already uses that domain."
+		}
+		if errors.Is(err, store.ErrDomainBound) {
+			msg = "Your account belongs to its domain, so the domain cannot be changed here."
 		}
 		s.domainMsg(w, r, q, msg, "")
 		return
@@ -170,6 +186,10 @@ func (s *Server) domainCheck(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Redirect(w, r, "/profile", http.StatusSeeOther)
 		return
 	}
+	_, checkPort := splitHost(r.Host)
+	if s.st.IsBound(q.host.Name) && s.owns(r.Context(), d) && s.reaches(r.Context(), d, checkPort) {
+		s.st.ClearLapse(q.host.Name, time.Now()) // the domain works: the failures and the grace period are forgotten
+	}
 	if d.Active { // already the address: see that it still works, and fall back if it does not
 		_, port := splitHost(r.Host)
 		if s.reaches(r.Context(), d, port) {
@@ -218,6 +238,10 @@ func (s *Server) domainRemove(w http.ResponseWriter, r *http.Request, q *req) {
 		return
 	}
 	if err := s.st.RemoveDomain(q.host.Name); err != nil {
+		if errors.Is(err, store.ErrDomainBound) {
+			s.domainMsg(w, r, q, "Your account belongs to its domain, so the domain cannot be removed. To leave it, move your account to another server or download your data.", "")
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

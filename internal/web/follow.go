@@ -713,6 +713,7 @@ func (s *Server) StartPoller(ctx context.Context, every time.Duration) <-chan st
 			case <-queues.C:
 				s.ProcessQueues(ctx)
 				s.endMoves()
+				go s.checkDomains(ctx, time.Now())
 			case <-s.wake:
 				s.ProcessQueues(ctx)
 			}
@@ -724,6 +725,11 @@ func (s *Server) StartPoller(ctx context.Context, every time.Duration) <-chan st
 // endMoves puts the files of users who moved away into the trash, and empties the trash of old ones.
 func (s *Server) endMoves() {
 	now := time.Now()
+	if names, err := s.st.EndLapsed(now); err != nil {
+		log.Printf("ending accounts whose domain lapsed: %v", err)
+	} else if len(names) > 0 {
+		log.Printf("%d account(s) removed because their domain stopped verifying for %d days: %s", len(names), store.GraceDays, strings.Join(names, ", "))
+	}
 	if n, err := s.st.TrashMoved(now); err != nil {
 		log.Printf("trashing moved accounts: %v", err)
 	} else if n > 0 {

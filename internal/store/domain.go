@@ -30,6 +30,8 @@ var (
 	ErrDomainTaken = errors.New("domain already in use")
 	ErrBadDomain   = errors.New("not a valid domain name")
 	ErrBadAddress  = errors.New("not a valid address: want http(s)://host")
+	// ErrDomainBound: the account signed up with this domain and depends on it, so the domain cannot be changed or removed.
+	ErrDomainBound = errors.New("the account belongs to its domain")
 )
 
 const (
@@ -133,6 +135,11 @@ func (in *Instance) SetDomain(name, domain string) (*Domain, error) {
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM users WHERE name=? AND status='active'`, name).Scan(&n); err != nil || n == 0 {
 		return nil, ErrNotFound
 	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM domains WHERE name=? AND bound=1`, name).Scan(&n); err != nil {
+		return nil, err
+	} else if n > 0 {
+		return nil, ErrDomainBound
+	}
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM domains WHERE domain=? AND verified=1 AND name!=?`, domain, name).Scan(&n); err != nil {
 		return nil, err
 	}
@@ -211,6 +218,9 @@ func (in *Instance) DeactivateDomain(name string) error {
 
 // RemoveDomain takes the custom domain away; the user is served at the instance's address again.
 func (in *Instance) RemoveDomain(name string) error {
+	if in.IsBound(name) {
+		return ErrDomainBound
+	}
 	if _, err := in.db.Exec(`DELETE FROM domains WHERE name=?`, name); err != nil {
 		return err
 	}

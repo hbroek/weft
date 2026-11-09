@@ -181,3 +181,28 @@ func TestAdminPages(t *testing.T) {
 		t.Errorf("after the mark is off: %d, want 303", w.Code)
 	}
 }
+
+func TestAdminOverviewListsLapsingDomains(t *testing.T) {
+	s, _ := setup(t)
+	boundAccount(t, s, "bob", "weft.bob.example")
+	boundAccount(t, s, "eve", "weft.eve.example")
+	now := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		s.st.RecordCheck("bob", false, now.Add(time.Duration(i)*24*time.Hour))
+	}
+	s.st.RecordCheck("eve", false, now)
+	s.st.SetAdmin("alice", true)
+	sp, rel, _ := s.st.Space("alice")
+	sp.SetPassword("correct horse")
+	u, _ := sp.User()
+	tok, _ := sp.CreateSession(u.ID)
+	rel()
+	s.cfg.Admin, s.cfg.AdminPublic = true, true
+	w := adminReq(s, "GET", "/", adminCookie+"=alice:"+tok, "")
+	body := w.Body.String()
+	for _, want := range []string{"Domains that failed a check", "weft.bob.example", "lapsed since 2026-11-12", "2027-02-10", "weft.eve.example", "1 of 3 checks failed"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the overview lacks %q", want)
+		}
+	}
+}

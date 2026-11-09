@@ -38,7 +38,7 @@ func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/signup":
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
-			s.signupForm(w, http.StatusOK, "", "", "")
+			s.signupForm(w, http.StatusOK, "", "", "", "")
 			return
 		}
 		if r.Method != http.MethodPost {
@@ -75,7 +75,7 @@ func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) signupForm(w http.ResponseWriter, code int, domain, name, errMsg string) {
+func (s *Server) signupForm(w http.ResponseWriter, code int, domain, name, email, errMsg string) {
 	if s.full() {
 		shell(w, http.StatusOK, "All places are taken", `<p>The number of accounts is limited and they are all in use. You can <a href="/#waitlist">ask for an account</a> on the waiting list, or run your own server.</p>`)
 		return
@@ -90,6 +90,8 @@ func (s *Server) signupForm(w http.ResponseWriter, code int, domain, name, errMs
 <input id="domain" name="domain" required maxlength="253" placeholder="weft.example.com" value="` + esc(domain) + `" autocapitalize="none" spellcheck="false">
 <label for="name">Account name <small>Lowercase letters, digits and hyphens.</small></label>
 <input id="name" name="name" required maxlength="31" value="` + esc(name) + `" autocapitalize="none" spellcheck="false" autocomplete="username">
+<label for="email">Email address <small>Used only to warn you if your domain stops working, so that you can put it right before the account ends. It is never shown to anyone. Mail is sent only if this server has a way to send it.</small></label>
+<input id="email" name="email" type="email" required maxlength="254" value="` + esc(email) + `" autocomplete="email" autocapitalize="none" spellcheck="false">
 <button type="submit">Continue</button></form>`)
 	shell(w, code, "Sign up with your domain", b.String())
 }
@@ -108,19 +110,22 @@ func (s *Server) signupStart(w http.ResponseWriter, r *http.Request) {
 	}
 	domain := strings.ToLower(strings.TrimSpace(r.PostFormValue("domain")))
 	name := strings.ToLower(strings.TrimSpace(r.PostFormValue("name")))
-	fail := func(msg string) { s.signupForm(w, http.StatusBadRequest, domain, name, msg) }
+	email := strings.TrimSpace(r.PostFormValue("email"))
+	fail := func(msg string) { s.signupForm(w, http.StatusBadRequest, domain, name, email, msg) }
 	if s.full() {
-		s.signupForm(w, http.StatusOK, domain, name, "")
+		s.signupForm(w, http.StatusOK, domain, name, email, "")
 		return
 	}
 	if d, _, err := store.SignupDomain(domain); err == nil && s.underBase(d) {
 		fail("That name belongs to this server and cannot be used. Use a domain of your own.")
 		return
 	}
-	sg, err := s.st.StartSignup(name, domain)
+	sg, err := s.st.StartSignup(name, domain, email)
 	switch {
 	case err == nil:
 		s.signupInstructions(w, sg, "")
+	case errors.Is(err, store.ErrEmail):
+		fail("The email address does not look right. Give one address, such as you@example.com.")
 	case errors.Is(err, store.ErrSignupDomain):
 		fail(strings.TrimPrefix(err.Error(), store.ErrSignupDomain.Error()+": "))
 	case errors.Is(err, store.ErrInvalid):
@@ -199,7 +204,7 @@ func (s *Server) signupFinish(w http.ResponseWriter, r *http.Request, sg *store.
 		s.signupInstructions(w, sg, "The record is not there any more. Add it again, and press the button.")
 		return
 	case s.full():
-		s.signupForm(w, http.StatusOK, "", "", "")
+		s.signupForm(w, http.StatusOK, "", "", "", "")
 		return
 	}
 	switch err := s.st.FinishSignup(sg, pw); {

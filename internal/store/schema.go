@@ -242,6 +242,29 @@ CREATE INDEX held_name ON held(name);`)
 	return err
 }
 
+// instanceV13 keeps the email address a person gave when signing up, until the account is made.
+func instanceV13(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE signups ADD COLUMN email TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+// instanceV12 follows the domains that accounts depend on: an account that signed up with a domain is bound to it,
+// and when the domain stops verifying the checks count failures, then a grace period runs.
+func instanceV12(tx *sql.Tx) error {
+	for _, q := range []string{
+		`ALTER TABLE domains ADD COLUMN bound INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE domains ADD COLUMN fails INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE domains ADD COLUMN last_check INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE domains ADD COLUMN since INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE domains ADD COLUMN mailed INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // instanceV11 marks the operator's accounts. An administrator can sign in to the administration pages, and
 // does not count toward the cap on accounts.
 func instanceV11(tx *sql.Tx) error {

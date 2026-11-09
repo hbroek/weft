@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hbroek/weft/internal/fetch"
@@ -61,6 +62,10 @@ type Config struct {
 	// served on the private listener (-internal) and, with AdminPublic, also at admin.<BaseDomain> on the public
 	// one, which should then be behind something that checks who asks (Cloudflare Access, a VPN).
 	Admin, AdminPublic bool
+	// Mail sends a message to an address, for the warnings an account's owner should get. Nil means there is no
+	// connector, and nothing is sent: the warnings are on the owner's pages. The addresses come from the accounts;
+	// an account without one is not mailed.
+	Mail func(ctx context.Context, to, subject, body string) error
 }
 
 type Server struct {
@@ -79,6 +84,8 @@ type Server struct {
 	scaled *scaleCache
 	// pulls are the moves of accounts to this server that are running or just ended.
 	pulls pullSet
+	// checking is set while the daily check of the bound domains runs, so that a slow one is not started twice.
+	checking atomic.Bool
 }
 
 func New(cfg Config, st *store.Instance) *Server {

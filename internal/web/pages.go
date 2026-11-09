@@ -15,7 +15,7 @@ import (
 	"github.com/hbroek/weft/internal/store"
 )
 
-var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doctype html>
+var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": func(t time.Time) string { return t.Format("2 January 2006") }}).Parse(`{{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}}</title>
@@ -47,6 +47,7 @@ var layout = template.Must(template.New("layout").Parse(`{{define "head"}}<!doct
 {{if .Owner}}<form method="post" action="/logout"><button class="btn">Log out</button></form>{{else}}<a class="btn" href="/login">Log in</a>{{end}}</div></div></header>
 <script>(function(){var b=document.getElementById('theme'),r=document.documentElement,o=['auto','light','dark'];function cur(){return r.getAttribute('data-theme')||'auto'}function label(){b.title='Theme: '+cur()+' (click to change)';b.setAttribute('aria-label',b.title)}label();b.addEventListener('click',function(){var n=o[(o.indexOf(cur())+1)%3];if(n==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',n);try{if(n==='auto')localStorage.removeItem('weft-theme');else localStorage.setItem('weft-theme',n)}catch(e){}label()})})()</script>
 <div class="wrap">
+{{if .DomainWarn}}<p class="err" role="alert">{{.DomainWarn}} <a href="/profile">Fix it on your profile page</a></p>{{end}}
 {{if .Home}}{{if or .Bio .Owner}}<p class="bio">{{.Bio}}{{if .Owner}} <small><a href="/profile">Edit profile</a></small>{{end}}</p>{{end}}{{end}}
 <main>{{end}}
 {{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div>
@@ -145,7 +146,10 @@ f.addEventListener('change',function(){
 {{if .Dev}}This server is in development mode and can only be reached from this computer, so a real domain cannot point at it.{{else}}Ask whoever runs this server which name to use.{{end}}</small></p>{{end}}
 <p><small>Until the domain reaches this server your site stays at {{.Address}}, and nothing is redirected.</small></p>{{end}}
 <form method="post" action="/domain/check"><p><button>{{if .Active}}Check that it still works{{else if .Verified}}Check again{{else}}Check now{{end}}</button></p></form>
-<form method="post" action="/domain/remove"><p><button>Remove this domain</button></p></form>
+{{if .Bound}}<p><small>Your account belongs to this domain, so it cannot be changed or removed here. To leave it, move your account to another server, or download your data.</small></p>
+{{else}}<form method="post" action="/domain/remove"><p><button>Remove this domain</button></p></form>{{end}}
+{{with .Lapse}}{{if .Lapsed}}<p class="err">This domain stopped verifying on {{day .Since}}. If it does not verify again by <strong>{{day .Deadline}}</strong>, your account is removed: it waits 30 days in the trash, and your posts can still be downloaded or moved until then.</p>
+{{else}}<p class="err">The last {{.Fails}} check{{if gt .Fails 1}}s{{end}} of this domain failed. After {{.Left}} more, a grace period of {{.Grace}} days starts.</p>{{end}}{{end}}
 {{else}}<form method="post" action="/domain"><label>Use your own domain <input type="text" name="domain" placeholder="weft.example.com" inputmode="url"></label>
 <p><button>Add</button></p></form>
 <p><small>Anyone who already follows you is moved to the new address by their reader. Once the domain works, you sign in again there.</small></p>{{end}}{{end}}
@@ -431,6 +435,7 @@ type pageData struct {
 		Local                bool // the avatar is an uploaded picture
 	}
 	Domain                               *domainView
+	DomainWarn                           string    // for the owner: the account's domain has lapsed
 	Move                                 *moveView // the profile page: moving to or from another server
 	Pull                                 *pullView // the page that shows a move to this server
 	Likers, Others                       []likerRow
@@ -448,6 +453,14 @@ type pageData struct {
 }
 
 func (s *Server) data(r *http.Request, q *req, title string) pageData {
+	d := s.pageBase(r, q, title)
+	if q.owner {
+		d.DomainWarn = s.lapseWarning(q.host.Name)
+	}
+	return d
+}
+
+func (s *Server) pageBase(r *http.Request, q *req, title string) pageData {
 	return pageData{Title: title, FeedURL: s.base(r) + "/feed.xml", WebmentionURL: s.base(r) + "/webmention",
 		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", WantMD: negotiate(r.Header.Get("Accept")) == "markdown", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), sp: q.sp, Desc: describe(orStr(q.host.Bio, "Posts by "+orStr(q.host.Display, q.host.Name)+".")),
 		OGType: "website", OGURL: s.base(r) + r.URL.Path, OGImage: s.previewImage(r, q.host.Avatar)}
