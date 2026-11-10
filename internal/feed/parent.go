@@ -8,7 +8,7 @@ import (
 // Limits on what a reply may say about its parent.
 const (
 	MaxParentTitle = 200
-	MaxParentDesc  = 500
+	MaxParentDesc  = 300
 )
 
 // ParentInfo is what a reply remembers about the page it answers: the optional weft:context title,

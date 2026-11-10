@@ -2,7 +2,7 @@
 
 Weft (Web-External Federated Threads) builds on Dave Winer's textcasting.
 
-Oct 12, 2026 · @Henry · revised Oct 14, 2026 (reactions replace likes; `weft:context` may be a bare URL); revised Oct 20, 2026 (back to likes only: no dislikes, no emoji; emoji go in replies)
+Oct 12, 2026 · @Henry · revised Nov 9, 2026
 
 ## Status and purpose
 
@@ -22,7 +22,7 @@ The spec only adds what RSS 2.0 lacks. Anything RSS 2.0, Winer's Source namespac
 
 ## Namespace declaration
 
-The namespace prefix is `weft`. Parsers match on the URI, not the prefix. Feeds written before the rename declare `https://example.org/ns/textcast/0.1` with the prefix `tc`; readers accept that URI as an alias of the current one for one release. Readers also accept, for one release, the earlier `weft:reactionOf` (a `polarity` of `+` is a like, `-` is ignored), `weft:reactions plus="…"` (read as the like count) and `weft:reactionsFeed` (read as the likes feed).
+The namespace prefix is `weft`. Parsers match on the URI, not the prefix.
 
 ```xml
 <rss version="2.0"
@@ -48,7 +48,6 @@ The author's profile uses standard RSS 2.0: `<title>` is the author or publicati
 | `<weft:webmention>` | Required | URL of the author's Webmention endpoint, where replies and likes are sent |
 | `<weft:following>` | Recommended | URL of an OPML file listing the feeds this author follows; the public follow graph used for trust weighting |
 | `<weft:likesFeed>` | Recommended | URL of the author's separate likes feed |
-| `<weft:key>` | Optional | URL of the author's public signing key, for verifiable snapshots |
 
 For update pings, publish either an RSS 2.0 `<cloud>` element (rssCloud) or `<atom:link rel="hub">` (WebSub). At least one is recommended.
 
@@ -105,13 +104,12 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 ```
 
 - Recommended. In its minimal form it is an empty element carrying only `href` (and `retrieved`): the URL of the parent. A text snippet is optional: plain text, kept brief, no more than about 300 characters.
-- Optional attributes `title` (up to 200 characters), `description` (up to 500) and `image` (an absolute http or https address) say what the parent page looked like when it was `retrieved`: single-line plain text, so a reader can show a link card for a page that publishes no feed and cannot be looked up. Readers apply the same limits and ignore an `image` that is not an http(s) address. Weft writes these when a reply is started from the bookmarklet and shows them as a card. Readers that do not know them still have the `href`.
+- Optional attributes `title` (up to 200 characters), `description` (up to 300, the same as the text snippet) and `image` (an absolute http or https address) say what the parent page looked like when it was `retrieved`: single-line plain text, so a reader can show a link card for a page that publishes no feed and cannot be looked up. Readers apply the same limits and ignore an `image` that is not an http(s) address. Weft writes these when a reply is started from the bookmarklet and shows them as a card. Readers that do not know them still have the `href`.
 ```xml
 <weft:context href="https://blog.example/posts/web-of-links" retrieved="Mon, 12 Oct 2026 22:30:00 -0400"
               title="The web of links" description="Why links still beat feeds." image="https://blog.example/cover.jpg"/>
 ```
 - It is a quote for context, not a copy. Apps must not display it as the parent post when the parent is reachable.
-- Optional `signature` attribute: the parent's signature over its own text, verifiable with the parent's `weft:key`.
 - A reply to a plain RSS 2.0 item or any other page treats the parent as if it were already deleted: the link (and the snippet, when present) are all a reader can rely on. The parent may be any URL, textcast or not.
 - Optional `origin` attribute: `author` (written by the replier, the default) or `generated` (summarized by an app, for example with AI). Readers may label generated context, and authors should review it before publishing.
 
@@ -122,7 +120,7 @@ Every post, reply and like is an RSS 2.0 `<item>`.
 - `href` (required): the permalink of the post liked. It may be any page, Weft or not.
 - `title`, `description`, `image` (optional): what the liked page looked like, with the same limits and cleaning as on `weft:context`. They let a reader name a page that publishes no feed ("Bob liked “The web of links”") instead of showing a bare address.
 
-A like is a single positive signal: no polarity and no emoji. It names who liked with `<weft:feed href="…">Display name</weft:feed>`, the same element a replies feed uses, because the likes feed's own title is something like "Bob likes". There are no dislikes. Anything a person wants to say beyond approval is a reply, and a reply may be nothing but an emoji; readers may show such replies compactly. A like item has no `<title>` and an empty `<description>`. A user has at most one active like per post. Withdrawing it deletes the item (the permalink then returns 410). Likes are published in the likes feed, not the main feed.
+A like is a single positive signal, with no emoji. It names who liked with `<weft:feed href="…">Display name</weft:feed>`, the same element a replies feed uses, because the likes feed's own title is something like "Bob likes". There are no dislikes. Anything a person wants to say beyond approval is a reply, and a reply may be nothing but an emoji; readers may show such replies compactly. A like item has no `<title>` and an empty `<description>`. A user has at most one active like per post. Withdrawing it deletes the item (the permalink then returns 410). Likes are published in the likes feed, not the main feed.
 
 ### Reply and like count elements
 
@@ -153,6 +151,8 @@ Each `<item>` is a reference to a reply, not a full copy:
 A replies feed fills its second level from the replies feeds of its own replies. Reference implementation: it caches one level below each approved reply (`weft:depth` of 2) and keeps it fresh with the bubble-up rule below, so the cache only changes when a real change was reported. Deeper levels are found by reading the replies feed of a reply, one level at a time.
 
 With `weft:depth` of 2 or 3, one fetch returns most of a conversation. Readers rebuild the tree from each item's `weft:inReplyTo`. A post's cache goes stale when a deeper reply arrives; the update rule under Processing rules keeps it fresh.
+
+`weft:depth` is a statement by the server that publishes the feed about what its feed holds: how many levels it chose to cache. It is a setting of that server, not something the protocol fixes; the reference implementation uses 2. A reader takes the feed as it is and finds anything deeper by reading the replies feed of a reply (`weft:replies`). A reader also keeps its own limit on how many levels and items it will accept from one feed, so that a feed cannot make it do unbounded work; that limit is a setting of the reader and is not published.
 
 ### Curated and raw views
 
@@ -206,7 +206,7 @@ Recommended for IndieWeb compatibility: microformats2 markup (`h-entry`, with `u
 
 1. Fetch the source URL and confirm it links to the target post. If not, reject it.
 2. Read the source's feed item. If it has `weft:inReplyTo` matching the target, treat it as a reply; if it has `weft:likeOf` matching the target, treat it as a like; otherwise it is a plain mention and is ignored.
-3. Apply moderation: auto-approve senders the author follows (from `weft:following`), queue others, drop blocked domains. Likes are recorded once verified and all of them count.
+3. Apply moderation: auto-approve senders the author follows (from `weft:following`), queue others, drop blocked domains. Likes are recorded once verified and all of them count. A receiver may also use the optional Webmention Vouch extension as a signal for senders it does not follow: a `vouch` link to a page, from a source the receiver trusts, that links to the sender. This spec does not require it, and a sender that sends none is treated like any other stranger.
 4. On approval, add the reply to the post's replies feed and update the `weft:replies` and `weft:likes` counts.
 5. **Bubble up.** If this post is itself a reply, re-send its own Webmention to its parent. Under the Webmention spec, a re-sent Webmention means the source changed, so the parent refreshes its cached subtree. Repeat up to the root, or stop at the parent's `weft:depth`.
 
@@ -362,13 +362,13 @@ This makes the whole existing RSS web, including blogs, news sites and podcasts,
 
 - Private posts and direct messages.
 - Search and index protocols.
-- Moderation policy. The spec carries signals; each app and index decides what to do with them.
+- Moderation policy. The spec carries signals; each app and index decides what to do with them. That includes whom a receiver trusts and how it weighs likes.
+
+## Deferred
+
+- Whether replies also send a Webmention to the root, so root authors see all thread activity. Held off for now (Nov 9, 2026); a reply sends one to its parent only, and the bubble-up rule carries the news upward.
 
 ## Open questions
 
-- [ ] Should replies also send a Webmention to the root, so root authors see all thread activity?
-- [ ] Signature format for `weft:context` and `weft:key`, or drop signing from 0.1 entirely.
-- [ ] Maximum length for `weft:context`: is about 300 characters right?
-- [ ] Weighting likes by the trust graph beyond "followed or not".
-- [ ] Whether to require the Webmention Vouch extension for senders the receiver doesn't follow.
-- [ ] Default and maximum `weft:depth` for replies feeds, to keep cache sizes bounded.
+None at present.
+
