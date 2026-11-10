@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -81,11 +82,15 @@ func main() {
 		signups := fs.Bool("signups", false, "let people sign up with weft.<their domain> at www.<domain>/signup (off: the operator makes the accounts)")
 		site := fs.String("site", "", "folder of static files (the landing page) served at www.<domain>")
 		fs.Parse(os.Args[2:])
+		port := "" // a development server is reached with its port in the address
+		if _, p, err := net.SplitHostPort(*addr); *dev && err == nil && p != "" && p != "80" && p != "443" {
+			port = ":" + p
+		}
 		mediaQuota := int64(*quota) << 20
 		if *quota == 0 {
 			mediaQuota = -1
 		}
-		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname, TrustProxy: *trustProxy, NoLimits: *noLimits,
+		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, Port: port, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname, TrustProxy: *trustProxy, NoLimits: *noLimits,
 			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site, MaxUsers: *maxUsers, Signups: *signups, Admin: *admin, AdminPublic: *adminPublic}, *poll); err != nil {
 			log.Fatal(err)
 		}

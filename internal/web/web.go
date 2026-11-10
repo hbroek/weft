@@ -25,6 +25,9 @@ type Config struct {
 	BaseDomain string
 	// Scheme is "http" or "https", used in absolute URLs.
 	Scheme string
+	// Port, such as ":8080", is added to the addresses the server makes without a request to read the host from (the
+	// Webmentions it sends again for a removed account). Empty for the standard port.
+	Port string
 	// AllowPrivate lets the server fetch feeds from loopback and private addresses.
 	// Needed for local development and tests; leave off when hosting.
 	AllowPrivate bool

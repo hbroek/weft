@@ -61,7 +61,43 @@ func (s *Server) checkDomains(ctx context.Context, now time.Time) {
 			log.Printf("the domain %s of %s has stopped verifying: the account ends on %s unless it verifies again", d.Domain, d.Name, l.Deadline.Format("2006-01-02"))
 		}
 	}
+	s.checkHandles(ctx, now)
 	s.warnByMail(ctx, now)
+}
+
+// checkHandles looks at the active custom handles of accounts that are not tied to them. A handle that stops
+// reaching this server for three checks in a row stops being the account's address, which goes back to the default
+// one; nobody is removed (see store.ReachDue).
+func (s *Server) checkHandles(ctx context.Context, now time.Time) {
+	due, err := s.st.ReachDue(now, checkBatch)
+	if err != nil || len(due) == 0 {
+		return
+	}
+	ok := make([]bool, len(due))
+	failed := 0
+	for i, d := range due {
+		if ctx.Err() != nil {
+			return
+		}
+		if ok[i] = s.reaches(ctx, d, ""); !ok[i] {
+			failed++
+		}
+	}
+	if len(due) >= 5 && failed == len(due) {
+		log.Printf("handle checks: all %d failed together; not counting them, trying again in an hour", len(due))
+		for _, d := range due {
+			s.st.Postpone(d.Name, now, time.Hour)
+		}
+		return
+	}
+	for i, d := range due {
+		off, err := s.st.RecordReach(d.Name, ok[i], now)
+		if err != nil {
+			log.Printf("handle check of %s: %v", d.Name, err)
+		} else if off {
+			log.Printf("the handle %s of %s has not reached this server for %d days: %s is served at its default address again", d.Domain, d.Name, store.FailuresToLapse, d.Name)
+		}
+	}
 }
 
 // warnByMail sends the warning to the owner of each lapsed domain, and a reminder before the end, where there is a

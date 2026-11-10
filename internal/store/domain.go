@@ -195,7 +195,7 @@ func (in *Instance) VerifyDomain(name string) error {
 // ActivateDomain makes a verified domain the user's address: the other addresses redirect to it. Call it only
 // once requests to the domain are known to reach this instance.
 func (in *Instance) ActivateDomain(name string) error {
-	res, err := in.db.Exec(`UPDATE domains SET active=1 WHERE name=? AND verified=1`, name)
+	res, err := in.db.Exec(`UPDATE domains SET active=1, fails=CASE WHEN bound=0 THEN 0 ELSE fails END WHERE name=? AND verified=1`, name)
 	if err != nil {
 		return err
 	}
@@ -397,6 +397,7 @@ func (in *Instance) Unmove(name string) error {
 	if _, err := in.db.Exec(`UPDATE users SET status='active', moved_to='' WHERE name=?`, name); err != nil {
 		return err
 	}
+	in.db.Exec(`DELETE FROM settings WHERE key=?`, retractedKey(name))
 	in.dirs.drop()
 	if restored {
 		return in.Reindex() // the follows and work of the user are back in the directory
@@ -409,16 +410,19 @@ func (in *Instance) Unmove(name string) error {
 // using waits for the next call. Only the server process may call it: it is the one that holds the
 // files open.
 func (in *Instance) TrashMoved(now time.Time) (int, error) {
-	rows, err := in.db.Query(`SELECT name FROM users WHERE status IN ('moved','removed')`)
+	rows, err := in.db.Query(`SELECT name,status FROM users WHERE status IN ('moved','removed')`)
 	if err != nil {
 		return 0, err
 	}
 	var names []string
 	for rows.Next() {
-		var n string
-		if err := rows.Scan(&n); err != nil {
+		var n, st string
+		if err := rows.Scan(&n, &st); err != nil {
 			rows.Close()
 			return 0, err
+		}
+		if st == StatusRemoved && in.hasWork(n) {
+			continue // its replies and likes are still being retracted at the receivers
 		}
 		names = append(names, n)
 	}

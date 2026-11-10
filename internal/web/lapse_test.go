@@ -223,3 +223,72 @@ func cookieReq(method, url, cookie string) *http.Request {
 }
 
 func newRecorder() *httptest.ResponseRecorder { return httptest.NewRecorder() }
+
+// An account that is not tied to its custom handle is never removed for it, but a handle that stops reaching the
+// server stops being the account's address after three failed days.
+func TestHandleThatStopsReachingTheServerIsGivenUp(t *testing.T) {
+	s, _ := setup(t)
+	st := s.st
+	day := 24 * time.Hour
+	t0 := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	d, err := st.SetDomain("alice", "weft.alice.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.VerifyDomain("alice")
+	st.ActivateDomain("alice")
+	var mu sync.Mutex
+	reach := true
+	s.cfg.ReachDomain = func(context.Context, string) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if reach {
+			return proofPrefix + d.Token, nil
+		}
+		return "", errors.New("unreachable")
+	}
+	set := func(v bool) { mu.Lock(); reach = v; mu.Unlock() }
+	active := func() bool { e := st.Dir("alice"); return e.Domain != "" }
+
+	// the daily check does not look at it as a bound domain
+	if due, _ := st.DomainsDue(t0, 10); len(due) != 0 {
+		t.Fatalf("a handle that is not bound is in the lapse checks: %v", due)
+	}
+	s.checkDomains(context.Background(), t0)
+	if !active() {
+		t.Fatal("a working handle was given up")
+	}
+	set(false)
+	s.checkDomains(context.Background(), t0.Add(1*day))
+	s.checkDomains(context.Background(), t0.Add(1*day+time.Hour)) // the same day again: not counted
+	s.checkDomains(context.Background(), t0.Add(2*day))
+	if !active() {
+		t.Fatal("given up after two failures")
+	}
+	// a pass in between starts the count again
+	set(true)
+	s.checkDomains(context.Background(), t0.Add(3*day))
+	set(false)
+	s.checkDomains(context.Background(), t0.Add(4*day))
+	s.checkDomains(context.Background(), t0.Add(5*day))
+	if !active() {
+		t.Fatal("the count did not start again after a pass")
+	}
+	s.checkDomains(context.Background(), t0.Add(6*day))
+	if active() {
+		t.Fatal("still the address after three failed days")
+	}
+	// the account is served at its default address, nothing is removed, and the handle can be made the address again
+	if w := do(s, "GET", "alice.localhost:8080", "/", "", ""); w.Code != 200 {
+		t.Errorf("the default address answers %d", w.Code)
+	}
+	if e := st.Dir("alice"); e.Status != "" && e.Status != store.StatusActive {
+		t.Errorf("the account is %s", e.Status)
+	}
+	if dd, _ := st.DomainOf("alice"); dd == nil || !dd.Verified || dd.Active {
+		t.Errorf("the handle should stay verified and inactive: %+v", dd)
+	}
+	if err := st.ActivateDomain("alice"); err != nil {
+		t.Errorf("activating again: %v", err)
+	}
+}

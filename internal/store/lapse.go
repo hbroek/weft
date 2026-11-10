@@ -120,7 +120,7 @@ func (in *Instance) RecordCheck(name string, ok bool, now time.Time) (l *Lapse, 
 // Postpone moves the next check of a domain to d from now, without counting a check: for a result that is not to be
 // believed, such as every domain failing at once because this server's own DNS is down.
 func (in *Instance) Postpone(name string, now time.Time, d time.Duration) error {
-	_, err := in.db.Exec(`UPDATE domains SET last_check=? WHERE name=? AND bound=1`, now.Add(d-(CheckEvery-checkSlack)).Unix(), name)
+	_, err := in.db.Exec(`UPDATE domains SET last_check=? WHERE name=?`, now.Add(d-(CheckEvery-checkSlack)).Unix(), name)
 	return err
 }
 
@@ -209,4 +209,55 @@ func (in *Instance) SetEmail(name, email string) error {
 	defer release()
 	_, err = sp.db.Exec(`UPDATE users SET email=? WHERE name=?`, email, name)
 	return err
+}
+
+// Accounts whose domain is not what they signed up with (a custom handle added later, or by the operator) are not
+// ended when it stops working: they have their default address to fall back to. But while the handle is active every
+// address of theirs redirects to it, so a handle that no longer reaches this server strands them. The same daily
+// check looks at those, and after FailuresToLapse passes in a row the address is taken back (the handle stays
+// verified, and the owner can make it the address again from the profile page).
+
+// ReachDue lists active domains of accounts that are not tied to them and are due for a check.
+func (in *Instance) ReachDue(now time.Time, limit int) ([]*Domain, error) {
+	rows, err := in.rdb.Query(`SELECT d.domain,d.name,d.token,d.verified,d.active,d.created FROM domains d JOIN users u ON u.name=d.name
+		WHERE d.bound=0 AND d.verified=1 AND d.active=1 AND u.status IN ('active','suspended') AND d.last_check<=?
+		ORDER BY d.last_check LIMIT ?`, now.Add(-(CheckEvery - checkSlack)).Unix(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Domain
+	for rows.Next() {
+		d := &Domain{}
+		var v, a, c int64
+		if err := rows.Scan(&d.Domain, &d.Name, &d.Token, &v, &a, &c); err != nil {
+			return nil, err
+		}
+		d.Verified, d.Active, d.Created = v != 0, a != 0, time.Unix(c, 0)
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// RecordReach records the outcome of a check of an account's own handle, and reports whether this failure took the
+// address back.
+func (in *Instance) RecordReach(name string, ok bool, now time.Time) (deactivated bool, err error) {
+	if ok {
+		_, err = in.db.Exec(`UPDATE domains SET fails=0,last_check=? WHERE name=? AND bound=0`, now.Unix(), name)
+		return false, err
+	}
+	var fails int
+	if err = in.db.QueryRow(`SELECT fails FROM domains WHERE name=? AND bound=0 AND active=1`, name).Scan(&fails); err != nil {
+		return false, ErrNotFound
+	}
+	fails++
+	if fails >= FailuresToLapse {
+		if _, err = in.db.Exec(`UPDATE domains SET fails=0,active=0,last_check=? WHERE name=? AND bound=0`, now.Unix(), name); err != nil {
+			return false, err
+		}
+		in.dirs.drop()
+		return true, nil
+	}
+	_, err = in.db.Exec(`UPDATE domains SET fails=?,last_check=? WHERE name=? AND bound=0`, fails, now.Unix(), name)
+	return false, err
 }

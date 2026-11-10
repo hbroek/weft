@@ -633,6 +633,14 @@ func (s *Server) pull(name, old, code, newOrigin string, p *pullStatus) (err err
 		return stuckError{fmt.Errorf("the copy could not be put in place: %w. Cancel the move on the old server (Profile) and try again", err)}
 	}
 
+	// the pages have new addresses: send the Webmentions of every reply and like again, so receivers update their links
+	if sp, release, err := s.st.Space(name); err == nil {
+		if u, err := sp.User(); err == nil {
+			s.resendAll(sp, u.ID, newOrigin)
+		}
+		release()
+	}
+
 	p.set("Telling the old server it is done")
 	var last error
 	for try := 0; try < 5; try++ {

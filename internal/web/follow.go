@@ -730,6 +730,7 @@ func (s *Server) endMoves() {
 	} else if len(names) > 0 {
 		log.Printf("%d account(s) removed because their domain stopped verifying for %d days: %s", len(names), store.GraceDays, strings.Join(names, ", "))
 	}
+	s.retractRemoved()
 	if n, err := s.st.TrashMoved(now); err != nil {
 		log.Printf("trashing moved accounts: %v", err)
 	} else if n > 0 {
