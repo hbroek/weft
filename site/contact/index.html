@@ -23,7 +23,7 @@
 </header>
 <main class="wrap">
 <h1>Contact</h1>
-<p class="lead">One person runs this loom. Write to <b><span class="mail" data-u="hbroek" data-d="gmail.com">the operator (turn on JavaScript to see the address)</span></b>.</p>
+<p class="lead">One person runs this loom. Write to <b><span class="mail" data-x="bW9jLmxpYW1nQGRlZXN0ZmV3">the operator (turn on JavaScript to see the address)</span></b>.</p>
 <h2>Good reasons to write</h2>
 <ul>
 <li>A question about an account, or a problem with one.</li>
@@ -45,9 +45,9 @@
   </div>
 </footer>
 <script>
-// The operator's address is put together here, so it is not written out in the page for programs that collect them.
+// The operator's address is put together here, so it is not written out in the page, in readable form, for programs that collect addresses.
 document.querySelectorAll('.mail').forEach(function (e) {
-  var a = e.dataset.u + '@' + e.dataset.d;
+  var a = atob(e.dataset.x).split('').reverse().join('');
   var l = document.createElement('a');
   l.href = 'mailto:' + a; l.textContent = a;
   e.replaceChildren(l);

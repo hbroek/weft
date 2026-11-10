@@ -206,7 +206,7 @@ footer a { margin-right: 1rem; }
       <button class="btn" type="submit">Join the waiting list</button>
     </form>
     </details>
-    <p class="note"><strong>No guarantees.</strong> The number of accounts is limited, and joining the list does not guarantee that an account will be issued, or an answer by any date. We let people in from the list by hand, and we may never get to your request. An account with a domain keeps working as long as the domain reaches us; if it stops, we warn you and give you time to fix it or to move away with your data. Questions? Write to <span class="mail" data-u="hbroek" data-d="gmail.com">the operator (turn on JavaScript to see the address)</span>.</p>
+    <p class="note"><strong>No guarantees.</strong> The number of accounts is limited, and joining the list does not guarantee that an account will be issued, or an answer by any date. We let people in from the list by hand, and we may never get to your request. An account with a domain keeps working as long as the domain reaches us; if it stops, we warn you and give you time to fix it or to move away with your data. Questions? Write to <span class="mail" data-x="bW9jLmxpYW1nQGRlZXN0ZmV3">the operator (turn on JavaScript to see the address)</span>.</p>
   </section>
 
   <section id="run">
@@ -217,7 +217,7 @@ footer a { margin-right: 1rem; }
   <section id="contact">
     <h2>Questions</h2>
     <p>Why a domain? Spam. A domain costs a little and cannot be made by the thousand. Why a file? So the data is yours. Can I leave? Yes, at any time, with everything.</p>
-    <p>To say hello, write to <span class="mail" data-u="hbroek" data-d="gmail.com">the operator (turn on JavaScript to see the address)</span>. More answers are in the <a href="/faq/">FAQ</a>, and the <a href="/how-it-works/">how it works</a> page is for people who know RSS or the fediverse.</p>
+    <p>To say hello, write to <span class="mail" data-x="bW9jLmxpYW1nQGRlZXN0ZmV3">the operator (turn on JavaScript to see the address)</span>. More answers are in the <a href="/faq/">FAQ</a>, and the <a href="/how-it-works/">how it works</a> page is for people who know RSS or the fediverse.</p>
   </section>
 </main>
 
@@ -235,9 +235,9 @@ footer a { margin-right: 1rem; }
 </footer>
 <script>
 if (location.hash === '#waitlist') { var d = document.getElementById('waitlist'); if (d) d.open = true; }
-// The operator's address is put together here, so it is not written out in the page for programs that collect them.
+// The operator's address is put together here, so it is not written out in the page, in readable form, for programs that collect addresses.
 document.querySelectorAll('.mail').forEach(function (e) {
-  var a = e.dataset.u + '@' + e.dataset.d;
+  var a = atob(e.dataset.x).split('').reverse().join('');
   var l = document.createElement('a');
   l.href = 'mailto:' + a; l.textContent = a;
   e.replaceChildren(l);

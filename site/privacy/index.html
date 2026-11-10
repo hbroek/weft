@@ -93,9 +93,9 @@
   </div>
 </footer>
 <script>
-// The operator's address is put together here, so it is not written out in the page for programs that collect them.
+// The operator's address is put together here, so it is not written out in the page, in readable form, for programs that collect addresses.
 document.querySelectorAll('.mail').forEach(function (e) {
-  var a = e.dataset.u + '@' + e.dataset.d;
+  var a = atob(e.dataset.x).split('').reverse().join('');
   var l = document.createElement('a');
   l.href = 'mailto:' + a; l.textContent = a;
   e.replaceChildren(l);
