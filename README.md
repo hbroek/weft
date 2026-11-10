@@ -5,7 +5,7 @@
 Weft (Web-External Federated Threads) builds on Dave Winer's textcasting. Home: https://weftseed.com
 
 A Weft host: every post, reply and like lives in its author's own RSS 2.0 feed.
-See `docs/weft-namespace-0.1.md` for the namespace, `docs/design-goals.md` for goals and
+The protocol is specified at https://weftprotocol.org: [Weft Namespace 0.1](https://weftprotocol.org/spec/namespace/0.1/) (what goes in a feed) and [Weft Hosting 0.1](https://weftprotocol.org/spec/hosting/0.1/) (where feeds live). See `docs/design-goals.md` for goals and
 `docs/plan.md` for the implementation plan and current iteration.
 
 ## Quick start

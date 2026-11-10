@@ -52,8 +52,8 @@ minimal 3rd parties.
 
 **Pieces needed:** a two-way RSS 2.0 app with a Markdown editor, a Webmention handler, the reply/ref mechanism, and hosting (weft.mydomain.com, providers like myname.weftseed.com, or static sites and git repos). Also: a namespace spec, HTML permalink pages, discovery tags, a live Webmention receiver for static sites, identity and feed portability (custom domains, a moved-feed element), OPML follow lists, a notifications and moderation inbox, edit and delete rules, a separate likes feed, and search hooks. Out of scope: private posts and messages.
 
-**Output:** "Weft Namespace 0.1 (Draft)" (written when the project was still called Text Thread Casting), an RSS namespace (weft:) defining webmention, following, likesFeed, movedTo, key, inReplyTo, root, context, likeOf, replies, likes, updated, the replies feed (repliesTo, depth), processing rules and examples. Titles are optional but allowed. It's saved as a Claude doc and as docs/weft-namespace-0.1.md in the text-thread-casting folder.
+**Output:** "Weft Namespace 0.1 (Draft)" (written when the project was still called Text Thread Casting), an RSS namespace (weft:) defining webmention, following, likesFeed, inReplyTo, root, context, likeOf, replies, likes, updated, the replies feed (repliesTo, depth), processing rules and examples. Titles are optional but allowed. The specification now lives at https://weftprotocol.org/spec/namespace/0.1/.
 
-**Open questions:** permanent namespace URI; whether replies should also notify the root; signing format; context snippet length; whether to require Vouch; replies-feed depth limits.
+**Open questions:** none now; the spec lists what is deferred.
 
 https://en.wikipedia.org/wiki/Markdown
