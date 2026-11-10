@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contact | Weft</title>
+<meta name="description" content="How to reach the person who runs the Weft loom at weftseed.com.">
+<link rel="canonical" href="https://www.weftseed.com/contact/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#26337a">
+<link rel="stylesheet" href="/page.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="/">Weft<b>.</b></a>
+    <nav>
+      <a href="/how-it-works/">How it works</a>
+      <a href="/faq/">FAQ</a>
+      <a href="/contact/">Contact</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+<h1>Contact</h1>
+<p class="lead">One person runs this loom. Write to <b><span class="mail" data-u="hbroek" data-d="gmail.com">the operator (turn on JavaScript to see the address)</span></b>.</p>
+<h2>Good reasons to write</h2>
+<ul>
+<li>A question about an account, or a problem with one.</li>
+<li>Something on a site here that breaks the <a href="/terms/">terms</a>: say which address, and what is wrong.</li>
+<li>A question or request about your data (see <a href="/privacy/">privacy</a>).</li>
+<li>A security problem: please write before you tell anyone else, and give me a chance to fix it.</li>
+</ul>
+<h2>Please say</h2>
+<p>Your account name (or the address of the page), and what happened. Never send a password. I will not ask for one.</p>
+<p class="note">Answers can take a few days.</p>
+</main>
+<footer>
+  <div class="wrap">
+    <a href="/terms/">Terms</a>
+    <a href="/privacy/">Privacy</a>
+    <a href="/contact/">Contact</a>
+    <a href="https://github.com/hbroek/weft">Source</a>
+    <a href="https://weftprotocol.org">Protocol</a>
+  </div>
+</footer>
+<script>
+// The operator's address is put together here, so it is not written out in the page for programs that collect them.
+document.querySelectorAll('.mail').forEach(function (e) {
+  var a = e.dataset.u + '@' + e.dataset.d;
+  var l = document.createElement('a');
+  l.href = 'mailto:' + a; l.textContent = a;
+  e.replaceChildren(l);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How it works | Weft</title>
+<meta name="description" content="How Weft works for people who know textcasting, RSS or the fediverse: feeds to read, Webmention to reply and like, one file per person.">
+<link rel="canonical" href="https://www.weftseed.com/how-it-works/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#26337a">
+<link rel="stylesheet" href="/page.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="/">Weft<b>.</b></a>
+    <nav>
+      <a href="/how-it-works/">How it works</a>
+      <a href="/faq/">FAQ</a>
+      <a href="/contact/">Contact</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+<h1>How it works</h1>
+<p class="lead">For people who know RSS, textcasting or the fediverse. If you do not, the <a href="/">front page</a> says the same in plainer words.</p>
+
+<h2>Your spool is one file</h2>
+<p>Every account is one SQLite file, its <b>spool</b>: posts, replies, likes, follows, login and your pictures. Nothing about you lives anywhere else, except a few rows the server keeps to find you (the account name, the domain). That is why <em>Download my data</em> and <em>Move to another server</em> are exact: they copy the file.</p>
+
+<h2>Publishing is a feed</h2>
+<p>What you write is published as an RSS 2.0 feed at <code>https://yourname.weftseed.com/feed.xml</code>, with a few extra elements in the <a href="https://weftprotocol.org/spec/namespace/0.1/">Weft namespace</a> (<code>weft:likeOf</code>, <code>weft:context</code>, <code>weft:canonical</code> and a few others). Any feed reader can follow you and ignores what it does not know. Every post also has a page of its own, with a permanent address.</p>
+
+<h2>Following is reading feeds</h2>
+<p>You follow someone by giving their address. Weft finds the feed from the page (RSS 2.0, RSS 1.0 or Atom), polls it with conditional requests and backs off when it is quiet or failing. The people you follow can be on any server, or on a plain blog that has no idea Weft exists.</p>
+
+<h2>Replying and liking is Webmention</h2>
+<p>A reply is a post of yours in your own feed that says which post it answers. Your server then sends a <a href="https://www.w3.org/TR/webmention/">Webmention</a> to the other site. The receiving server fetches your page, checks that it really links to the post, and only then shows it. A like works the same way, with its own permanent page. Nothing is pushed into anyone else's account: each side keeps what it wrote, and each side checks what it is told.</p>
+
+<h2>Servers: looms</h2>
+<p>A server is a <b>loom</b>. Anyone can run one; it is a single program with no outside services. Looms do not need to be related. They follow each other the way any two sites do, over feeds and Webmention. What the weftseed.com loom adds is a place to start: <code>name.weftseed.com</code>, or your own domain.</p>
+
+<h2>Your own domain</h2>
+<p>An account can use a domain of yours as its address: <code>weft.yourdomain.com</code>. You prove you control it with a DNS record, and point a CNAME at the loom. If you later leave, the old address redirects to the new place, and the links you shared keep working.</p>
+
+<h2>Leaving</h2>
+<p>You can download the whole account as one zip, or move it to another loom in two steps (see the <a href="/faq/">FAQ</a>). The old loom keeps the name and redirects every address to the new one.</p>
+
+<h2>Read more</h2>
+<ul>
+<li><a href="https://weftprotocol.org/spec/namespace/0.1/">Weft Namespace 0.1</a>: the feed elements.</li>
+<li><a href="https://weftprotocol.org/spec/hosting/0.1/">Weft Hosting 0.1</a>: what a loom does for the people it hosts.</li>
+<li><a href="https://github.com/hbroek/weft">The source</a> and its README.</li>
+</ul>
+</main>
+<footer>
+  <div class="wrap">
+    <a href="/terms/">Terms</a>
+    <a href="/privacy/">Privacy</a>
+    <a href="/contact/">Contact</a>
+    <a href="https://github.com/hbroek/weft">Source</a>
+    <a href="https://weftprotocol.org">Protocol</a>
+  </div>
+</footer>
+<script>
+// The operator's address is put together here, so it is not written out in the page for programs that collect them.
+document.querySelectorAll('.mail').forEach(function (e) {
+  var a = e.dataset.u + '@' + e.dataset.d;
+  var l = document.createElement('a');
+  l.href = 'mailto:' + a; l.textContent = a;
+  e.replaceChildren(l);
+});
+</script>
+</body>
+</html>

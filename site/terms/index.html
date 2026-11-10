@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms of use | Weft</title>
+<meta name="description" content="The terms for using the Weft loom at weftseed.com.">
+<link rel="canonical" href="https://www.weftseed.com/terms/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#26337a">
+<link rel="stylesheet" href="/page.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="/">Weft<b>.</b></a>
+    <nav>
+      <a href="/how-it-works/">How it works</a>
+      <a href="/faq/">FAQ</a>
+      <a href="/contact/">Contact</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+<h1>Terms of use</h1>
+<p class="updated">Draft of Nov 10, 2026.</p>
+<p class="draft">[REVIEW BEFORE PUBLISHING] This text describes what the service does today, in plain words. It has not been read by a lawyer. The operator's name, country and the law that applies still have to be added.</p>
+
+<h2>1. What this is</h2>
+<p>weftseed.com is a loom: a server that hosts accounts, each with a site at <code>name.weftseed.com</code> or at a domain of the person's own. It is run by one person (the operator), as a service with no promises. These terms are between you and the operator.</p>
+
+<h2>2. Your account</h2>
+<ul>
+<li>You must be old enough to agree to these terms where you live.</li>
+<li>Give a true email address when you sign up. It is used to reach you about the account and is never shown to anyone.</li>
+<li>One account for each registered domain. Keep your password to yourself; you are responsible for what is done with your account.</li>
+<li>Places are limited. The operator decides who is let in from the waiting list, and does not have to give a reason.</li>
+</ul>
+
+<h2>3. What you write</h2>
+<ul>
+<li>You own what you write and the pictures you upload. You give the loom permission to store it, publish it in your public feed and pages, and send it to the servers and readers that follow you. That is the whole of the permission, and it ends when you delete the post or the account.</li>
+<li>What you publish is public, and other servers may keep copies. Deleting a post here does not remove copies kept by others.</li>
+<li>You are responsible for what you publish. Do not publish what is illegal, what you have no right to publish, or what harasses or threatens people. Do not use the service to send spam, to attack other sites, or to hide the source of a message.</li>
+<li>Do not use it to wear down the loom: the limits on requests, sign-in attempts and Webmentions are there for a reason, and going round them is a breach of these terms.</li>
+</ul>
+
+<h2>4. What the operator may do</h2>
+<ul>
+<li>Switch an account off (its address then answers "gone") or remove it, when these terms are broken, when the law requires it, or when your own domain stops working as described in section 6. Where it is fair to do so, the operator will write to you first.</li>
+<li>Remove a single post or picture.</li>
+<li>Change these terms. Changes are written on this page with their date; if you do not agree with a change, you can leave.</li>
+<li>Stop the service. The operator will say so beforehand where possible, and you can download your account or move it at any time before that.</li>
+</ul>
+
+<h2>5. Leaving</h2>
+<p>You can leave whenever you like. <em>Download my data</em> gives you everything in one file, and <em>Move to another server</em> carries the whole account to another loom and redirects the old address. A removed or moved account is kept for 30 days in a trash folder and then deleted. The name stays reserved after that, so nobody else can use it.</p>
+
+<h2>6. Your own domain</h2>
+<p>An account that signed up with a domain depends on it. If the DNS record is gone or the domain no longer reaches the loom for three daily checks in a row, you get a warning. If it is not put right within <strong>90 days</strong>, the account is removed as in section 5. Moving or downloading before then avoids that.</p>
+
+<h2>7. No warranty, and limits on liability</h2>
+<p>The service is provided as it is, free of promises: it may be slow, down, or wrong. The operator does not guarantee that nothing is lost. Keep your own copy with <em>Download my data</em>. As far as the law allows, the operator is not liable for loss from using the service. [REVIEW BEFORE PUBLISHING: what the law of the operator's country allows here.]</p>
+
+<h2>8. Reports and takedowns</h2>
+<p>If something on a site here is unlawful or breaks these terms, write to the <a href="/contact/">operator</a> with the address of the page and what is wrong. The operator will look at it and answer.</p>
+
+<h2>9. Law</h2>
+<p>[REVIEW BEFORE PUBLISHING: the operator's name and country, which law applies, and where a dispute is heard.]</p>
+</main>
+<footer>
+  <div class="wrap">
+    <a href="/terms/">Terms</a>
+    <a href="/privacy/">Privacy</a>
+    <a href="/contact/">Contact</a>
+    <a href="https://github.com/hbroek/weft">Source</a>
+    <a href="https://weftprotocol.org">Protocol</a>
+  </div>
+</footer>
+<script>
+// The operator's address is put together here, so it is not written out in the page for programs that collect them.
+document.querySelectorAll('.mail').forEach(function (e) {
+  var a = e.dataset.u + '@' + e.dataset.d;
+  var l = document.createElement('a');
+  l.href = 'mailto:' + a; l.textContent = a;
+  e.replaceChildren(l);
+});
+</script>
+</body>
+</html>

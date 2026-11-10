@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ | Weft</title>
+<meta name="description" content="Questions people ask about Weft: cost, limits, domains, taking your data, moving, and what happens to a deleted account.">
+<link rel="canonical" href="https://www.weftseed.com/faq/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#26337a">
+<link rel="stylesheet" href="/page.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="/">Weft<b>.</b></a>
+    <nav>
+      <a href="/how-it-works/">How it works</a>
+      <a href="/faq/">FAQ</a>
+      <a href="/contact/">Contact</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+<h1>Questions</h1>
+<details class="ask"><summary>What does it cost?</summary><p>There is no price set yet. The places on this loom are limited, and the page says how many are left. Running your own loom is free: Weft is one program.</p></details>
+<details class="ask"><summary>Why do I need a domain, or a waiting list?</summary><p>Spam. A domain costs a little and cannot be made by the thousand, so it keeps the loom to people who mean it. If you have no domain, ask on the waiting list: we look at where you already write, and let people in by hand, within the number of places. There is no guarantee that an account will be issued.</p></details>
+<details class="ask"><summary>What can I write, and how much?</summary><p>Posts in Markdown, replies, likes and pictures. Each person may store 200 MB of pictures; one picture may be up to 5 MB (25 MB if it is sent at the Compact size and made smaller). Pages show smaller copies, so a big picture does not slow a reader down. These numbers are the loom's settings and may change; the page that lists your images shows what you have left.</p></details>
+<details class="ask"><summary>Who can read my posts?</summary><p>Everyone. A post is published in a public feed and on a public page, like a blog. There are no private posts and no followers-only posts.</p></details>
+<details class="ask"><summary>Can I follow people who are not on Weft?</summary><p>Yes. Give any site's address; if it has an RSS or Atom feed, Weft finds it. Replying and liking work with sites that accept Webmention, which many blogs do.</p></details>
+<details class="ask"><summary>Can I take my data with me?</summary><p>Yes. <em>Download my data</em> on your profile gives one zip with your posts, replies, likes, follows and login (without sessions or API token). It is a SQLite file inside a zip, and the reference server can read it back.</p></details>
+<details class="ask"><summary>Can I move to another server?</summary><p>Yes. Make an empty account with the same name on the new server. On this one, open Profile, <em>Move to another server</em>, give your password and the new server, and you get a move code. On the new server, <em>Move here from another server</em> asks for that code. Your whole account is copied, and the old address redirects to the new one. The old copy waits 30 days in a trash folder, in case you change your mind.</p></details>
+<details class="ask"><summary>What if my domain stops working?</summary><p>Once a day we check that the DNS record is still there and the domain still reaches the loom. After three failed checks in a row you see a warning on your profile and on your own site. You then have 90 days to put it right. After that the account is removed: it answers "gone", its file waits 30 days in the trash, and the name stays taken. You can leave before that with a move or a download. Accounts let in from the waiting list have no domain to lose.</p></details>
+<details class="ask"><summary>What happens when an account is deleted?</summary><p>Its address answers "gone" (HTTP 410). The file is kept for 30 days in a trash folder, so the operator can bring it back, then it is deleted for good. The name stays taken, so nobody else can speak as you at the old address.</p></details>
+<details class="ask"><summary>Do you send me email?</summary><p>Not yet. Email is optional on an account. When the loom can send mail, it will be used for a few things only: a code for moving, a password reset, and a warning about a domain that stopped working. No newsletters and no tracking.</p></details>
+<details class="ask"><summary>Who is behind this?</summary><p>One person runs it. It is not a company. The <a href="/contact/">contact page</a> has the address.</p></details>
+<details class="ask"><summary>Where is the source?</summary><p>On <a href="https://github.com/hbroek/weft">GitHub</a>. The feed elements are specified at <a href="https://weftprotocol.org">weftprotocol.org</a>.</p></details>
+</main>
+<footer>
+  <div class="wrap">
+    <a href="/terms/">Terms</a>
+    <a href="/privacy/">Privacy</a>
+    <a href="/contact/">Contact</a>
+    <a href="https://github.com/hbroek/weft">Source</a>
+    <a href="https://weftprotocol.org">Protocol</a>
+  </div>
+</footer>
+<script>
+// The operator's address is put together here, so it is not written out in the page for programs that collect them.
+document.querySelectorAll('.mail').forEach(function (e) {
+  var a = e.dataset.u + '@' + e.dataset.d;
+  var l = document.createElement('a');
+  l.href = 'mailto:' + a; l.textContent = a;
+  e.replaceChildren(l);
+});
+</script>
+</body>
+</html>

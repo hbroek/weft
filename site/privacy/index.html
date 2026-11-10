@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy | Weft</title>
+<meta name="description" content="What the Weft loom at weftseed.com keeps about you, why, for how long, and how to get it or have it deleted.">
+<link rel="canonical" href="https://www.weftseed.com/privacy/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#26337a">
+<link rel="stylesheet" href="/page.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="/">Weft<b>.</b></a>
+    <nav>
+      <a href="/how-it-works/">How it works</a>
+      <a href="/faq/">FAQ</a>
+      <a href="/contact/">Contact</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+<h1>Privacy</h1>
+<p class="updated">Draft of Nov 10, 2026.</p>
+<p class="draft">[REVIEW BEFORE PUBLISHING] This lists what the server does today. It has not been read by a lawyer. The operator's legal name and address, the place where the servers run, and the legal basis for each use (if the law you fall under asks for one) still have to be added.</p>
+
+<h2>Who is responsible</h2>
+<p>The operator of weftseed.com, one person; see <a href="/contact/">contact</a>.</p>
+
+<h2>What an account holds</h2>
+<p>Each account is one file, with:</p>
+<ul>
+<li>the account name, a display name and a short bio if you give them;</li>
+<li>a password, kept only as a salted hash, never the password itself;</li>
+<li>your email address, required when you sign up with a domain, never shown to anyone;</li>
+<li>your posts, replies, likes and follows, and your pictures, which are stored in the file itself;</li>
+<li>your sign-ins: a hash of each session's token, kept for 30 days or until you sign out;</li>
+<li>an API token (as a hash), if you made one.</li>
+</ul>
+<p>Posts, replies, likes and the pictures they use are <b>public</b>: they appear in your feed and on your pages, and anyone can read them and copy them.</p>
+
+<h2>What the server keeps beside the accounts</h2>
+<ul>
+<li>The directory of accounts, and for each your domain, if you use one, with the checks that show it still works.</li>
+<li>A copy of the feeds of the people you follow, so your timeline can be shown, and a queue of Webmentions (replies and likes from other servers) waiting to be checked, until they are.</li>
+<li>Sign-ups that have not been finished (name, domain and the email address typed), for one hour. A short log of failed sign-ups (the name, the domain and the reason; no email address and no network address), at most 1000 entries and 30 days.</li>
+<li>If you asked to be put on the waiting list: the name wanted, your contact address, and the links you gave. It is removed when the request is answered.</li>
+<li>Network addresses are kept in memory only, for the limits on sign-in attempts, requests and Webmentions, for a few minutes, and are not written to disk by Weft.</li>
+<li>Web server logs: the program in front of Weft keeps an ordinary access log (time, address, page, answer). [REVIEW BEFORE PUBLISHING: what the operator's proxy logs and for how long.]</li>
+</ul>
+
+<h2>Cookies</h2>
+<p>One cookie, set when you sign in, to keep you signed in for 30 days. It is not used for tracking. There are no advertising or analytics cookies and no third-party scripts on the pages of this site.</p>
+
+<h2>Email</h2>
+<p>The server does not send email at the moment. When it does, it will be for a move code, a password reset and a warning about a domain that stopped working, and for nothing else.</p>
+
+<h2>What leaves the server</h2>
+<ul>
+<li>What you publish goes to the servers and readers that fetch your feed and your pages. The loom also sends a Webmention to the site you reply to or like, with the address of your post.</li>
+<li>To show you posts from other sites, the loom fetches them, which tells those sites that this server fetched them. It sends a user agent that names Weft and weftseed.com.</li>
+<li>The loom checks your domain's DNS, and fetches one file from your domain to see that it reaches the server.</li>
+<li>Nothing is sold or given to advertisers or data brokers.</li>
+</ul>
+
+<h2>How long</h2>
+<ul>
+<li>As long as the account exists.</li>
+<li>When an account is deleted, moved or removed, its file waits <b>30 days</b> in a trash folder (so it can be brought back) and is then deleted. The operator keeps one backup copy of the server's data, which is replaced by the next backup, so a deleted account leaves the backup then too. [REVIEW BEFORE PUBLISHING: how often the backup is made.]</li>
+<li>Copies that other servers made of what you published are theirs; this loom cannot remove them.</li>
+</ul>
+
+<h2>Your rights</h2>
+<ul>
+<li><b>See and take it all:</b> <em>Download my data</em> on your profile gives you the file.</li>
+<li><b>Correct it:</b> edit it on your profile and in your posts.</li>
+<li><b>Delete it:</b> ask the <a href="/contact/">operator</a>, or move away; the account is then removed as above.</li>
+<li>Where the law gives you more rights (for example in the EU or the UK), write to the operator and say what you want. [REVIEW BEFORE PUBLISHING]</li>
+</ul>
+
+<h2>Changes</h2>
+<p>Changes to this page are dated at the top.</p>
+</main>
+<footer>
+  <div class="wrap">
+    <a href="/terms/">Terms</a>
+    <a href="/privacy/">Privacy</a>
+    <a href="/contact/">Contact</a>
+    <a href="https://github.com/hbroek/weft">Source</a>
+    <a href="https://weftprotocol.org">Protocol</a>
+  </div>
+</footer>
+<script>
+// The operator's address is put together here, so it is not written out in the page for programs that collect them.
+document.querySelectorAll('.mail').forEach(function (e) {
+  var a = e.dataset.u + '@' + e.dataset.d;
+  var l = document.createElement('a');
+  l.href = 'mailto:' + a; l.textContent = a;
+  e.replaceChildren(l);
+});
+</script>
+</body>
+</html>
