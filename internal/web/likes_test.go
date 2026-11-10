@@ -124,23 +124,6 @@ func TestLikeValidation(t *testing.T) {
 	}
 }
 
-// The routes from before there were only likes still work for one release: a "+" is a like,
-// a "-" is refused, and the old paths serve the new pages.
-func TestOldReactionRoutes(t *testing.T) {
-	bob := newInstance(t, "bob")
-	bob.call(t, "POST", "/api/reactions", `{"target":"http://x.example/p","polarity":"-"}`, 400)
-	if out := bob.call(t, "POST", "/api/reactions", `{"target":"http://x.example/p","polarity":"+","emoji":"🎉"}`, 200); !strings.Contains(out, "/likes/1") {
-		t.Fatalf("old route: %s", out)
-	}
-	if !strings.Contains(bob.get("/reactions.xml"), `<weft:likeOf href="http://x.example/p">`) {
-		t.Errorf("old feed path does not serve the likes feed")
-	}
-	if c := do(bob.s, "GET", bob.host, "/reactions/1", "", "").Code; c != 200 {
-		t.Errorf("old permalink path: %d", c)
-	}
-	bob.call(t, "DELETE", "/api/reactions", `{"target":"http://x.example/p"}`, 204)
-}
-
 func do4(i *instance, path, cookie string) string {
 	return do3(i.s, "GET", i.host, path, cookie).Body.String()
 }

@@ -164,10 +164,8 @@ func siteHost(raw string) string {
 // personFeed maps a likes feed to the same site's main feed, for likes recorded before the like
 // named its author's feed.
 func personFeed(u string) string {
-	for _, tail := range []string{"/likes.xml", "/reactions.xml"} {
-		if base, ok := strings.CutSuffix(u, tail); ok {
-			return base + "/feed.xml"
-		}
+	if base, ok := strings.CutSuffix(u, "/likes.xml"); ok {
+		return base + "/feed.xml"
 	}
 	return u
 }

@@ -57,7 +57,7 @@ func userVersion(t *testing.T, path string) int {
 // Every schema Weft has had in the single-file layout converts to the per-user layout and works: the old
 // rows are still there, with identities for the posts that had none, and new ones can be added.
 func TestOldSchemasSplitAndWork(t *testing.T) {
-	for _, name := range []string{"v0-reactions.sql", "v0-current.sql"} {
+	for _, name := range []string{"v0-current.sql"} {
 		t.Run(name, func(t *testing.T) {
 			old := fixture(t, name)
 			data := filepath.Join(t.TempDir(), "data")

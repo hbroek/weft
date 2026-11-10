@@ -56,7 +56,6 @@ Liking: under each timeline post, "Like" publishes a like in your likes feed, an
 API: `POST /api/likes {"target","target_feed"}`, `DELETE /api/likes {"target"}`. A like is counted at the
 post only when the sender is someone the post's author follows; `GET /api/likes/received?post_id=N` shows
 all of them. There are no dislikes and no emoji reactions: an emoji is just text, so put it in a reply.
-(`/api/reactions`, `/reactions.xml` and `/reactions/<n>` still answer for one release; a `-` is refused.)
 
 Threads: "Thread" under any post opens the conversation it belongs to, rooted at the original post.
 The **curated** view shows only what each author approved, read down from the root through the

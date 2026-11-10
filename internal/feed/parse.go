@@ -73,13 +73,12 @@ type xmlParsed struct {
 			Rel  string `xml:"rel,attr"`
 			Href string `xml:"href,attr"`
 		} `xml:"http://www.w3.org/2005/Atom link"`
-		Link         plainLinks `xml:"link"`
-		Description  string     `xml:"description"`
-		Webmention   string     `xml:"https://weftprotocol.org/ns/weft/0.1 webmention"`
-		Following    string     `xml:"https://weftprotocol.org/ns/weft/0.1 following"`
-		LikesFeed    string     `xml:"https://weftprotocol.org/ns/weft/0.1 likesFeed"`
-		OldReactions string     `xml:"https://weftprotocol.org/ns/weft/0.1 reactionsFeed"` // before likes: read as the likes feed
-		Items        []struct {
+		Link        plainLinks `xml:"link"`
+		Description string     `xml:"description"`
+		Webmention  string     `xml:"https://weftprotocol.org/ns/weft/0.1 webmention"`
+		Following   string     `xml:"https://weftprotocol.org/ns/weft/0.1 following"`
+		LikesFeed   string     `xml:"https://weftprotocol.org/ns/weft/0.1 likesFeed"`
+		Items       []struct {
 			Title       string     `xml:"title"`
 			GUID        string     `xml:"guid"`
 			Link        plainLinks `xml:"link"`
@@ -111,11 +110,6 @@ type xmlParsed struct {
 				Image       string `xml:"image,attr"`
 				Href        string `xml:"href,attr"`
 			} `xml:"https://weftprotocol.org/ns/weft/0.1 likeOf"`
-			// Before there were only likes, an item could be a reaction with a polarity; a "+" is a like.
-			ReactionOf struct {
-				Href     string `xml:"href,attr"`
-				Polarity string `xml:"polarity,attr"`
-			} `xml:"https://weftprotocol.org/ns/weft/0.1 reactionOf"`
 			Replies struct {
 				Href  string `xml:"href,attr"`
 				Count *int   `xml:"count,attr"`
@@ -133,9 +127,6 @@ type xmlParsed struct {
 				Count int    `xml:"count,attr"`
 				Href  string `xml:"href,attr"`
 			} `xml:"https://weftprotocol.org/ns/weft/0.1 likes"`
-			OldReactions struct {
-				Plus int `xml:"plus,attr"`
-			} `xml:"https://weftprotocol.org/ns/weft/0.1 reactions"`
 		} `xml:"item"`
 	} `xml:"channel"`
 }
@@ -181,8 +172,6 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 	case local == "feed" && space == nsAtom:
 		return parseAtom(data, now)
 	}
-	// feeds written before the rename declare the old namespace URI; read them as the new one
-	data = bytes.ReplaceAll(data, []byte(NSLegacy), []byte(NSWeft))
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.CharsetReader = charsetReader // feeds that declare ISO-8859-1 and the like
 	if err := dec.Decode(&x); err != nil {
@@ -192,7 +181,7 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 		Title: strings.TrimSpace(x.Channel.Title), Link: x.Channel.Link.first(),
 		Description: strings.TrimSpace(x.Channel.Description), Image: httpAddress(x.Channel.Image.URL),
 		Webmention: strings.TrimSpace(x.Channel.Webmention), Following: strings.TrimSpace(x.Channel.Following),
-		LikesFeed: strings.TrimSpace(orStr(x.Channel.LikesFeed, x.Channel.OldReactions)),
+		LikesFeed: strings.TrimSpace(x.Channel.LikesFeed),
 	}
 	for _, l := range x.Channel.AtomLinks {
 		if l.Rel == "next" && strings.TrimSpace(l.Href) != "" {
@@ -209,14 +198,11 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 			Root: strings.TrimSpace(it.Root.Href), RootFeed: strings.TrimSpace(it.Root.Feed),
 			LikeOf: strings.TrimSpace(it.LikeOf.Href), RepliesHref: strings.TrimSpace(it.Replies.Href),
 			FeedHref: strings.TrimSpace(it.Feed.Href), FeedName: strings.TrimSpace(it.Feed.Name),
-			Likes: max(it.Likes.Count, it.OldReactions.Plus, 0), Keywords: Keywords(it.Categories), LikesHref: strings.TrimSpace(it.Likes.Href),
+			Likes: max(it.Likes.Count, 0), Keywords: Keywords(it.Categories), LikesHref: strings.TrimSpace(it.Likes.Href),
 		}
 		if pi.LikeOf != "" && pi.Parent.Empty() {
 			// a like carries what the liked page looked like, as the reply's weft:context does
 			pi.Parent = ParentInfo{Title: it.LikeOf.Title, Description: it.LikeOf.Description, Image: it.LikeOf.Image}.Clean()
-		}
-		if pi.LikeOf == "" && strings.TrimSpace(it.ReactionOf.Polarity) != "-" {
-			pi.LikeOf = strings.TrimSpace(it.ReactionOf.Href)
 		}
 		if pi.InReplyTo == "" && !strings.EqualFold(strings.TrimSpace(it.SrcInReplyTo.IsPermaLink), "false") {
 			// only an address can be followed; an identifier that is not one (isPermaLink="false") is left out

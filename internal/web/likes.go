@@ -146,7 +146,6 @@ type likeReq struct {
 		Description string `json:"description"`
 		Image       string `json:"image"`
 	} `json:"context"`
-	Polarity string `json:"polarity"` // only read by the old /api/reactions route
 }
 
 func (s *Server) apiLike(w http.ResponseWriter, r *http.Request, q *req) {
@@ -156,29 +155,6 @@ func (s *Server) apiLike(w http.ResponseWriter, r *http.Request, q *req) {
 	var in likeReq
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&in) != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
-		return
-	}
-	x, msg := s.setLike(r, q.host, in.Target, in.TargetFeed, in.info())
-	if msg != "" {
-		http.Error(w, msg, http.StatusBadRequest)
-		return
-	}
-	writeJSON(w, http.StatusOK, postResp{ID: x.ID, URL: s.likeURL(r, x.ID)})
-}
-
-// apiReact is the route from before there were only likes. A "+" reaction is a like; anything with
-// a "-" polarity is refused, and the emoji is ignored. It goes away in the next release.
-func (s *Server) apiReact(w http.ResponseWriter, r *http.Request, q *req) {
-	if !s.apiAuth(w, r, q) {
-		return
-	}
-	var in likeReq
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&in) != nil {
-		http.Error(w, "bad json", http.StatusBadRequest)
-		return
-	}
-	if in.Polarity == "-" {
-		http.Error(w, "downvotes are gone; there are only likes (POST /api/likes)", http.StatusBadRequest)
 		return
 	}
 	x, msg := s.setLike(r, q.host, in.Target, in.TargetFeed, in.info())

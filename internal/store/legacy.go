@@ -150,41 +150,6 @@ func hasColumn(db *sql.DB, table, col string) bool {
 	return n > 0
 }
 
-// migrateLikes turns the reactions tables of earlier databases into likes. A reaction had a polarity
-// and an emoji; now there is only the like, so negative reactions are dropped and the emoji go with them.
-// It runs before the schema is created and does nothing on a database that has no reactions table.
-func migrateLikes(db *sql.DB) error {
-	var steps []string
-	if hasColumn(db, "reactions", "polarity") {
-		steps = append(steps,
-			`DELETE FROM reactions WHERE polarity='-'`,
-			`DROP INDEX IF EXISTS reactions_active`,
-			`ALTER TABLE reactions DROP COLUMN polarity`,
-			`ALTER TABLE reactions DROP COLUMN emoji`,
-			`ALTER TABLE reactions RENAME TO likes`)
-	}
-	if hasColumn(db, "reactions_in", "polarity") {
-		steps = append(steps,
-			`DELETE FROM reactions_in WHERE polarity='-'`,
-			`ALTER TABLE reactions_in DROP COLUMN polarity`,
-			`ALTER TABLE reactions_in DROP COLUMN emoji`,
-			`ALTER TABLE reactions_in RENAME TO likes_in`,
-			// the sender's name was once taken from its reactions feed, whose title ends in " reactions"
-			`UPDATE likes_in SET author=substr(author,1,length(author)-10) WHERE author LIKE '% reactions'`)
-	}
-	if hasColumn(db, "items", "plus") {
-		steps = append(steps,
-			`ALTER TABLE items RENAME COLUMN plus TO likes`,
-			`ALTER TABLE items DROP COLUMN minus`)
-	}
-	for _, q := range steps {
-		if _, err := db.Exec(q); err != nil {
-			return fmt.Errorf("migrating reactions to likes: %s: %w", q, err)
-		}
-	}
-	return nil
-}
-
 func backfillIdentity(db *sql.DB) error {
 	rows, err := db.Query(`SELECT id,title,markdown FROM posts WHERE uid='' OR slug=''`)
 	if err != nil {
@@ -223,9 +188,6 @@ func backfillIdentity(db *sql.DB) error {
 // built by this code adding columns as features arrived, so the statements are idempotent (an ALTER
 // that fails means the column is already there) and it is safe to run on a database of any age.
 func schemaV1(db *sql.DB) error {
-	if err := migrateLikes(db); err != nil {
-		return err
-	}
 	if _, err := db.Exec(schema); err != nil {
 		return err
 	}

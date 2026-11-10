@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"strings"
@@ -30,22 +29,10 @@ func loadEnv(path string) {
 	}
 }
 
-// envOr reads name, falling back to a deprecated name for one release.
-func envOr(name, old string) string {
-	if v := os.Getenv(name); v != "" {
-		return v
-	}
-	if v := os.Getenv(old); v != "" {
-		log.Printf("%s is deprecated, use %s", old, name)
-		return v
-	}
-	return ""
-}
-
 func main() {
 	loadEnv(".env")
 	base := flag.String("base", "", "the agent user's instance, e.g. http://dana.localhost:8080")
-	token := flag.String("token", envOr("WEFT_TOKEN", "TTC_TOKEN"), "API token (or WEFT_TOKEN)")
+	token := flag.String("token", os.Getenv("WEFT_TOKEN"), "API token (or WEFT_TOKEN)")
 	mode := flag.String("brain", "claude", "claude or stub")
 	model := flag.String("model", "claude-haiku-5-5", "Claude model")
 	persona := flag.String("persona", "Claude", "name the agent writes as")

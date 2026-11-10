@@ -130,11 +130,6 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("POST /api/likes", s.user(s.apiLike))
 	s.mux.HandleFunc("DELETE /api/likes", s.user(s.apiUnlike))
 	s.mux.HandleFunc("GET /api/likes/received", s.user(s.apiLikesReceived))
-	// the names from before there were only likes, kept for one release
-	s.mux.HandleFunc("GET /reactions.xml", s.user(s.likesFeed))
-	s.mux.HandleFunc("GET /reactions/{id}", s.user(s.likePage))
-	s.mux.HandleFunc("POST /api/reactions", s.user(s.apiReact))
-	s.mux.HandleFunc("DELETE /api/reactions", s.user(s.apiUnlike))
 	s.mux.HandleFunc("GET /posts/{slug}/replies.xml", s.user(s.repliesFeed))
 	s.mux.HandleFunc("GET /posts/{slug}/likes.xml", s.user(s.postLikesFeed))
 	s.mux.HandleFunc("GET /replies", s.user(s.moderation))
