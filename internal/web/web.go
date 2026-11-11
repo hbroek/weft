@@ -85,6 +85,8 @@ type Server struct {
 	lim *limits
 	// scaled keeps recent smaller copies of large pictures.
 	scaled *scaleCache
+	// items keeps recently fetched posts for the thread page.
+	items *itemCache
 	// pulls are the moves of accounts to this server that are running or just ended.
 	pulls pullSet
 	// checking is set while the daily check of the bound domains runs, so that a slow one is not started twice.
@@ -95,7 +97,7 @@ func New(cfg Config, st *store.Instance) *Server {
 	if cfg.Scheme == "" {
 		cfg.Scheme = "http"
 	}
-	s := &Server{cfg: cfg, st: st, mux: http.NewServeMux(), web: fetch.New(cfg.AllowPrivate), wake: make(chan struct{}, 1), scaled: newScaleCache(scaleMemory)}
+	s := &Server{cfg: cfg, st: st, mux: http.NewServeMux(), web: fetch.New(cfg.AllowPrivate), wake: make(chan struct{}, 1), scaled: newScaleCache(scaleMemory), items: newItemCache(itemTTL, itemEntries)}
 	if !cfg.NoLimits && !limitsOffInTests {
 		s.lim = newLimits()
 	}

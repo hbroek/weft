@@ -92,6 +92,13 @@ func (b *threadBuilder) fetchItem(u string) *feed.Parsed {
 	if p, ok := b.feeds[key]; ok {
 		return p
 	}
+	// a post kept from an earlier page is not a fetch and does not count against the budget
+	if body, ok := b.s.items.get(u); ok {
+		if p, err := feed.Parse(body, time.Now()); err == nil {
+			b.feeds[key] = p
+			return p
+		}
+	}
 	if b.fetches >= maxThreadFetches || b.ctx.Err() != nil {
 		return nil
 	}
@@ -100,6 +107,7 @@ func (b *threadBuilder) fetchItem(u string) *feed.Parsed {
 	if res, err := b.s.web.GetAs(b.ctx, u, "application/rss+xml"); err == nil {
 		if p, err := feed.Parse(res.Body, time.Now()); err == nil {
 			parsed = p
+			b.s.items.put(u, res.Body)
 		}
 	}
 	b.feeds[key] = parsed

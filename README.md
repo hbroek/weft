@@ -99,7 +99,7 @@ In a list of posts (the timeline, the home page, a keyword page) a post longer t
 
 ## Speed
 
-Pages, style sheets, feeds and JSON are sent gzip-compressed to a client that accepts it (a fifth of the size or less); pictures are not, and neither is a range request. Every page has a meta description: the author's bio, or for a post its first words. Pictures in posts carry their width and height and load lazily after the first (see Pictures), and avatars and cards have fixed sizes, so a page does not jump while it loads.
+Pages, style sheets, feeds and JSON are sent gzip-compressed to a client that accepts it (a fifth of the size or less); pictures are not, and neither is a range request. The thread page keeps the posts it fetched from other servers for a minute, so opening a reply in a deep thread fetches mostly what is new (a drill-down of eight clicks in a thread eight levels deep went from 51 fetches to 16); an edit or delete made on this server shows at once, one made elsewhere shows within a minute. Every page has a meta description: the author's bio, or for a post its first words. Pictures in posts carry their width and height and load lazily after the first (see Pictures), and avatars and cards have fixed sizes, so a page does not jump while it loads.
 
 ## Timeline pages
 

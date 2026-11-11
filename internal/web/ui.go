@@ -454,6 +454,7 @@ func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdow
 	if err != nil {
 		return nil, err.Error()
 	}
+	s.items.drop(s.postURL(r, p.ID))
 	if p.InReplyTo != "" {
 		s.notify(reqOf(r).sp, s.postURL(r, p.ID), p.InReplyTo)
 	}
@@ -466,6 +467,7 @@ func (s *Server) deletePost(r *http.Request, u *store.User, p *store.Post) error
 	if err := reqOf(r).sp.DeletePost(u.ID, p.ID); err != nil {
 		return err
 	}
+	s.items.drop(s.postURL(r, p.ID))
 	if p.InReplyTo != "" {
 		s.notify(reqOf(r).sp, s.postURL(r, p.ID), p.InReplyTo)
 	}
