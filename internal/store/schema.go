@@ -375,3 +375,28 @@ CREATE TABLE domains (
 CREATE UNIQUE INDEX domains_verified ON domains(domain) WHERE verified=1;`)
 	return err
 }
+
+// spaceV4 indexes the posts of a thread. Without it the posts of one root were found by reading all of the
+// author's posts: 100 ms at 100,000 posts, 0.15 ms with the index.
+func spaceV4(tx *sql.Tx) error {
+	// ANALYZE: without statistics SQLite prefers posts_user, which gives the order and needs no sort, and ignores
+	// the new index until the file has been closed once with something to optimize
+	_, err := tx.Exec(`CREATE INDEX IF NOT EXISTS posts_root ON posts(user_id, root); ANALYZE posts`)
+	return err
+}
+
+// instanceV15 indexes the cached items by thread root. The thread view of a reader who follows many feeds read every
+// item of those feeds: 130 ms at 100,000 cached items, 1 ms with the index. (A lookup by permalink always names the
+// feeds as well, and the primary key (feed_url, guid) serves it.)
+func instanceV15(tx *sql.Tx) error {
+	// ANALYZE for the same reason as in spaceV4; on a large cache it takes a second or two, once
+	for _, q := range []string{
+		`CREATE INDEX IF NOT EXISTS items_root ON items(root)`,
+		`ANALYZE items`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return nil
+}

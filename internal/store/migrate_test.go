@@ -183,3 +183,113 @@ func TestMigrationsApplyInOrder(t *testing.T) {
 		t.Errorf("version %d, steps run %v; want 3 and [1 2 2 3] (step 1 once, 2 twice, 3 once)", v, ran)
 	}
 }
+
+func indexNames(t *testing.T, path string) map[string]bool {
+	t.Helper()
+	db := openRaw(t, path)
+	defer db.Close()
+	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='index'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var n string
+		rows.Scan(&n)
+		out[n] = true
+	}
+	return out
+}
+
+// Files made before the thread indexes gain them when they are opened, and nothing else changes.
+func TestThreadIndexesAreAddedToOlderFiles(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddUser("alice", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	inst, spool := filepath.Join(dir, "instance.db"), st.spacePath("alice")
+	for _, n := range []string{"items_root"} {
+		if !indexNames(t, inst)[n] {
+			t.Fatalf("a new instance.db lacks %s", n)
+		}
+	}
+	if !indexNames(t, spool)["posts_root"] {
+		t.Fatal("a new spool lacks posts_root")
+	}
+
+	// give both files something to plan with: many threads, each of a few posts or items
+	db := openRaw(t, inst)
+	for i := 0; i < 3000; i++ {
+		db.Exec(`INSERT INTO items(feed_url,guid,published,root) VALUES(?,?,?,?)`, fmt.Sprintf("http://f%d/feed.xml", i%30), fmt.Sprintf("http://f%d/p%d", i%30, i), i, fmt.Sprintf("http://f%d/r%d", i%30, i%500))
+	}
+	db.Close()
+	db = openRaw(t, spool)
+	for i := 0; i < 3000; i++ {
+		db.Exec(`INSERT INTO posts(user_id,markdown,html,created,root) VALUES(1,'x','x',?,?)`, i, fmt.Sprintf("http://alice/r%d", i%500))
+	}
+	db.Close()
+
+	// take the indexes away and put the files back to the versions before
+	db = openRaw(t, inst)
+	db.Exec(`DROP INDEX items_root`)
+	db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, InstanceSchemaVersion-1))
+	db.Close()
+	db = openRaw(t, spool)
+	db.Exec(`DROP INDEX posts_root`)
+	db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, SpaceSchemaVersion-1))
+	db.Close()
+
+	st, err = Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.SpaceForTests(t, "alice")
+	st.Close()
+	for _, n := range []string{"items_root"} {
+		if !indexNames(t, inst)[n] {
+			t.Errorf("opening an older instance.db did not add %s", n)
+		}
+	}
+	if !indexNames(t, spool)["posts_root"] {
+		t.Error("opening an older spool did not add posts_root")
+	}
+	if v := userVersion(t, inst); v != InstanceSchemaVersion {
+		t.Errorf("instance.db at version %d, want %d", v, InstanceSchemaVersion)
+	}
+	if v := userVersion(t, spool); v != SpaceSchemaVersion {
+		t.Errorf("spool at version %d, want %d", v, SpaceSchemaVersion)
+	}
+
+	// the queries the indexes are for use them at once, on the migrated files, without waiting for statistics
+	plan := func(path, q string, args ...any) string {
+		db := openRaw(t, path)
+		defer db.Close()
+		rows, err := db.Query(`EXPLAIN QUERY PLAN `+q, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var all []string
+		for rows.Next() {
+			var a, b, c int
+			var d string
+			rows.Scan(&a, &b, &c, &d)
+			all = append(all, d)
+		}
+		return strings.Join(all, " | ")
+	}
+	got := plan(inst, `SELECT 1 FROM items i WHERE i.feed_url IN ('http://f1/feed.xml','http://f2/feed.xml') AND (i.root=? OR i.guid=?) ORDER BY i.published, i.guid LIMIT 300`, "r", "g")
+	if !strings.Contains(got, "items_root") {
+		t.Errorf("thread items by root do not use the index: %s", got)
+	}
+	got = plan(spool, `SELECT 1 FROM posts WHERE user_id=? AND deleted=0 AND root=? ORDER BY created, id`, 1, "r")
+	if !strings.Contains(got, "posts_root") {
+		t.Errorf("posts by root do not use the index: %s", got)
+	}
+}
