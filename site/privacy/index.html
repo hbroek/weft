@@ -25,8 +25,8 @@
 </header>
 <main class="wrap">
 <h1>Privacy</h1>
-<p class="updated">Draft of Nov 10, 2026.</p>
-<p class="draft">[REVIEW BEFORE PUBLISHING] This lists what the server does today. It has not been read by a lawyer. The operator's legal name and address, the place where the servers run, and the legal basis for each use (if the law you fall under asks for one) still have to be added.</p>
+<p class="updated">Draft of Nov 11, 2026.</p>
+<p class="draft">[REVIEW BEFORE PUBLISHING] This lists what the server does today. It has not been read by a lawyer. The operator's legal name and address and the legal basis for each use (if the law you fall under asks for one) still have to be added.</p>
 
 <h2>Who is responsible</h2>
 <p>The operator of weftseed.com, one person; see <a href="/contact/">contact</a>.</p>
@@ -50,12 +50,19 @@
 <li>Sign-ups that have not been finished (name, domain and the email address typed), for one hour. A short log of failed sign-ups (the name, the domain and the reason; no email address and no network address), at most 1000 entries and 30 days.</li>
 <li>If you asked to be put on the waiting list: the name wanted, your contact address, and the links you gave. It is removed when the request is answered.</li>
 <li>Network addresses are kept in memory only, for the limits on sign-in attempts, requests and Webmentions, for a few minutes, and are not written to disk by Weft.</li>
-<li>Web server logs: the program in front of Weft keeps an ordinary access log (time, address, page, answer). [REVIEW BEFORE PUBLISHING: what the operator's proxy logs and for how long.]</li>
+<li>Web server logs: the web servers in front of Weft (nginx and Caddy) keep no access log for this site, and Weft itself logs no requests. Other sites on the same machine keep their own logs, which do not include this site.</li>
 </ul>
 
 <h2>Cookies</h2>
 <p>One cookie, set when you sign in, to keep you signed in for 30 days. It is not used for tracking. There are no advertising cookies and no cookies for analytics.</p>
 <p>The pages of this site (the home page, the questions, the terms, this page and the contact page) load one analytics script from the operator's own analytics server, which counts visitors and page views. It sets no cookie. Your network address is not stored; it is used once to look up roughly where you are (the city and country), and only that is kept. The counts are kept without a time limit; they are totals and are not linked to you. The pages where you sign in and read and write, at your own address, do not load it.</p>
+
+<h2>Who else handles your data</h2>
+<ul>
+<li><b>Hetzner</b> hosts the server, in a data centre in Ashburn, Virginia, in the United States.</li>
+<li><b>Cloudflare</b> sits in front of the pages at <code>weftseed.com</code>, <code>www</code> and <code>name.weftseed.com</code>, and of any own domain whose owner switches Cloudflare's proxy on. Every visit to those pages passes through Cloudflare, which sees the network address of the visitor and the page asked for, and keeps copies of pictures to deliver them faster. It is also the place where the encrypted backups (below) are stored. Its own privacy policy applies to what it does.</li>
+<li>The operator's own analytics server, described under Cookies.</li>
+</ul>
 
 <h2>Email</h2>
 <p>The server does not send email at the moment. When it does, it will be for a move code, a password reset and a warning about a domain that stopped working, and for nothing else.</p>
@@ -71,7 +78,12 @@
 <h2>How long</h2>
 <ul>
 <li>As long as the account exists.</li>
-<li>When an account is deleted, moved or removed, its file waits <b>30 days</b> in a trash folder (so it can be brought back) and is then deleted. The operator keeps one backup copy of the server's data, which is replaced by the next backup, so a deleted account leaves the backup then too. [REVIEW BEFORE PUBLISHING: how often the backup is made.]</li>
+<li>When an account is deleted, moved or removed, its file waits <b>30 days</b> in a trash folder (so it can be brought back) and is then deleted. Backups are made, so a deleted account leaves them only as they age out:
+<ul>
+<li>A snapshot of all accounts is made every night on the server, and replaced by the next one.</li>
+<li>An encrypted copy of those snapshots is kept at Cloudflare (R2): the last 7 days, 4 weeks and 12 months. A deleted account is therefore gone from these copies after up to <b>12 months</b>. The copies are encrypted before they leave the server, and nothing reads them unless the server has to be restored.</li>
+<li>The hosting company takes a copy of the whole server's disk every day and keeps the last 7, so it goes from there within <b>7 days</b>.</li>
+</ul></li>
 <li>Copies that other servers made of what you published are theirs; this loom cannot remove them.</li>
 </ul>
 
