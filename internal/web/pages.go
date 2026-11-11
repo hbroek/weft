@@ -15,7 +15,7 @@ import (
 	"github.com/hbroek/weft/internal/store"
 )
 
-var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": func(t time.Time) string { return t.Format("2 January 2006") }}).Parse(`{{define "head"}}<!doctype html>
+var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": func(t time.Time) string { return t.Format("2 January 2006") }, "copyScript": copyHTML}).Parse(`{{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}}</title>
@@ -74,7 +74,7 @@ check(posts);
 window.addEventListener('load',function(){check(posts)});
 document.addEventListener('load',function(e){var c=e.target.closest&&e.target.closest('.clip');if(c)check([c])},true);
 })();
-</script></body></html>{{end}}
+</script>{{copyScript}}</body></html>{{end}}
 {{define "modes"}}{{if .Modes}}<p class="modes">{{range .Modes}}{{if .Current}}<strong>{{.Label}}</strong>{{else}}<a href="{{.Href}}">{{.Label}}</a>{{end}}{{end}}</p>{{end}}{{end}}
 {{define "pagefeeds"}}{{if .PageFeeds}}<div class="pfeeds"><p><small>{{if gt (len .PageFeeds) 1}}This page offers these feeds{{else}}This page has a feed{{end}}</small></p>
 {{range .PageFeeds}}<p class="pfeed"><span class="pf-t"><strong>{{if .Title}}{{.Title}}{{else}}{{.Host}}{{end}}</strong><small>{{.URL}}</small></span>{{if .Following}}<span class="following">Following ✓</span>{{else}}<form method="post" action="/following" class="followform"><input type="hidden" name="url" value="{{.URL}}"><button>Follow</button></form>{{end}}</p>
@@ -115,6 +115,7 @@ document.querySelectorAll('form.followform').forEach(function(f){
 <label>Picture from a link (optional, an http:// or https:// address{{if .Profile.Local}}; you have uploaded a picture, and a link here replaces it{{end}}) <input type="text" name="avatar" value="{{.Profile.Avatar}}" placeholder="https://example.com/me.jpg" inputmode="url"></label>
 {{if .Profile.Local}}<input type="hidden" name="keep_avatar" value="1">{{end}}
 <p><button>Save</button></p></form>
+<hr>
 <h3>Picture</h3>
 <p>{{template "avatar" .}}<small> {{if .Profile.Local}}an uploaded picture{{else if .Avatar}}a picture from a link{{else}}no picture: the first letter of your name is shown{{end}}</small></p>
 <form method="post" action="/profile/avatar" enctype="multipart/form-data"><label>Upload a picture <input type="file" name="file" accept="image/jpeg,image/png,image/gif" data-max="{{.UploadMax}}" required></label>
@@ -132,20 +133,23 @@ f.addEventListener('change',function(){
 });
 })();
 </script>
+<hr>
 <p><a href="/password">Change password</a></p>
+<hr>
 <h3>Your data</h3>
 <p><small>Everything you have here in one file: posts, replies, likes, who you follow and your login. It holds no sessions and no API token. Whoever runs a Weft server can import it to bring you there.</small></p>
 <form method="post" action="/export"><button>Download my data</button></form>
-{{with .Domain}}<h3>Your address</h3>
-<p>Your site is at <strong>{{.Address}}</strong>.</p>
+{{with .Domain}}<hr>
+<h3>Your address</h3>
+<p>Your site is at <strong data-copy>{{.Address}}</strong>.</p>
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}{{if .Notice}}<p>{{.Notice}}</p>{{end}}
 {{if .Domain}}<p>Your own domain: <strong>{{.Domain}}</strong> {{if .Active}}(verified; your old address redirects to it){{else if .Verified}}(verified, but it does not reach this server yet){{else}}(not verified yet){{end}}</p>
 {{if not .Verified}}<p><small>To show that the domain is yours, add this DNS record. It can take a while to appear.</small></p>
-<p><code>{{.TXTName}}</code> TXT <code>{{.TXTValue}}</code></p>{{end}}
-{{if not .Active}}{{if .Target}}<p><small>{{if .Verified}}The domain is yours. Now point it at this server{{else}}To have visitors reach your site, point the domain at us too{{end}}: <code>{{.Domain}}</code> CNAME <code>{{.Target}}</code> {{if .Points}}(found){{else}}(not found yet; behind a proxy such as Cloudflare it stays hidden, which is fine){{end}}. Use a subdomain such as <code>weft.example.com</code>: a bare domain cannot be a CNAME.</small></p>{{else}}<p><small>{{if .Verified}}The domain is yours. Now point it at this server{{else}}To have visitors reach your site, point the domain at this server too{{end}} with a CNAME record whose value is this server's host name, for example <code>weft.example.net</code>: a host name only, without <code>http://</code> or a port.
+<p><code data-copy>{{.TXTName}}</code> TXT <code data-copy>{{.TXTValue}}</code></p>{{end}}
+{{if not .Active}}{{if .Target}}<p><small>{{if .Verified}}The domain is yours. Now point it at this server{{else}}To have visitors reach your site, point the domain at us too{{end}}: <code data-copy>{{.Domain}}</code> CNAME <code data-copy>{{.Target}}</code> {{if .Points}}(found){{else}}(not found yet; behind a proxy such as Cloudflare it stays hidden, which is fine){{end}}. Use a subdomain such as <code>weft.example.com</code>: a bare domain cannot be a CNAME.</small></p>{{else}}<p><small>{{if .Verified}}The domain is yours. Now point it at this server{{else}}To have visitors reach your site, point the domain at this server too{{end}} with a CNAME record whose value is this server's host name, for example <code>weft.example.net</code>: a host name only, without <code>http://</code> or a port.
 {{if .Dev}}This server is in development mode and can only be reached from this computer, so a real domain cannot point at it.{{else}}Ask whoever runs this server which name to use.{{end}}</small></p>{{end}}
 <p><small>Until the domain reaches this server your site stays at {{.Address}}, and nothing is redirected.</small></p>{{end}}
-<form method="post" action="/domain/check"><p><button>{{if .Active}}Check that it still works{{else if .Verified}}Check again{{else}}Check now{{end}}</button></p></form>
+<form method="post" action="/domain/check">{{if not .Active}}<p><small>If the domain works, you are taken to it at once and have to sign in again there, because a sign-in belongs to one address.</small></p>{{end}}<p><button>{{if .Active}}Check that it still works{{else if .Verified}}Check again{{else}}Check now{{end}}</button></p></form>
 {{if .Bound}}<p><small>Your account belongs to this domain, so it cannot be changed or removed here. To leave it, move your account to another server, or download your data.</small></p>
 {{else}}<form method="post" action="/domain/remove"><p><button>Remove this domain</button></p></form>{{end}}
 {{with .Lapse}}{{if .Lapsed}}<p class="err">This domain stopped verifying on {{day .Since}}. If it does not verify again by <strong>{{day .Deadline}}</strong>, your account is removed: it waits 30 days in the trash, and your posts can still be downloaded or moved until then.</p>
@@ -153,7 +157,8 @@ f.addEventListener('change',function(){
 {{else}}<form method="post" action="/domain"><label>Use your own domain <input type="text" name="domain" placeholder="weft.example.com" inputmode="url"></label>
 <p><button>Add</button></p></form>
 <p><small>Anyone who already follows you is moved to the new address by their reader. Once the domain works, you sign in again there.</small></p>{{end}}{{end}}
-{{with .Move}}<h3>Moving between servers</h3>
+{{with .Move}}<hr>
+<h3>Moving between servers</h3>
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}{{if .Notice}}<p>{{.Notice}}</p>{{end}}
 {{if .Code}}<p>Your move code. It is shown once and works for an hour:</p><p><code id="movecode">{{.Code}}</code> <button type="button" id="copycode">Copy</button> <small id="copymsg" role="status"></small></p>
 <script>(function(){var b=document.getElementById('copycode'),c=document.getElementById('movecode'),m=document.getElementById('copymsg');

@@ -135,6 +135,10 @@ textarea { min-height: 14rem; font-family: ui-monospace, monospace; }
 label { display: block; margin-top: 1rem; }
 button { font: inherit; background: var(--btn-bg); color: var(--btn-text); border: 0; border-radius: 8px; padding: .4rem .9rem; cursor: pointer; }
 button:hover { filter: brightness(1.1); }
+/* a rule between the sections of the profile page */
+main > hr { border: 0; border-top: 1px solid var(--border); margin: 1.75rem 0; }
+main > hr + h3 { margin-top: 0; }
+button.copy { margin-left: .4rem; padding: .1rem .55rem; font-size: .8rem; }
 .linkbtn { background: none; border: 0; padding: 0; color: var(--link); text-decoration: underline; }
 .err { color: var(--err); }
 .sr { position: absolute; left: -9999px; }

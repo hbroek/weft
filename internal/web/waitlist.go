@@ -80,10 +80,10 @@ func shell(w http.ResponseWriter, code int, title, body string) {
 h1{font-size:1.7rem;line-height:1.25}label{display:block;font-weight:600;margin-top:.9rem}small{display:block;font-weight:400;color:#5b6188}
 input{width:100%%;box-sizing:border-box;font:inherit;padding:.5rem .6rem;margin-top:.25rem;border:1px solid #26337a33;border-radius:6px;background:#fff;color:inherit}
 button{margin-top:1.1rem;border:0;cursor:pointer;font:inherit;font-weight:600;background:#26337a;color:#eef0fa;padding:.6rem 1.1rem;border-radius:8px}
-code{background:#26337a12;padding:.1em .35em;border-radius:4px;overflow-wrap:anywhere}.err{background:#fbe9e7;color:#8c1d18;padding:.6rem .8rem;border-radius:8px}
+code{background:#26337a12;padding:.1em .35em;border-radius:4px;overflow-wrap:anywhere}button.copy{margin:0 0 0 .4rem;padding:.1rem .55rem;font-size:.8rem;font-weight:600}.err{background:#fbe9e7;color:#8c1d18;padding:.6rem .8rem;border-radius:8px}
 table{border-collapse:collapse;margin:.5rem 0}td,th{text-align:left;padding:.3rem .8rem .3rem 0;vertical-align:top}th{color:#5b6188;font-weight:600}
-@media(prefers-color-scheme:dark){body{background:#11142b;color:#eef0fa}a{color:#f08a4b}small,th{color:#a4abd8}input{background:#141937;border-color:#eef0fa40}button{background:#f08a4b;color:#11142b}code{background:#eef0fa14}.err{background:#4a1d1a;color:#ffb4ab}}</style></head><body><main><h1>%s</h1>%s</main></body></html>`,
-		html.EscapeString(title), html.EscapeString(title), body)
+@media(prefers-color-scheme:dark){body{background:#11142b;color:#eef0fa}a{color:#f08a4b}small,th{color:#a4abd8}input{background:#141937;border-color:#eef0fa40}button{background:#f08a4b;color:#11142b}code{background:#eef0fa14}.err{background:#4a1d1a;color:#ffb4ab}}</style></head><body><main><h1>%s</h1>%s</main>%s</body></html>`,
+		html.EscapeString(title), html.EscapeString(title), body, copyScript)
 }
 
 // reply writes a message page with a way back to the sign-up section.
