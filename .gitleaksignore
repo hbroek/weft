@@ -1,0 +1,2 @@
+# gitleaks: the alphabet the password generator draws from, not a credential
+c2c7a0dd8c41767ab1c9b75e8e511b28dfed0da5:internal/store/auth.go:generic-api-key:140
