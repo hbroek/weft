@@ -1,0 +1,8 @@
+# /etc/systemd/system/weft-backup.service
+[Unit]
+Description=Weft backup
+[Service]
+Type=oneshot
+User=weft
+Group=weft
+ExecStart=/opt/weft/backup.sh

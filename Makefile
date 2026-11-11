@@ -5,10 +5,11 @@ DOMAIN ?= localhost
 HNDATA ?= hackernews
 HNPORT ?= 8090
 
-.PHONY: help all build test run users user passwd token follow hackernews run-hn clean
+.PHONY: help all build release test run users user passwd token follow hackernews run-hn clean
 
 help:
 	@echo "make build                         build bin/weft (static, CGO off)"
+	@echo "make release                        build bin/weft-linux-amd64 (static) for the server"
 	@echo "make test                          run all tests"
 	@echo "make run                           build and serve on $(ADDR), users at <name>.$(DOMAIN)"
 	@echo "make users                         list users in $(DATA)"
@@ -28,6 +29,9 @@ build:
 	CGO_ENABLED=0 go build -o bin/weft ./cmd/weft
 	CGO_ENABLED=0 go build -o bin/weft-agent ./cmd/weft-agent
 	CGO_ENABLED=0 go build -o bin/hn-import ./cmd/hn-import
+
+release:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/weft-linux-amd64 ./cmd/weft
 
 test:
 	go vet ./...

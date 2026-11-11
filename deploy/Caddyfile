@@ -1,0 +1,63 @@
+# /etc/caddy/Caddyfile
+# Caddy sits behind nginx's stream block (see nginx-stream.conf), on 8444 (HTTPS) and 8082 (HTTP).
+# nginx hands over the raw TLS connection and tells Caddy who really connected with the PROXY protocol.
+{
+	email you@example.com   # CHANGE: where Let's Encrypt writes if something goes wrong
+
+	# these two are where Caddy listens; the outside world still uses 80 and 443 (nginx forwards them)
+	http_port 8082
+	https_port 8444
+	# only nginx on this machine may talk to Caddy
+	default_bind 127.0.0.1
+
+	on_demand_tls {
+		ask http://127.0.0.1:8081/domain-ok
+	}
+
+	# the address must be the one Caddy really listens on (default_bind above), or the wrappers are not attached
+	servers 127.0.0.1:8444 {
+		# nginx only passes on TCP; do not advertise HTTP/3
+		protocols h1 h2
+		listener_wrappers {
+			proxy_protocol {
+				allow 127.0.0.1/32
+			}
+			tls
+		}
+		# Cloudflare's addresses: with them trusted, {client_ip} is the visitor behind Cloudflare
+		# (CF-Connecting-IP). Anyone else cannot claim an address. Made by update-cloudflare-ips.sh.
+		import /etc/caddy/cloudflare-ips.caddy
+		client_ip_headers CF-Connecting-IP
+	}
+}
+
+(loom) {
+	reverse_proxy 127.0.0.1:8080 {
+		# Weft's rate limits read the last X-Forwarded-For entry; replace what the client sent
+		header_up X-Forwarded-For {client_ip}
+	}
+}
+
+# weftseed.com, www, name.weftseed.com: the Cloudflare Origin CA certificate (Cloudflare mode Full strict)
+weftseed.com, *.weftseed.com {
+	tls /etc/caddy/certs/weftseed.pem /etc/caddy/certs/weftseed.key
+	import loom
+}
+
+# everything else: users' own domains, a certificate the first time, if Weft says the host is real
+https:// {
+	tls {
+		on_demand
+		issuer acme {
+			# nginx forwards the outside ports 80 and 443 to these
+			alt_http_port 8082
+			alt_tlsalpn_port 8444
+		}
+	}
+	import loom
+}
+
+# plain HTTP for hosts that are not above
+http:// {
+	redir https://{host}{uri} permanent
+}

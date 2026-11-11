@@ -1,0 +1,39 @@
+# /etc/systemd/system/weft.service
+[Unit]
+Description=Weft loom
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=weft
+Group=weft
+# /var/lib/weft is made and owned by the weft user (StateDirectory)
+StateDirectory=weft
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/opt/weft/weft serve \
+  -addr 127.0.0.1:8080 \
+  -internal 127.0.0.1:8081 \
+  -domain weftseed.com \
+  -scheme https \
+  -cname-target weft.weftseed.com \
+  -data /var/lib/weft \
+  -site /opt/weft/site \
+  -trust-proxy -signups -admin -max-users 100
+Restart=on-failure
+RestartSec=3
+# the server stops gracefully within 15 seconds
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# fsck, backup and the user commands are run by hand as the weft user
+
+[Install]
+WantedBy=multi-user.target
