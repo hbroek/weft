@@ -262,3 +262,11 @@ scrape_configs:
 ```
 
 Two numbers worth an alert: `rate(weft_pool_evictions_total[5m])` staying high means the cap on open user databases is too small for the traffic (raise `ulimit -n`), and `rate(weft_instance_read_wait_seconds_total[5m])` rising means reads of `instance.db` are queueing for a connection.
+
+## Licence
+
+Copyright (C) 2026 Henry van den Broek. SPDX-License-Identifier: AGPL-3.0-or-later.
+
+Weft is free software: you can redistribute it and modify it under the terms of the [GNU Affero General Public License](LICENSE) as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but without any warranty. You may run it, study it, change it and share it. If you run a changed version as a service for other people, the AGPL asks you to offer them the source of your changes (the "Source" link in the footer of the pages is how this loom does it). Running it unmodified, for yourself or for others, asks nothing more.
+
+The libraries Weft is built with keep their own licences, listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).

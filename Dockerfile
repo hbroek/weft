@@ -11,6 +11,7 @@ RUN mkdir /data
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /weft /weft
+COPY LICENSE THIRD_PARTY_NOTICES /
 COPY --from=build --chown=nonroot:nonroot /data /data
 VOLUME /data
 EXPOSE 8080
