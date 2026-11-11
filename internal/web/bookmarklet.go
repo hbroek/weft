@@ -9,7 +9,9 @@ import (
 
 // bookmarkletJS runs on the page being bookmarked. It reads the social meta tags (Open Graph, then
 // Twitter), falls back to the page itself for the title, description and image, and opens the
-// compose form with them. It also looks for a Webmention endpoint (a <link> or <a rel="webmention">,
+// compose form with them. A page's JSON-LD (an article, video and so on) fills what the tags lack, and when the
+// Open Graph title is only the site's name (a single-page site that has not updated its tags, such as YouTube after
+// moving between videos) the Open Graph tags are ignored and the page's own title is used. It also looks for a Webmention endpoint (a <link> or <a rel="webmention">,
 // or a Link header on the page's own response): with one the form starts as a reply to the page,
 // without one as a bookmark card. It also lists the RSS and Atom feeds the page advertises (at most five), so
 // the form can offer to follow them. COMPOSE is replaced by the compose address.
@@ -18,14 +20,21 @@ var d=document,L=location,C=COMPOSE;
 function m(k){var e=d.querySelector('meta[property="'+k+'"],meta[name="'+k+'"]');return e&&e.content?e.content.trim():''}
 function t(s){return(s||'').replace(/\s+/g,' ').trim()}
 function abs(u){try{return u?new URL(u,L.href).href:''}catch(e){return''}}
-var title=t(m('og:title')||m('twitter:title')||d.title||(d.querySelector('h1')||{}).textContent)||L.hostname;
-var desc=t(m('og:description')||m('twitter:description')||m('description'));
+function sv(v){if(Array.isArray(v))v=v[0];if(v&&typeof v==='object')v=v.url||v.contentUrl||'';return typeof v==='string'?v:''}
+var ld={};try{var lo=[];[].forEach.call(d.querySelectorAll('script[type="application/ld+json"]'),function(e){try{(function w(x){if(!x||typeof x!=='object')return;if(Array.isArray(x))return x.forEach(w);if(x['@graph'])w(x['@graph']);lo.push(x)})(JSON.parse(e.textContent))}catch(e){}});
+ld=lo.filter(function(o){return /Article|Posting|Report|Video|Movie|Podcast|Recipe|Review|Product/.test([].concat(o['@type']||[]).join(' '))&&sv(o.headline||o.name)})[0]||{}}catch(e){}
+var ldT=t(sv(ld.headline||ld.name)),ldD=t(sv(ld.description)),ldI=abs(sv(ld.thumbnailUrl)||sv(ld.image));
+var ogT=m('og:title'),dt=t(d.title),host=L.hostname.replace(/^www\./,'').split('.')[0].toLowerCase();
+var stale=!!ogT&&((ogT.toLowerCase()===host)||(dt.length>ogT.length&&dt.slice(-ogT.length).toLowerCase()===ogT.toLowerCase()));
+function o(k){return stale?'':m(k)}
+var title=t(o('og:title')||o('twitter:title')||ldT||(stale&&dt?dt.slice(0,dt.length-ogT.length).replace(/[\s\-|\u2013\u2014\u00b7:]+$/,''):'')||d.title||(d.querySelector('h1')||{}).textContent)||L.hostname;
+var desc=t(o('og:description')||o('twitter:description')||ldD||m('description'));
 if(!desc){var ps=d.querySelectorAll('article p,main p,p');for(var i=0;i<ps.length;i++){var x=t(ps[i].textContent);if(x.length>80){desc=x;break}}}
 if(desc.length>300)desc=desc.slice(0,297).replace(/\s+\S*$/,'')+'...';
-var img=abs(m('og:image:secure_url')||m('og:image')||m('twitter:image')||m('twitter:image:src'));
+var img=abs(o('og:image:secure_url')||o('og:image')||o('twitter:image')||o('twitter:image:src'))||ldI;
 if(!img){var l=d.querySelector('link[rel="image_src"]');img=l?abs(l.href):''}
 if(!img){var best=0;for(var j=0;j<d.images.length;j++){var g=d.images[j],a=g.naturalWidth*g.naturalHeight;if(g.naturalWidth>=200&&g.naturalHeight>=100&&a>best){best=a;img=abs(g.currentSrc||g.src)}}}
-var kw=[m('keywords')].concat([].map.call(d.querySelectorAll('meta[property="article:tag"]'),function(e){return e.content}));
+var kw=[stale?(Array.isArray(ld.keywords)?ld.keywords.join(','):sv(ld.keywords)):m('keywords')].concat(stale?[]:[].map.call(d.querySelectorAll('meta[property="article:tag"]'),function(e){return e.content}));
 kw=kw.join(',').split(',').map(t).filter(Boolean).slice(0,5).join(', ');
 var fl=[],seen={};[].forEach.call(d.querySelectorAll('link[rel~="alternate"][type]'),function(e){var h=abs(e.getAttribute('href'));if(fl.length<5&&h&&!seen[h]&&/^application\/(rss|atom)\+xml$/i.test((e.getAttribute('type')||'').trim())){seen[h]=1;fl.push('&feed='+encodeURIComponent(h)+'&ftitle='+encodeURIComponent(t(e.getAttribute('title'))))}});
 var q='?page='+encodeURIComponent(L.href)+'&ptitle='+encodeURIComponent(title)+'&pdesc='+encodeURIComponent(desc)+'&pimg='+encodeURIComponent(img)+'&keywords='+encodeURIComponent(kw)+fl.join('');
