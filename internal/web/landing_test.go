@@ -214,3 +214,26 @@ func TestSignupWithADomain(t *testing.T) {
 		t.Error("an account was made at the cap")
 	}
 }
+
+// Browsers, feed readers and link previews ask for /favicon.ico whatever the page links; www answers it like every host,
+// and the pages the server renders itself (sign-up, waiting list) link the icon.
+func TestWWWHasAFavicon(t *testing.T) {
+	s, _ := setup(t)
+	s.cfg.SiteDir = t.TempDir() // no favicon.ico in it
+	if w := do(s, "GET", "www.localhost", "/favicon.ico", "", ""); w.Code != 200 || w.Header().Get("Content-Type") != "image/x-icon" {
+		t.Errorf("www /favicon.ico = %d %q", w.Code, w.Header().Get("Content-Type"))
+	}
+	if w := do(s, "GET", "www.localhost", "/static/apple-touch-icon.png", "", ""); w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
+		t.Errorf("www apple touch icon = %d %q", w.Code, w.Header().Get("Content-Type"))
+	}
+	if w := do(s, "GET", "www.localhost", "/static/weft.css", "", ""); w.Code == 200 {
+		t.Errorf("www serves the whole of /static/, want only the icon")
+	}
+	s.cfg.Signups = true
+	w := do(s, "GET", "www.localhost", "/signup", "", "")
+	for _, want := range []string{`rel="icon" href="/favicon.svg"`, `rel="icon" href="/favicon.ico"`, `rel="apple-touch-icon"`} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Errorf("the sign-up page lacks %s", want)
+		}
+	}
+}

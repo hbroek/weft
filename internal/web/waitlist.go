@@ -29,6 +29,10 @@ func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
 	case "/signup", "/signup/check", "/signup/finish":
 		s.signup(w, r)
 		return
+	case "/favicon.ico": // the same icon every host serves; the site files only have the SVG
+		s.staticHandler().ServeHTTP(w, r)
+	case "/static/apple-touch-icon.png": // the home-screen icon; nothing else of /static/ is served here
+		s.staticHandler().ServeHTTP(w, r)
 	case "/status.json":
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -75,7 +79,7 @@ func shell(w http.ResponseWriter, code int, title, body string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
-	fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>%s</title>
+	fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png"><title>%s</title>
 <style>body{margin:0;font:17px/1.6 system-ui,sans-serif;background:#eef0fa;color:#1a1f3d}main{max-width:36rem;margin:0 auto;padding:2rem 16px 3rem}a{color:#26337a}
 h1{font-size:1.7rem;line-height:1.25}label{display:block;font-weight:600;margin-top:.9rem}small{display:block;font-weight:400;color:#5b6188}
 input{width:100%%;box-sizing:border-box;font:inherit;padding:.5rem .6rem;margin-top:.25rem;border:1px solid #26337a33;border-radius:6px;background:#fff;color:inherit}
