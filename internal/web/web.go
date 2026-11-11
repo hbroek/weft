@@ -189,8 +189,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if s.cfg.SiteDir != "" || s.cfg.Signups {
-		if h, _ := splitHost(r.Host); h == "www."+s.cfg.BaseDomain {
+		h, _ := splitHost(r.Host)
+		if h == "www."+s.cfg.BaseDomain {
 			s.landing(w, r)
+			return
+		}
+		if h == s.cfg.BaseDomain { // the bare domain is not an account: send it to the landing page
+			http.Redirect(w, r, s.cfg.Scheme+"://www."+s.cfg.BaseDomain+s.cfg.Port+r.URL.RequestURI(), http.StatusMovedPermanently)
 			return
 		}
 	}

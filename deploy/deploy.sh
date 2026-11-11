@@ -3,9 +3,15 @@
 set -eu
 host=${1:?usage: deploy/deploy.sh user@host}
 make release
-scp bin/weft-linux-amd64 "$host:/opt/weft/weft.new"
-rsync -a --no-owner --no-group --delete site/ "$host:/opt/weft/site/"
-ssh "$host" '
+# One login for the whole run: the first connection stays open and scp, rsync and ssh share it
+# (a short path, because a socket path is limited to about 100 characters).
+ctl=/tmp/weft-deploy-$$
+opt="-o ControlPath=$ctl"
+ssh $opt -o ControlMaster=yes -o ControlPersist=300 -fN "$host"
+trap 'ssh $opt -O exit "$host" 2>/dev/null' EXIT
+scp $opt bin/weft-linux-amd64 "$host:/opt/weft/weft.new"
+rsync -a --no-owner --no-group --delete -e "ssh $opt" site/ "$host:/opt/weft/site/"
+ssh $opt "$host" '
   set -e
   chmod 755 /opt/weft/weft.new
   # keep the last binary for a quick way back

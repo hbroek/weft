@@ -237,3 +237,21 @@ func TestWWWHasAFavicon(t *testing.T) {
 		}
 	}
 }
+
+// The bare domain (weftseed.com) is not an account and not the landing page: it goes to www, keeping the path.
+func TestBareDomainGoesToWWW(t *testing.T) {
+	s, _ := setup(t)
+	s.cfg.SiteDir = t.TempDir()
+	s.cfg.Scheme = "https"
+	w := do(s, "GET", "localhost", "/faq/?x=1", "", "")
+	if w.Code != 301 || w.Header().Get("Location") != "https://www.localhost/faq/?x=1" {
+		t.Errorf("bare domain = %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := do(s, "GET", "alice.localhost", "/", "", ""); w.Code != 200 {
+		t.Errorf("a user's address = %d", w.Code)
+	}
+	s.cfg.SiteDir = ""
+	if w := do(s, "GET", "localhost", "/", "", ""); w.Code == 301 {
+		t.Errorf("without a landing page the bare domain is left alone")
+	}
+}
