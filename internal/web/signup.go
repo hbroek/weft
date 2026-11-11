@@ -157,7 +157,7 @@ func (s *Server) signupInstructions(w http.ResponseWriter, sg *store.Signup, err
 	b.WriteString(`<p>Add this record to the DNS of <code>` + esc(sg.Registered) + `</code>. It shows that the domain is yours.</p>
 <table><tr><th>Type</th><td>TXT</td></tr><tr><th>Name</th><td><code data-copy>_weft.` + esc(sg.Domain) + `</code></td></tr><tr><th>Value</th><td><code data-copy>` + esc(txtPrefix+sg.Token) + `</code></td></tr></table>`)
 	if t := strings.TrimSuffix(s.cfg.CNAMETarget, "."); t != "" {
-		b.WriteString(`<p>And this one, so that the address reaches your site:</p><table><tr><th>Type</th><td>CNAME</td></tr><tr><th>Name</th><td><code data-copy>` + esc(sg.Domain) + `</code></td></tr><tr><th>Target</th><td><code data-copy>` + esc(t) + `</code></td></tr></table>`)
+		b.WriteString(`<p>And this one, so that the address reaches your site:</p><table><tr><th>Type</th><td>CNAME</td></tr><tr><th>Name</th><td><code data-copy>` + esc(sg.Domain) + `</code></td></tr><tr><th>Target</th><td><code data-copy>` + esc(t) + `</code></td></tr></table><p><small>If you put this record behind Cloudflare's proxy (the orange cloud), set SSL/TLS to Full (strict) for your domain there. Flexible makes the address redirect to itself forever (&ldquo;too many redirects&rdquo;).</small></p>`)
 	} else {
 		b.WriteString(`<p>Then point <code>` + esc(sg.Domain) + `</code> at this server, as the operator describes.</p>`)
 	}

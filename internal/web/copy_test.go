@@ -41,6 +41,9 @@ func TestDomainValuesHaveACopyButton(t *testing.T) {
 			t.Errorf("the profile page lacks %s", want)
 		}
 	}
+	if !strings.Contains(body, "Full (strict)") {
+		t.Error("the profile page does not warn about Cloudflare's Flexible mode")
+	}
 	if n := strings.Count(body, script); n != 1 {
 		t.Errorf("the profile page has the copy script %d times, want 1", n)
 	}
@@ -60,6 +63,9 @@ func TestDomainValuesHaveACopyButton(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("the sign-up page lacks %s", want)
 		}
+	}
+	if !strings.Contains(body, "Full (strict)") {
+		t.Error("the sign-up page does not warn about Cloudflare's Flexible mode")
 	}
 	if n := strings.Count(body, script); n != 1 {
 		t.Errorf("the sign-up page has the copy script %d times, want 1", n)
