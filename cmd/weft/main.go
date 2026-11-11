@@ -25,7 +25,7 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  weft serve    [-addr :8080] [-domain localhost] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24] [-site DIR] [-max-users N] [-signups] [-admin] [-admin-public]
+  weft serve    [-addr :8080] [-domain localhost | -host weft.example.com -user NAME] [-scheme http] [-data weft] [-dev] [-v] [-poll 5m|0] [-cname-target HOST] [-internal 127.0.0.1:8081] [-trust-proxy] [-no-rate-limits] [-max-image-mb 5] [-max-upload-mb 25] [-media-quota-mb 200] [-image-side 1600] [-image-megapixels 24] [-site DIR] [-max-users N] [-signups] [-admin] [-admin-public]
   weft user add [-admin] [-over-cap] [-data weft] [-display NAME] [-bio TEXT] [-avatar URL] [-password PW [-permanent]] USERNAME
                   (the password is temporary: the user must change it at the first sign-in, unless -permanent;
                   without -password one is made and shown)
@@ -67,6 +67,8 @@ func main() {
 		dev := fs.Bool("dev", false, "allow fetching feeds from loopback/private addresses (local development only)")
 		verbose := fs.Bool("v", false, "log every API call")
 		poll := fs.Duration("poll", 5*time.Minute, "how often to refresh followed feeds (0 turns the background refresh off)")
+		host := fs.String("host", "", "self-hosting: serve one account at exactly this host name (weft.example.com), with its certificate from a proxy such as Caddy; needs -user and replaces -domain")
+		hostUser := fs.String("user", "", "with -host: the account's name; it is made at the first start, and its temporary password is written to the log")
 		cname := fs.String("cname-target", "", "host name users point a custom domain's CNAME record at (shown on the profile page)")
 		trustProxy := fs.Bool("trust-proxy", false, "take the caller's address from X-Forwarded-For, for the rate limits (only behind a reverse proxy that sets it)")
 		noLimits := fs.Bool("no-rate-limits", false, "turn the rate limits off (load tests)")
@@ -90,7 +92,24 @@ func main() {
 		if *quota == 0 {
 			mediaQuota = -1
 		}
-		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: *domain, Scheme: *scheme, Port: port, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname, TrustProxy: *trustProxy, NoLimits: *noLimits,
+		base := *domain
+		if *host != "" {
+			given := false
+			fs.Visit(func(f *flag.Flag) { given = given || f.Name == "domain" })
+			h, err := store.CleanDomain(*host)
+			switch {
+			case err != nil:
+				log.Fatalf("-host %q is not a host name", *host)
+			case *hostUser == "":
+				log.Fatal("-host needs -user: the name of the one account")
+			case given:
+				log.Fatal("-host and -domain do not go together: with -host the server serves one account at that name")
+			}
+			*host, base = h, h
+		} else if *hostUser != "" {
+			log.Fatal("-user is for -host")
+		}
+		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: base, Host: *host, HostUser: *hostUser, Scheme: *scheme, Port: port, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname, TrustProxy: *trustProxy, NoLimits: *noLimits,
 			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site, MaxUsers: *maxUsers, Signups: *signups, Admin: *admin, AdminPublic: *adminPublic}, *poll); err != nil {
 			log.Fatal(err)
 		}
@@ -618,6 +637,16 @@ func serve(addr, internal, dataDir string, cfg web.Config, poll time.Duration) e
 	}
 	if err := st.RememberCap(cfg.MaxUsers); err != nil { // so that weft user add, run by hand, can respect it
 		log.Printf("keeping the cap: %v", err)
+	}
+	if cfg.Host != "" {
+		pw, err := st.SetUpHost(cfg.HostUser, cfg.Host)
+		if err != nil {
+			return fmt.Errorf("setting up %s at %s: %w", cfg.HostUser, cfg.Host, err)
+		}
+		if pw != "" {
+			log.Printf("made the account %q. Its temporary password is %s : sign in at %s://%s/login and choose a new one", cfg.HostUser, pw, cfg.Scheme, cfg.Host)
+		}
+		log.Printf("serving %s at %s://%s", cfg.HostUser, cfg.Scheme, cfg.Host)
 	}
 	srv := web.New(cfg, st)
 	if cfg.Admin {

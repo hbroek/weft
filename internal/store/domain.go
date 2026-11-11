@@ -482,3 +482,43 @@ func (in *Instance) PurgeTrash(now time.Time) (int, error) {
 	}
 	return n, nil
 }
+
+// PinDomain makes host the account's address without any DNS proof: for a server that serves one account and whose
+// operator is that person (weft serve -host). It does what SetDomain, VerifyDomain and ActivateDomain do together,
+// and does nothing when the account already has host as its active domain.
+func (in *Instance) PinDomain(name, host string) error {
+	host, err := CleanDomain(host)
+	if err != nil {
+		return err
+	}
+	if d, err := in.DomainOf(name); err == nil && d.Domain == host && d.Verified && d.Active {
+		return nil
+	}
+	if _, err := in.SetDomain(name, host); err != nil {
+		return err
+	}
+	if err := in.VerifyDomain(name); err != nil {
+		return err
+	}
+	return in.ActivateDomain(name)
+}
+
+// SetUpHost makes the one account of a single-host server: the account (when it does not exist yet, with a
+// temporary password, returned so that it can be shown once) and its address host.
+func (in *Instance) SetUpHost(name, host string) (tempPassword string, err error) {
+	if !in.UserExists(name) {
+		if _, err = in.AddUser(name, "", ""); err != nil {
+			return "", err
+		}
+		sp, release, err := in.Space(name)
+		if err != nil {
+			return "", err
+		}
+		defer release()
+		tempPassword = GeneratePassword()
+		if err := sp.SetTemporaryPassword(tempPassword); err != nil {
+			return "", err
+		}
+	}
+	return tempPassword, in.PinDomain(name, host)
+}

@@ -139,7 +139,9 @@ f.addEventListener('change',function(){
 <h3>Your data</h3>
 <p><small>Everything you have here in one file: posts, replies, likes, who you follow and your login. It holds no sessions and no API token. Whoever runs a Weft server can import it to bring you there.</small></p>
 <form method="post" action="/export"><button>Download my data</button></form>
-{{with .Domain}}<hr>
+{{with .Domain}}{{if .Pinned}}<hr>
+<h3>Your address</h3>
+<p>Your site is at <strong data-copy>{{.Address}}</strong>. This server serves only you, at this address.</p>{{else}}<hr>
 <h3>Your address</h3>
 <p>Your site is at <strong data-copy>{{.Address}}</strong>.</p>
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}{{if .Notice}}<p>{{.Notice}}</p>{{end}}
@@ -159,7 +161,7 @@ f.addEventListener('change',function(){
 {{else}}<p class="err">The last {{.Fails}} check{{if gt .Fails 1}}s{{end}} of this domain failed. After {{.Left}} more, a grace period of {{.Grace}} days starts.</p>{{end}}{{end}}
 {{else}}<form method="post" action="/domain"><label>Use your own domain <input type="text" name="domain" placeholder="weft.example.com" inputmode="url"></label>
 <p><button>Add</button></p></form>
-<p><small>Anyone who already follows you is moved to the new address by their reader. Once the domain works, you sign in again there.</small></p>{{end}}{{end}}
+<p><small>Anyone who already follows you is moved to the new address by their reader. Once the domain works, you sign in again there.</small></p>{{end}}{{end}}{{end}}
 {{with .Move}}<hr>
 <h3>Moving between servers</h3>
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}{{if .Notice}}<p>{{.Notice}}</p>{{end}}

@@ -24,6 +24,9 @@ func (s *Server) worksFor(ctx context.Context, d *store.Domain) bool {
 // checkDomains checks the bound domains that are due, records what it finds, and sends the warnings that are
 // due. Only one runs at a time.
 func (s *Server) checkDomains(ctx context.Context, now time.Time) {
+	if s.cfg.Host != "" { // the operator's own address: nothing to prove, and nobody to take it away
+		return
+	}
 	if !s.checking.CompareAndSwap(false, true) {
 		return
 	}

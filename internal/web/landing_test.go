@@ -11,6 +11,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/hbroek/weft/internal/store"
 )
 
 // www is a reserved name, so the folder of static files can be served there without meeting an account.
@@ -253,5 +256,37 @@ func TestBareDomainGoesToWWW(t *testing.T) {
 	s.cfg.SiteDir = ""
 	if w := do(s, "GET", "localhost", "/", "", ""); w.Code == 301 {
 		t.Errorf("without a landing page the bare domain is left alone")
+	}
+}
+
+// A server started for one account (-host): the account is served at the host, and its owner cannot change that.
+func TestSingleHostServer(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if _, err := st.SetUpHost("me", "weft.example.org"); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Config{BaseDomain: "weft.example.org", Host: "weft.example.org", HostUser: "me", Scheme: "https"}, st)
+	if w := do(s, "GET", "weft.example.org", "/", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), "me") {
+		t.Errorf("the host: %d", w.Code)
+	}
+	if w := do(s, "GET", "weft.example.org", "/feed.xml", "", ""); w.Code != 200 || !strings.Contains(w.Header().Get("Content-Type"), "xml") {
+		t.Errorf("the feed: %d %q", w.Code, w.Header().Get("Content-Type"))
+	}
+	if w := do(s, "GET", "other.example.org", "/", "", ""); w.Code == 200 {
+		t.Errorf("another name is served: %d", w.Code)
+	}
+	for _, p := range []string{"/domain", "/domain/check", "/domain/remove"} {
+		if w := do(s, "POST", "weft.example.org", p, "", ""); w.Code != 404 {
+			t.Errorf("POST %s = %d, want 404", p, w.Code)
+		}
+	}
+	// the daily checks leave it alone even though nothing could be reached
+	s.checkDomains(context.Background(), time.Now().Add(100*24*time.Hour))
+	if d, _ := st.DomainOf("me"); d == nil || !d.Active {
+		t.Error("the address was taken back")
 	}
 }

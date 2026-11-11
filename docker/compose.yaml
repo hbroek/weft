@@ -1,0 +1,34 @@
+# Your own Weft server, with one account, at https://$WEFT_HOST.
+# 1. Point an A record for $WEFT_HOST at this machine (ports 80 and 443 must reach it).
+# 2. cp .env.example .env and fill it in.
+# 3. docker compose up -d     (the first start prints the account's temporary password: docker compose logs weft)
+services:
+  weft:
+    image: ghcr.io/hbroek/weft:latest
+    build:
+      context: ..
+    restart: unless-stopped
+    # Only Caddy can reach it (no ports are published), so the address it reports for a visitor can be trusted.
+    command: ["serve", "-addr", ":8080", "-data", "/data", "-trust-proxy", "-scheme", "https", "-host", "${WEFT_HOST}", "-user", "${WEFT_USER}"]
+    volumes:
+      - weft-data:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [weft]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      WEFT_HOST: ${WEFT_HOST}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  weft-data:
+  caddy-data:
+  caddy-config:

@@ -21,6 +21,10 @@ import (
 
 // Config controls how hosts map to users.
 type Config struct {
+	// Host, when set, makes this a server for one account at exactly this host name (weft serve -host): the account
+	// HostUser has it as its address with no DNS proof or daily checks, and its owner cannot change it. BaseDomain is
+	// then the host itself, so no name.<BaseDomain> address exists.
+	Host, HostUser string
 	// BaseDomain is the hosted domain: name.<BaseDomain> serves user "name".
 	BaseDomain string
 	// Scheme is "http" or "https", used in absolute URLs.

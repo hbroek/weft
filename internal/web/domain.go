@@ -25,6 +25,7 @@ type domainView struct {
 	Points            bool   // the domain's CNAME already points at Target
 	Dev               bool   // the server is in development mode: reachable only from this computer
 	Bound             bool   // the account signed up with this domain and depends on it
+	Pinned            bool   // the server was started for this one address (-host): nothing here can be changed
 	Lapse             *lapseView
 	Error, Notice     string
 }
@@ -81,7 +82,7 @@ func (s *Server) points(ctx context.Context, domain string) bool {
 }
 
 func (s *Server) domainView(r *http.Request, q *req) *domainView {
-	v := &domainView{Address: strings.TrimPrefix(strings.TrimPrefix(s.originOf(q.host.Name, r), "https://"), "http://"), Target: s.cfg.CNAMETarget, Dev: s.cfg.AllowPrivate}
+	v := &domainView{Address: strings.TrimPrefix(strings.TrimPrefix(s.originOf(q.host.Name, r), "https://"), "http://"), Target: s.cfg.CNAMETarget, Dev: s.cfg.AllowPrivate, Pinned: s.cfg.Host != ""}
 	if d, err := s.st.DomainOf(q.host.Name); err == nil {
 		v.Domain, v.Verified, v.Active = d.Domain, d.Verified, d.Active
 		v.TXTName, v.TXTValue = "_weft."+d.Domain, txtPrefix+d.Token
@@ -118,6 +119,10 @@ func (s *Server) domainMsg(w http.ResponseWriter, r *http.Request, q *req, errMs
 
 // domainSet claims a custom domain for the owner.
 func (s *Server) domainSet(w http.ResponseWriter, r *http.Request, q *req) {
+	if s.cfg.Host != "" {
+		http.NotFound(w, r)
+		return
+	}
 	if !s.requireOwner(w, r, q) {
 		return
 	}
@@ -178,6 +183,10 @@ func (s *Server) reaches(ctx context.Context, d *store.Domain, port string) bool
 // does the domain become the address, and the owner is sent to sign in there. Until then nothing changes
 // for visitors or for the owner.
 func (s *Server) domainCheck(w http.ResponseWriter, r *http.Request, q *req) {
+	if s.cfg.Host != "" {
+		http.NotFound(w, r)
+		return
+	}
 	if !s.requireOwner(w, r, q) {
 		return
 	}
@@ -234,6 +243,10 @@ func (s *Server) domainCheck(w http.ResponseWriter, r *http.Request, q *req) {
 
 // domainRemove drops the owner's custom domain; the site is back at the instance's address.
 func (s *Server) domainRemove(w http.ResponseWriter, r *http.Request, q *req) {
+	if s.cfg.Host != "" {
+		http.NotFound(w, r)
+		return
+	}
 	if !s.requireOwner(w, r, q) {
 		return
 	}

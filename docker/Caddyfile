@@ -1,0 +1,11 @@
+# Gets and renews the certificate for the one host name by itself, and hands requests to Weft.
+{
+	email {$ACME_EMAIL}
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$WEFT_HOST} {
+	reverse_proxy weft:8080
+}
