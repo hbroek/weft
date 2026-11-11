@@ -1,8 +1,14 @@
 # /etc/systemd/system/weft-backup.service
 [Unit]
 Description=Weft backup
+Wants=network-online.target
+After=network-online.target
 [Service]
 Type=oneshot
 User=weft
 Group=weft
+# restic's settings and secrets (root-only file; absent is fine, the off-machine step is then skipped)
+EnvironmentFile=-/etc/weft-backup.env
+CacheDirectory=weft-backup
+CacheDirectoryMode=0700
 ExecStart=/opt/weft/backup.sh
