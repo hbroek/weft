@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -33,7 +34,8 @@ func TestDomainValuesHaveACopyButton(t *testing.T) {
 		`<strong data-copy>alice.localhost</strong>`,
 		`<code data-copy>_weft.weft.example.org</code>`,
 		`<code data-copy>weft-verify=`,
-		`<code data-copy>weft.example.org</code> CNAME <code data-copy>custom.localhost</code>`,
+		`<th>Name</th><td><code data-copy>weft.example.org</code></td>`,
+		`<th>Target</th><td><code data-copy>custom.localhost</code>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the profile page lacks %s", want)
@@ -61,5 +63,21 @@ func TestDomainValuesHaveACopyButton(t *testing.T) {
 	}
 	if n := strings.Count(body, script); n != 1 {
 		t.Errorf("the sign-up page has the copy script %d times, want 1", n)
+	}
+}
+
+// The pages ask for the style sheet by a versioned address, so that a cache cannot hold on to an old one.
+func TestStyleSheetAddressChangesWithTheSheet(t *testing.T) {
+	s, _ := setup(t)
+	w := do(s, "GET", "alice.localhost", "/", "", "")
+	m := regexp.MustCompile(`href="/static/weft\.css\?v=([0-9a-f]{8})"`).FindStringSubmatch(w.Body.String())
+	if m == nil {
+		t.Fatalf("the page does not ask for a versioned style sheet:\n%s", w.Body)
+	}
+	if m[1] != cssVersion() {
+		t.Errorf("the version in the page is %s, the sheet's is %s", m[1], cssVersion())
+	}
+	if w := do(s, "GET", "alice.localhost", "/static/weft.css?v="+m[1], "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), "button.copy") {
+		t.Errorf("the versioned address does not serve the sheet: %d", w.Code)
 	}
 }

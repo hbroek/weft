@@ -381,7 +381,7 @@ func TestHeaderAndThemes(t *testing.T) {
 	ck := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
 
 	vis := do(s, "GET", host, "/", "", "").Body.String()
-	for _, want := range []string{`<header class="top">`, `class="brand" href="/"`, `<span>Weft</span>`, `<a class="site" href="/">`, `<span>Alice</span></a>`, `id="theme"`, `<a class="btn" href="/login">Log in</a>`, `href="/static/weft.css"`, `localStorage.getItem('weft-theme')`} {
+	for _, want := range []string{`<header class="top">`, `class="brand" href="/"`, `<span>Weft</span>`, `<a class="site" href="/">`, `<span>Alice</span></a>`, `id="theme"`, `<a class="btn" href="/login">Log in</a>`, `href="/static/weft.css?v=`+cssV+`"`, `localStorage.getItem('weft-theme')`} {
 		if !strings.Contains(vis, want) {
 			t.Errorf("visitor's header lacks %q", want)
 		}

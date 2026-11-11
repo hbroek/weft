@@ -1,7 +1,9 @@
 package web
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -12,6 +14,20 @@ import (
 //
 //go:embed static
 var staticFiles embed.FS
+
+// cssVersion changes whenever the style sheet does. It is part of the address the pages ask for, because a CDN
+// or a browser may keep /static/weft.css for hours whatever the server says (Cloudflare rewrites the header), and
+// a page that is newer than its styles looks broken.
+func cssVersion() string {
+	b, err := staticFiles.ReadFile("static/weft.css")
+	if err != nil {
+		return "0"
+	}
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:4])
+}
+
+var cssV = cssVersion()
 
 func init() {
 	mime.AddExtensionType(".webmanifest", "application/manifest+json")

@@ -15,7 +15,7 @@ import (
 	"github.com/hbroek/weft/internal/store"
 )
 
-var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": func(t time.Time) string { return t.Format("2 January 2006") }, "copyScript": copyHTML}).Parse(`{{define "head"}}<!doctype html>
+var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": func(t time.Time) string { return t.Format("2 January 2006") }, "copyScript": copyHTML, "cssv": func() string { return cssV }}).Parse(`{{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}}</title>
@@ -36,7 +36,7 @@ var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": 
 <meta name="theme-color" content="#26337a">
 <link rel="webmention" href="{{.WebmentionURL}}">
 {{range .Links}}<link rel="{{.Rel}}"{{if .Type}} type="{{.Type}}"{{end}} href="{{.Href}}">
-{{end}}<link rel="stylesheet" href="/static/weft.css">
+{{end}}<link rel="stylesheet" href="/static/weft.css?v={{cssv}}">
 <script>try{var t=localStorage.getItem('weft-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head><body>
 <header class="top"><div class="top-in">
@@ -145,8 +145,10 @@ f.addEventListener('change',function(){
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}{{if .Notice}}<p>{{.Notice}}</p>{{end}}
 {{if .Domain}}<p>Your own domain: <strong>{{.Domain}}</strong> {{if .Active}}(verified; your old address redirects to it){{else if .Verified}}(verified, but it does not reach this server yet){{else}}(not verified yet){{end}}</p>
 {{if not .Verified}}<p><small>To show that the domain is yours, add this DNS record. It can take a while to appear.</small></p>
-<p><code data-copy>{{.TXTName}}</code> TXT <code data-copy>{{.TXTValue}}</code></p>{{end}}
-{{if not .Active}}{{if .Target}}<p><small>{{if .Verified}}The domain is yours. Now point it at this server{{else}}To have visitors reach your site, point the domain at us too{{end}}: <code data-copy>{{.Domain}}</code> CNAME <code data-copy>{{.Target}}</code> {{if .Points}}(found){{else}}(not found yet; behind a proxy such as Cloudflare it stays hidden, which is fine){{end}}. Use a subdomain such as <code>weft.example.com</code>: a bare domain cannot be a CNAME.</small></p>{{else}}<p><small>{{if .Verified}}The domain is yours. Now point it at this server{{else}}To have visitors reach your site, point the domain at this server too{{end}} with a CNAME record whose value is this server's host name, for example <code>weft.example.net</code>: a host name only, without <code>http://</code> or a port.
+<table class="dns"><tr><th>Type</th><td>TXT</td></tr><tr><th>Name</th><td><code data-copy>{{.TXTName}}</code></td></tr><tr><th>Value</th><td><code data-copy>{{.TXTValue}}</code></td></tr></table>{{end}}
+{{if not .Active}}{{if .Target}}<p><small>{{if .Verified}}The domain is yours. Now point it at this server{{else}}To have visitors reach your site, point the domain at us too{{end}} with this record:</small></p>
+<table class="dns"><tr><th>Type</th><td>CNAME</td></tr><tr><th>Name</th><td><code data-copy>{{.Domain}}</code></td></tr><tr><th>Target</th><td><code data-copy>{{.Target}}</code> <small>{{if .Points}}(found){{else}}(not found yet){{end}}</small></td></tr></table>
+<p><small>{{if not .Points}}Behind a proxy such as Cloudflare the record stays hidden, which is fine. {{end}}Use a subdomain such as <code>weft.example.com</code>: a bare domain cannot be a CNAME.</small></p>{{else}}<p><small>{{if .Verified}}The domain is yours. Now point it at this server{{else}}To have visitors reach your site, point the domain at this server too{{end}} with a CNAME record whose value is this server's host name, for example <code>weft.example.net</code>: a host name only, without <code>http://</code> or a port.
 {{if .Dev}}This server is in development mode and can only be reached from this computer, so a real domain cannot point at it.{{else}}Ask whoever runs this server which name to use.{{end}}</small></p>{{end}}
 <p><small>Until the domain reaches this server your site stays at {{.Address}}, and nothing is redirected.</small></p>{{end}}
 <form method="post" action="/domain/check">{{if not .Active}}<p><small>If the domain works, you are taken to it at once and have to sign in again there, because a sign-in belongs to one address.</small></p>{{end}}<p><button>{{if .Active}}Check that it still works{{else if .Verified}}Check again{{else}}Check now{{end}}</button></p></form>
