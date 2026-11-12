@@ -318,6 +318,16 @@ func TestLikeButtonUpdatesCount(t *testing.T) {
 		t.Errorf("a like sent from another site must be refused: %d", w.Code)
 	}
 	formAs(bob, "/like", ck, "", vals) // liking again changes nothing
+	// the page's script asks for no redirect: the like is kept and the answer is empty
+	fr := httptest.NewRequest("POST", "http://"+bob.host+"/like", strings.NewReader(vals.Encode()))
+	fr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	fr.Header.Set("X-Weft-Fetch", "1")
+	fr.AddCookie(&http.Cookie{Name: cookieName, Value: ck})
+	fw := httptest.NewRecorder()
+	bob.s.ServeHTTP(fw, fr)
+	if fw.Code != 204 || fw.Header().Get("Location") != "" {
+		t.Errorf("a like sent by the page's script should answer 204 with no redirect: %d %q", fw.Code, fw.Header().Get("Location"))
+	}
 	if tl := do4(bob, "/timeline", ck); !strings.Contains(tl, "1 like") {
 		t.Errorf("count after like (liking twice counts once):\n%s", tl)
 	}

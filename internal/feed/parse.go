@@ -164,6 +164,11 @@ func StripHTML(s string) string {
 }
 
 // Parse reads a feed: RSS 2.0, and also RSS 1.0 and Atom. now stamps items that carry no usable date.
+// sourceNS finds a declaration of the source namespace written with https, which is how the author of
+// that namespace writes it in his own feeds. It is read as the http form the spec names; only the
+// declaration is changed, never a link in the text.
+var sourceNS = regexp.MustCompile(`(xmlns(?::[A-Za-z_][\w.-]*)?\s*=\s*["'])https(://source\.scripting\.com/["'])`)
+
 func Parse(data []byte, now time.Time) (*Parsed, error) {
 	var x xmlParsed
 	switch space, local := rootName(data); {
@@ -172,7 +177,7 @@ func Parse(data []byte, now time.Time) (*Parsed, error) {
 	case local == "feed" && space == nsAtom:
 		return parseAtom(data, now)
 	}
-	dec := xml.NewDecoder(bytes.NewReader(data))
+	dec := xml.NewDecoder(bytes.NewReader(sourceNS.ReplaceAll(data, []byte("${1}http${2}"))))
 	dec.CharsetReader = charsetReader // feeds that declare ISO-8859-1 and the like
 	if err := dec.Decode(&x); err != nil {
 		return nil, errors.New("not an RSS 2.0 feed: " + err.Error())

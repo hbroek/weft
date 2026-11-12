@@ -245,6 +245,36 @@ b.addEventListener('click',function(){if(navigator.clipboard&&navigator.clipboar
 <div class="m-r"><a class="ico" href="{{.ReplyHref}}" title="Reply" aria-label="Reply">{{template "ic-reply"}}</a>{{if .HasThread}}<a class="ico" href="{{.ThreadHref}}" title="Thread" aria-label="Thread">{{template "ic-thread"}}</a>{{end}}{{if .Own}}<a class="ico" href="{{.EditHref}}" title="Edit" aria-label="Edit">{{template "ic-edit"}}</a>{{end}}</div></div>
 </article>{{end}}{{else}}<p>{{if .Newest}}No older posts.{{else}}Nothing yet. <a href="/following">Follow a feed</a>.{{end}}</p>{{end}}
 {{if or .Older .Newest}}<nav class="pager">{{if .Older}}<a href="{{.Older}}" rel="next">Older posts</a>{{end}}{{if .Newest}}<a href="{{.Newest}}">Back to the newest</a>{{end}}</nav>{{end}}
+<script>(function(){
+// Like and Unlike without reloading the page; the form still works as a plain post when this does not.
+document.querySelectorAll('form.react').forEach(function(f){
+  f.addEventListener('submit',function(e){
+    if(!window.fetch)return;
+    e.preventDefault();
+    var b=f.querySelector('.likebtn'),liking=f.getAttribute('action')==='/like';
+    if(b.disabled)return;
+    b.disabled=true;
+    fetch(f.action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Weft-Fetch':'1'},body:new URLSearchParams(new FormData(f))}).then(function(r){
+      if(!r.ok)throw 0;
+      liking=!liking;
+      var now=!liking; // true: now liked
+      f.setAttribute('action',now?'/unlike':'/like');
+      b.setAttribute('aria-pressed',now?'true':'false');
+      b.title=now?'Unlike':'Like';
+      b.querySelector('.sr').textContent=now?'Unlike':'Like';
+      var t=f.querySelector('.tally'),n=t?parseInt(t.textContent,10)||0:0;
+      n+=now?1:-1;
+      if(n<=0){if(t)t.remove()}
+      else{
+        if(!t){t=document.createElement('small');t.className='tally';var a=document.createElement('a');a.href='/liked-by?target='+encodeURIComponent(f.querySelector('[name=target]').value);t.appendChild(a);f.appendChild(document.createTextNode(' '));f.appendChild(t)}
+        t.removeAttribute('title');
+        t.querySelector('a').textContent=n+(n===1?' like':' likes');
+      }
+      b.disabled=false;
+    }).catch(function(){f.submit()});
+  });
+});
+})()</script>
 {{template "foot"}}{{end}}
 {{define "likers"}}{{template "head" .}}<h2>Likes</h2>
 <p><small>of <a href="{{.LikeTarget}}">{{.LikeTitle}}</a></small></p>

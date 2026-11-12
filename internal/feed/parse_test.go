@@ -299,3 +299,22 @@ func TestParseReadsCanonical(t *testing.T) {
 		t.Errorf("atom: %v %+v", err, p.Items)
 	}
 }
+
+// The author of the source namespace writes it with https in his own feeds. It reads the same as the http form,
+// and a link in the text that happens to be that address is left alone.
+func TestParseSourceNamespaceWithHTTPS(t *testing.T) {
+	for _, ns := range []string{"https://source.scripting.com/", "http://source.scripting.com/"} {
+		x := `<rss version="2.0" xmlns:source="` + ns + `"><channel><title>t</title><link>http://a/</link><description>d</description>
+<item><guid>g</guid><description>see https://source.scripting.com/ here</description><source:markdown>**hi** ![i](http://a/i.png)</source:markdown></item></channel></rss>`
+		p, err := Parse([]byte(x), time.Now())
+		if err != nil || len(p.Items) != 1 {
+			t.Fatalf("%s: %v", ns, err)
+		}
+		if p.Items[0].Markdown != "**hi** ![i](http://a/i.png)" {
+			t.Errorf("%s: markdown not read: %q", ns, p.Items[0].Markdown)
+		}
+		if !strings.Contains(p.Items[0].Text, "https://source.scripting.com/") {
+			t.Errorf("%s: text changed: %q", ns, p.Items[0].Text)
+		}
+	}
+}

@@ -123,6 +123,10 @@ func (s *Server) likeForm(w http.ResponseWriter, r *http.Request, q *req) {
 		http.Redirect(w, r, "/timeline?likes=1", http.StatusSeeOther)
 		return
 	}
+	if r.Header.Get("X-Weft-Fetch") != "" { // the page updates itself, no reload
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	back(w, r, "/timeline", httpURL(r.FormValue("target")))
 }
 
@@ -132,6 +136,10 @@ func (s *Server) unlikeForm(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	if err := s.removeLike(r, q.host, r.FormValue("target")); err != nil && err != store.ErrNotFound {
 		http.Error(w, err.Error(), 500)
+		return
+	}
+	if r.Header.Get("X-Weft-Fetch") != "" { // the page updates itself, no reload
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	back(w, r, "/timeline", httpURL(r.FormValue("target")))
