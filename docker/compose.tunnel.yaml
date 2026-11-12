@@ -1,9 +1,12 @@
 # Your own Weft server behind a Cloudflare Tunnel: no open ports, no router changes, no Caddy.
-# 1. In Cloudflare (Networking, Tunnels) make a tunnel and put its token (the eyJ... string in the install command) in .env as TUNNEL_TOKEN.
-# 2. In that tunnel add a public hostname: $WEFT_HOST, service type HTTP, URL  weft:8080
-#    (the name of the container inside this compose project, not localhost).
-# 3. docker compose -f compose.tunnel.yaml up -d
-#    docker compose -f compose.tunnel.yaml logs weft     # the first start prints the account's temporary password, once
+# 1. In Cloudflare (Networking, Tunnels) make a tunnel; the install command it shows holds the tunnel's token (the eyJ... string).
+#    Do not run that command. Put the token in .env as TUNNEL_TOKEN, with WEFT_HOST and WEFT_USER (see .env.example).
+# 2. Start the connector first (Cloudflare will not go on until it sees one):
+#      docker compose -f compose.tunnel.yaml up -d
+# 3. Then, on Cloudflare's page, add a published application: hostname $WEFT_HOST, service  http://weft:8080
+#    (http, not https; weft is the container's name inside this compose project, not localhost).
+# 4. The first start prints the account's temporary password, once:
+#      docker compose -f compose.tunnel.yaml logs weft | grep -i "temporary password"
 services:
   weft:
     image: ghcr.io/hbroek/weft:latest

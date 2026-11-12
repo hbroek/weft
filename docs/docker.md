@@ -24,12 +24,26 @@ makes an outgoing connection to Cloudflare, which brings visitors to it. You nee
 
 1. In the Cloudflare dashboard, **Networking, then Tunnels** (older documentation calls it Zero Trust, Networks, Connectors):
    make a tunnel of type *Cloudflared*. The page then shows an install command for an operating system: the long string
-   starting `eyJ` in it is the tunnel's token. Copy it into `.env` as `TUNNEL_TOKEN`, and do not run that command (the
-   container in `compose.tunnel.yaml` is the connector). Anyone with the token can run your tunnel, so keep it private.
-2. In the tunnel, add a **public hostname**: your `WEFT_HOST`, service type `HTTP`, URL **`weft:8080`**. That is the container's
-   name inside the compose project. `localhost:8080` is not it: on the machine itself, `localhost:8080` is whatever else listens there.
-3. `docker compose -f compose.tunnel.yaml up -d`, and read the first password with
-   `docker compose -f compose.tunnel.yaml logs weft`. The tunnel makes the DNS record for you.
+   starting `eyJ` in it is the tunnel's token. Do not run that command (the container in `compose.tunnel.yaml` is the
+   connector). Anyone with the token can run your tunnel, so keep it private, and never paste it into a chat or a commit.
+2. In the folder that holds `compose.tunnel.yaml` (the `docker/` folder of a clone), make `.env` from `.env.example` and fill in
+   `WEFT_HOST`, `WEFT_USER` and `TUNNEL_TOKEN` (the string from step 1).
+3. **Start the connector first:** `docker compose -f compose.tunnel.yaml up -d`. Cloudflare's page says "No connection
+   detected yet" and will not let you go on until a connector is running. Check it with
+   `docker compose -f compose.tunnel.yaml logs cloudflared`: it should say "Registered tunnel connection" (usually four times).
+4. Now, on Cloudflare's page, add the **published application**: hostname = your `WEFT_HOST`, and as the service
+   **`http://weft:8080`**. Both parts matter: `weft` is the container's name inside the compose project (`localhost`
+   would be the connector itself), and it is `http`, not `https`, because the container speaks plain HTTP and Cloudflare
+   does the HTTPS for your visitors. Leave the additional settings on their defaults (Weft needs the `Host` header as it is).
+   Cloudflare makes the DNS record for you.
+5. Read the first password with `docker compose -f compose.tunnel.yaml logs weft | grep -i "temporary password"` and sign in
+   at `https://<your host>/login`.
+
+If it does not work, the connector's log says why (`docker compose -f compose.tunnel.yaml logs cloudflared`):
+- **Error 1033 in the browser:** no connector is attached to the tunnel the name points at. The token in `.env` is probably
+  from a different tunnel than the one that has the hostname.
+- **502:** the connector cannot reach the service. The log line says `originService=...`: it must read `http://weft:8080`.
+- **Weft's plain "404 page not found":** the route works, but `WEFT_HOST` does not match the hostname exactly.
 
 The rest of this guide applies unchanged; add `-f compose.tunnel.yaml` to the `docker compose` commands.
 
