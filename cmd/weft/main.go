@@ -675,7 +675,11 @@ func serve(addr, internal, dataDir string, cfg web.Config, poll time.Duration) e
 		go func() { listenErr <- is.ListenAndServe() }()
 		log.Printf("answering the proxy's certificate questions on %s", internal)
 	}
-	log.Printf("listening on %s, users at <name>.%s (dev=%v)", addr, cfg.BaseDomain, cfg.AllowPrivate)
+	if cfg.Host != "" {
+		log.Printf("listening on %s (dev=%v)", addr, cfg.AllowPrivate)
+	} else {
+		log.Printf("listening on %s, users at <name>.%s (dev=%v)", addr, cfg.BaseDomain, cfg.AllowPrivate)
+	}
 
 	var result error
 	select {
