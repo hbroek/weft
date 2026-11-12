@@ -16,6 +16,23 @@ them: forward ports 80 and 443 to it, or put the server on a VPS.
   made. With the proxy on, certificate issue can fail, and the proxy's SSL mode must be Full (strict).
 - If the machine has an IPv6 address, add an AAAA record as well, or leave it out; do not point it somewhere else.
 
+## No open ports? Use a Cloudflare Tunnel
+
+If the machine is at home, or you cannot open ports 80 and 443, run it behind a Cloudflare Tunnel instead: the machine
+makes an outgoing connection to Cloudflare, which brings visitors to it. You need a domain on Cloudflare. Use
+`compose.tunnel.yaml` in place of `compose.yaml` and the `Caddyfile` (not needed):
+
+1. In the Cloudflare dashboard, **Networking, then Tunnels** (older documentation calls it Zero Trust, Networks, Connectors):
+   make a tunnel of type *Cloudflared*. The page then shows an install command for an operating system: the long string
+   starting `eyJ` in it is the tunnel's token. Copy it into `.env` as `TUNNEL_TOKEN`, and do not run that command (the
+   container in `compose.tunnel.yaml` is the connector). Anyone with the token can run your tunnel, so keep it private.
+2. In the tunnel, add a **public hostname**: your `WEFT_HOST`, service type `HTTP`, URL **`weft:8080`**. That is the container's
+   name inside the compose project. `localhost:8080` is not it: on the machine itself, `localhost:8080` is whatever else listens there.
+3. `docker compose -f compose.tunnel.yaml up -d`, and read the first password with
+   `docker compose -f compose.tunnel.yaml logs weft`. The tunnel makes the DNS record for you.
+
+The rest of this guide applies unchanged; add `-f compose.tunnel.yaml` to the `docker compose` commands.
+
 ## Three steps
 
 1. **DNS.** Make an A record for `weft.<your domain>` (for example `weft.example.com`) that points at the machine. It is the
@@ -76,6 +93,8 @@ like it or repost it. The README explains the rest (following people, replies, l
 
 ## When something is wrong
 
+- **Behind a tunnel, the address answers "404 page not found".** The tunnel is pointing at something else. Its service URL
+  must be `http://weft:8080` (with `compose.tunnel.yaml`), not `http://localhost:8080`.
 - **The page does not load, or the browser warns about the certificate.** Look at what Caddy says:
   `docker compose logs caddy`. Lines about "obtaining certificate" that repeat mean it cannot finish. The usual causes are
   that the DNS record does not point at this machine yet (check with `dig +short weft.example.com`), that port 80 or 443 is
