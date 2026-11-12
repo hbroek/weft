@@ -58,6 +58,9 @@ html:not([data-theme]) .th .t-auto, html[data-theme="light"] .th .t-light, html[
 .menu a { color: var(--header-text); text-decoration: none; padding: .3rem .75rem; border-radius: 999px; }
 .menu a:hover { background: #eef0fa24; }
 .menu a.on { text-decoration: underline var(--orange) 2px; text-underline-offset: 6px; }
+.badge { display: inline-block; min-width: 1.25em; padding: 0 .4em; margin-left: .15rem; border-radius: 999px; background: var(--orange); color: #11142b; font-size: .75rem; font-weight: 700; line-height: 1.5; text-align: center; }
+p.pending { margin: .75rem 0; padding: .5rem .85rem; border: 1px solid var(--orange); border-radius: 8px; }
+p.pending a { font-weight: 600; }
 .bio { color: var(--muted); margin: .75rem 0 0; }
 @media (max-width: 40rem) {
   .top-in { flex-wrap: wrap; row-gap: .1rem; padding: .4rem 1rem; }

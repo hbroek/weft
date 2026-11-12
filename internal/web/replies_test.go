@@ -80,3 +80,53 @@ func TestRepliesUnderAPostLookLikeComments(t *testing.T) {
 		t.Errorf("the owner's page lacks the reply link or the pending notice")
 	}
 }
+
+// The owner sees how many replies wait for approval: a number in the menu on every page, and a line on the home page.
+// It goes when they are dealt with, and a visitor never sees it.
+func TestPendingRepliesAreShownToTheOwner(t *testing.T) {
+	s, tok := setup(t)
+	host := "alice.localhost:8080"
+	do(s, "POST", host, "/api/posts", tok, `{"title":"Pickleball","markdown":"We played."}`)
+	sp := s.space("alice")
+	posts, _ := sp.RecentPosts(sp.UID(), 1)
+	pid := posts[0].ID
+	ck := ownerCookie(t, s, "alice")
+	hasHint := func(path string) (menu, line bool) {
+		p := do3(s, "GET", host, path, ck).Body.String()
+		return strings.Contains(p, `class="badge"`), strings.Contains(p, "waiting for your review")
+	}
+	if m, l := hasHint("/"); m || l {
+		t.Fatalf("nothing waits, yet the page shows a hint: menu %v line %v", m, l)
+	}
+	now := time.Now()
+	for i, src := range []string{"http://dave.example/p/9", "http://erin.example/p/2"} {
+		if _, err := sp.UpsertReply(store.Reply{PostID: pid, Source: src, FeedURL: "http://x.example/feed.xml", Text: "hello " + src,
+			Status: store.StatusPending, Published: now.Add(time.Duration(i) * time.Minute), Received: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waiting, _ := sp.RepliesForUser(sp.UID(), store.StatusPending)
+	if len(waiting) != 2 {
+		t.Fatalf("%d replies waiting, want 2", len(waiting))
+	}
+	if m, l := hasHint("/"); !m || !l {
+		t.Errorf("home page: menu %v line %v, want both", m, l)
+	}
+	if p := do3(s, "GET", host, "/", ck).Body.String(); !strings.Contains(p, "2 replies are waiting for your review") || !strings.Contains(p, `class="badge" title="2 waiting for your approval">2</span>`) {
+		t.Errorf("the count is wrong: %s", p)
+	}
+	if m, l := hasHint("/replies"); !m || l {
+		t.Errorf("the Replies page: menu %v line %v, want the number only", m, l)
+	}
+	if p := do(s, "GET", host, "/", "", "").Body.String(); strings.Contains(p, `class="badge"`) || strings.Contains(p, "waiting for your review") {
+		t.Errorf("a visitor sees the owner's hint")
+	}
+	for _, r := range waiting {
+		if _, err := sp.SetReplyStatus(sp.UID(), r.ID, store.StatusApproved); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if m, l := hasHint("/"); m || l {
+		t.Errorf("all are approved, yet menu %v line %v", m, l)
+	}
+}

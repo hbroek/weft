@@ -159,6 +159,13 @@ func (s *Space) RepliesForUser(userID int64, status string) ([]Reply, error) {
 	return scanReplies(rows)
 }
 
+// PendingReplyCount is how many replies to the user's posts wait for approval.
+func (s *Space) PendingReplyCount(userID int64) int {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM replies r JOIN posts p ON p.id=r.post_id WHERE p.user_id=? AND r.status=?`, userID, StatusPending).Scan(&n)
+	return n
+}
+
 // SetReplyStatus changes a reply's moderation status and returns the id of the post it belongs
 // to. The reply must belong to one of the user's posts.
 func (s *Space) SetReplyStatus(userID, replyID int64, status string) (postID int64, err error) {
