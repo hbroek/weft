@@ -81,7 +81,7 @@
 <li>When an account is deleted, moved or removed, its file waits <b>30 days</b> in a trash folder (so it can be brought back) and is then deleted. Backups are made, so a deleted account leaves them only as they age out:
 <ul>
 <li>A snapshot of all accounts is made every night on the server, and replaced by the next one.</li>
-<li>An encrypted copy of those snapshots is kept at Cloudflare (R2): the last 7 days, 4 weeks and 12 months. A deleted account is therefore gone from these copies after up to <b>12 months</b>. The copies are encrypted before they leave the server, and nothing reads them unless the server has to be restored.</li>
+<li>An encrypted copy of those snapshots is kept at Cloudflare (R2): the last 7 days, 4 weeks and 3 months. A deleted account is therefore gone from these copies after about <b>3 months</b>. The copies are encrypted before they leave the server, and nothing reads them unless the server has to be restored.</li>
 <li>The hosting company takes a copy of the whole server's disk every day and keeps the last 7, so it goes from there within <b>7 days</b>.</li>
 </ul></li>
 <li>Copies that other servers made of what you published are theirs; this loom cannot remove them.</li>

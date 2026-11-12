@@ -13,7 +13,7 @@ if [ -n "${RESTIC_REPOSITORY:-}" ]; then
 	# the first run makes the repository
 	restic cat config >/dev/null 2>&1 || restic init
 	restic backup --quiet --host weft /var/backups/weft-snap
-	restic forget --quiet --host weft --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
+	restic forget --quiet --host weft --keep-daily 7 --keep-weekly 4 --keep-monthly 3 --prune
 	restic check --quiet
 fi
 
