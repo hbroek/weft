@@ -26,6 +26,7 @@ var cheatRowsLeft = []cheatRow{
 	{Syntax: "> quote", Sample: "> quote", Want: "<blockquote>"},
 	{Syntax: "- item", Sample: "- item", Want: "<ul>"},
 	{Syntax: "1. item", Sample: "1. item", Want: "<ol>"},
+	{Syntax: "- [x] done", Sample: "- [x] done\n- [ ] to do", Want: `aria-label="done">✅</span> done`},
 }
 
 var cheatRowsRight = []cheatRow{
@@ -36,6 +37,7 @@ var cheatRowsRight = []cheatRow{
 	{Syntax: "`code`", Sample: "`code`", Want: "<code>code</code>"},
 	{Syntax: "```\ncode\n```", Sample: "```\ncode\n```", Want: "<pre><code>code"},
 	{Syntax: "---", Sample: "---", Want: "<hr"},
+	{Syntax: "| a | b |\n|---|---|\n| 1 | 2 |", Sample: "| a | b |\n|---|---|\n| 1 | 2 |", Want: "<th"},
 	{Syntax: `\*not italic\*`, Sample: `\*not italic\*`, Want: "*not italic*"},
 }
 

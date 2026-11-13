@@ -81,6 +81,12 @@ time { color: var(--muted); font-size: .85em; }
 :is(.e-content, .clip, .node, .comment, #preview-body) h2 { font-size: 1.25rem; }
 :is(.e-content, .clip, .node, .comment, #preview-body) h3 { font-size: 1.1rem; }
 :is(.e-content, .clip, .node, .comment, #preview-body) :is(h4, h5, h6) { font-size: 1rem; }
+/* tables written in a post: lines between the cells, and a wide one scrolls on its own instead of widening the page */
+:is(.e-content, .clip, .node, .comment, #preview-body) table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: .6rem 0; }
+:is(.e-content, .clip, .node, .comment, #preview-body) :is(th, td) { border: 1px solid var(--border); padding: .3rem .6rem; text-align: left; vertical-align: top; }
+:is(.e-content, .clip, .node, .comment, #preview-body) th { background: var(--soft); }
+/* the boxes of a task list are symbols (see internal/md): no bullet beside them */
+:is(.e-content, .clip, .node, .comment, #preview-body) li:has(> .task) { list-style: none; margin-left: -1.3em; }
 /* the editor's preview shows the title the way a published post does (an h2 there), above any heading in the text */
 #preview-title { font-size: 1.5em; line-height: 1.25; margin: 0 0 .5rem; }
 article img, .node img, .comment img, #preview img { max-width: min(100%, calc(28rem * var(--r, 100))); max-height: 28rem; height: auto; object-fit: contain; border-radius: 8px; }
