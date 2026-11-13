@@ -15,7 +15,7 @@ import (
 	"github.com/hbroek/weft/internal/store"
 )
 
-var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": func(t time.Time) string { return t.Format("2 January 2006") }, "copyScript": copyHTML, "cssv": func() string { return cssV }}).Parse(`{{define "head"}}<!doctype html>
+var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": func(t time.Time) string { return t.Format("2 January 2006") }, "copyScript": copyHTML, "fitScript": fitHTML, "cssv": func() string { return cssV }}).Parse(`{{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}}</title>
@@ -118,18 +118,23 @@ document.querySelectorAll('form.followform').forEach(function(f){
 <hr>
 <h3>Picture</h3>
 <p>{{template "avatar" .}}<small> {{if .Profile.Local}}an uploaded picture{{else if .Avatar}}a picture from a link{{else}}no picture: the first letter of your name is shown{{end}}</small></p>
-<form method="post" action="/profile/avatar" enctype="multipart/form-data"><label>Upload a picture <input type="file" name="file" accept="image/jpeg,image/png,image/gif" data-max="{{.UploadMax}}" required></label>
+<form method="post" action="/profile/avatar" enctype="multipart/form-data"><label>Upload a picture <input type="file" name="file" accept="image/jpeg,image/png,image/gif,image/heic,image/heif" data-max="{{.UploadMax}}" required></label>
 <p class="err" id="avmsg" role="alert"></p>
-<p><button>Upload</button> <small>It is cropped to a square, made at most 256 pixels wide, and kept with your account. Photos from a phone are fine.</small></p></form>
+<p><button id="avgo">Upload</button> <small>It is cropped to a square, made at most 256 pixels wide, and kept with your account. Photos from a phone are fine.</small></p></form>
 {{if .Avatar}}<form method="post" action="/profile/avatar/remove"><button class="linkbtn">Remove picture</button></form>{{end}}
-<script>
+{{fitScript}}<script>
 (function(){
-var f=document.querySelector('input[type=file][name=file]'),m=document.getElementById('avmsg');
+var f=document.querySelector('input[type=file][name=file]'),m=document.getElementById('avmsg'),go=document.getElementById('avgo');
 if(!f||!m)return;
 f.addEventListener('change',function(){
  m.textContent='';var x=f.files[0];if(!x)return;
- if(!/^image\/(jpeg|png|gif)$/.test(x.type)){m.textContent='Only JPEG, PNG and GIF pictures can be added.';f.value='';return}
- if(x.size>+f.dataset.max){m.textContent='That file is too large: the limit is '+Math.round(f.dataset.max/1048576)+' MB.';f.value=''}
+ if(!/^image\/(jpeg|png|gif|heic|heif)$/.test(x.type)){m.textContent='Only JPEG, PNG and GIF pictures can be added.';f.value='';return}
+ // a large photo is made smaller here, before it is sent; the server crops it to a square anyway
+ if(go)go.disabled=true;
+ (window.weftFit?weftFit(x,{side:512,max:+f.dataset.max,dim:true}):Promise.resolve(x)).then(function(y){
+  if(y!==x)try{var dt=new DataTransfer();dt.items.add(y);f.files=dt.files}catch(e){y=x}
+  if(y.size>+f.dataset.max){m.textContent='That file is too large: the limit is '+Math.round(f.dataset.max/1048576)+' MB.';f.value=''}
+ }).catch(function(e){m.textContent=e.message||'The picture could not be read.';f.value=''}).then(function(){if(go)go.disabled=false});
 });
 })();
 </script>
@@ -343,7 +348,7 @@ document.querySelectorAll('form.react').forEach(function(f){
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label class="adv">Title (optional) <input type="text" name="title" value="{{.Form.Title}}"></label>
 <label><span class="adv">Markdown</span> <textarea name="markdown" aria-label="Markdown" required>{{.Form.Markdown}}</textarea></label>
-<p class="imgbar"><input type="file" id="imgfile" accept="image/jpeg,image/png,image/gif" data-max="{{.ImageMax}}" data-max-compact="{{.ImageMaxCompact}}" hidden><button type="button" id="addimg">Add image</button>
+<p class="imgbar"><input type="file" id="imgfile" accept="image/jpeg,image/png,image/gif,image/heic,image/heif" data-max="{{.ImageMax}}" data-max-compact="{{.ImageMaxCompact}}" hidden><button type="button" id="addimg">Add image</button>
 <label>Size <select id="imgsize"><option value="original">Original</option><option value="compact">Compact</option></select></label>
 <button type="button" id="keepimgs" title="Fetch the pictures this post shows from other sites and keep them here" hidden>Copy images</button> <small><a href="/images">Your images</a></small> <small id="imgmsg" role="status"></small></p>
 <label class="adv">Keywords (optional, separated by commas) <input type="text" name="keywords" value="{{.Form.Keywords}}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="travel, open source, weekend project"></label>
@@ -358,7 +363,7 @@ document.querySelectorAll('form.react').forEach(function(f){
 <article id="preview" class="h-entry"><h3 id="preview-title"{{if not .Form.Title}} hidden{{end}}>{{.Form.Title}}</h3><div id="preview-body">{{if .Preview}}{{.Preview}}{{else}}<p class="empty">Nothing to preview yet.</p>{{end}}</div>
 <p class="kw" id="preview-kw"{{if not .PreviewKeywords}} hidden{{end}}>{{range .PreviewKeywords}}<span>{{.}}</span>{{end}}</p></article>
 {{template "cheats" .Cheat}}</div>
-<script>
+{{fitScript}}<script>
 (function(){
 var md=document.querySelector('textarea[name=markdown]'),ti=document.querySelector('input[name=title]'),kw=document.querySelector('input[name=keywords]'),kwbox=document.getElementById('preview-kw'),
  body=document.getElementById('preview-body'),head=document.getElementById('preview-title'),sl=document.getElementById('slug'),adv=document.getElementById('adv'),timer,seq=0,shown=0,auto=!!(sl&&sl.dataset.auto);
@@ -390,7 +395,14 @@ if(file&&add){
  function say(t){msg.textContent=t}
  function put(text){var a=md.selectionStart||0,b=md.selectionEnd||0;md.setRangeText(text,a,b,'end');var s=a+2;md.setSelectionRange(s,s+5);md.focus();md.dispatchEvent(new Event('input'))}
  function send(f){
-  if(!/^image\/(jpeg|png|gif)$/.test(f.type)){say('Only JPEG, PNG and GIF pictures can be added.');return}
+  if(!/^image\/(jpeg|png|gif|heic|heif)$/.test(f.type)){say('Only JPEG, PNG and GIF pictures can be added.');return}
+  var compact=size.value==='compact',lim=+(compact?file.dataset.maxCompact:file.dataset.max);
+  say('Preparing '+(f.name||'picture')+'…');
+  // a picture that is too large is made smaller here, before it is sent: at Compact, one longer than 1600 pixels;
+  // at Original, only one over the limit
+  (window.weftFit?weftFit(f,{side:1600,max:lim,dim:compact}):Promise.resolve(f)).then(upload,function(e){say(e.message||'The picture could not be read.')});
+ }
+ function upload(f){
   var lim=+(size.value==='compact'?file.dataset.maxCompact:file.dataset.max);
   if(lim&&f.size>lim){say('That file is too large: the limit is '+Math.round(lim/1048576)+' MB'+(size.value==='compact'?'.':'. The Compact size accepts larger files.'));return}
   var fd=new FormData();fd.append('file',f);fd.append('size',size.value);say('Adding '+(f.name||'picture')+'…');

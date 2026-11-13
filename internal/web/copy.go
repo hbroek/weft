@@ -1,6 +1,9 @@
 package web
 
-import "html/template"
+import (
+	_ "embed"
+	"html/template"
+)
 
 // copyScript puts a Copy button after every element marked data-copy: the values a person has to carry somewhere
 // else, such as the DNS records of a domain. It uses the clipboard where the page may, and a selection and the
@@ -14,3 +17,11 @@ e.after(b)})})()</script>`
 
 // copyHTML is copyScript for the templates.
 func copyHTML() template.HTML { return template.HTML(copyScript) }
+
+// fitJS makes a picture small in the browser before it is sent (fit.js).
+//
+//go:embed fit.js
+var fitJS string
+
+// fitHTML is the script that defines weftFit, for the pages that send pictures.
+func fitHTML() template.HTML { return template.HTML("<script>" + fitJS + "</script>") }
