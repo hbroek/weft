@@ -81,10 +81,15 @@ time { color: var(--muted); font-size: .85em; }
 :is(.e-content, .clip, .node, .comment, #preview-body) h2 { font-size: 1.25rem; }
 :is(.e-content, .clip, .node, .comment, #preview-body) h3 { font-size: 1.1rem; }
 :is(.e-content, .clip, .node, .comment, #preview-body) :is(h4, h5, h6) { font-size: 1rem; }
-/* tables written in a post: lines between the cells, and a wide one scrolls on its own instead of widening the page */
-:is(.e-content, .clip, .node, .comment, #preview-body) table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: .6rem 0; }
-:is(.e-content, .clip, .node, .comment, #preview-body) :is(th, td) { border: 1px solid var(--border); padding: .3rem .6rem; text-align: left; vertical-align: top; }
-:is(.e-content, .clip, .node, .comment, #preview-body) th { background: var(--soft); }
+/* a picture on a line of its own (or linked, which makes it a link inside the paragraph) is centred, in the post and in the timeline */
+:is(.e-content, .clip, .node, .comment, #preview-body) :is(p:has(> img:only-child), p:has(> a:only-child > img:only-child)) { text-align: center; }
+/* tables written in a post: only thin lines between the rows, a bold header, room to breathe. The cells wrap
+   (the post's text already breaks long words), so a wide table never widens the page */
+:is(.e-content, .clip, .node, .comment, #preview-body) table { width: 100%; border-collapse: collapse; margin: .8rem 0; }
+:is(.e-content, .clip, .node, .comment, #preview-body) :is(th, td) { padding: .6rem .75rem; text-align: left; vertical-align: middle; border: 0; border-bottom: 1px solid var(--border); }
+:is(.e-content, .clip, .node, .comment, #preview-body) th { font-weight: 600; border-bottom-width: 2px; }
+:is(.e-content, .clip, .node, .comment, #preview-body) :is(th, td):first-child { padding-left: 0; }
+:is(.e-content, .clip, .node, .comment, #preview-body) :is(th, td):last-child { padding-right: 0; }
 /* the boxes of a task list are symbols (see internal/md): no bullet beside them */
 :is(.e-content, .clip, .node, .comment, #preview-body) li:has(> .task) { list-style: none; margin-left: -1.3em; }
 /* the editor's preview shows the title the way a published post does (an h2 there), above any heading in the text */
