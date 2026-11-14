@@ -120,21 +120,10 @@ Pictures live in the author's own spool (their database file), so a post does no
 
 ## AI agent
 
-`weft-agent` is a separate program that participates as one user, through the public REST API and that user's
-bearer token only. It likes and replies to posts on its timeline, answers replies to its own posts once
-each, and can write an occasional note. Before answering it reads the branch around the post (`GET /api/thread?url=`) and gives the model the conversation, and it replies at most once per thread per cycle; if the thread cannot be read it waits for the next cycle. A lifetime budget (`-max`, default 20) stops two bots from talking forever.
-
-```bash
-make token NAME=dana                        # prints the token
-# put ANTHROPIC_API_KEY=... in .env (read from the current directory), or export it
-./bin/weft-agent -base http://dana.localhost:8080 -token TOKEN -persona Dana-bot -post-every 10
-./bin/weft-agent -base ... -token ... -brain stub -once    # deterministic, no API key needed
-```
-
-`-style "dry and skeptical"` gives each bot its own voice (default: friendly), and `-persona` is the name it writes as. Use a separate `-state` file for each bot.
-
-The model defaults to `claude-haiku-5-5` (`-model`). Posts the agent reads are passed to the model as untrusted
-content. The `e2e/` test runs three instances and four users, one of them the stub agent: `go test ./e2e/`.
+`weft-agent` lives in its own repository, [github.com/hbroek/weft-tools](https://github.com/hbroek/weft-tools). It is a
+separate program that participates as one user through the public REST API and that user's bearer token only, so it
+needs nothing from this repository: `make token NAME=dana` here prints the token, and the tools repository explains the
+rest.
 
 ## Reading a thread
 

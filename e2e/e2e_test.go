@@ -1,11 +1,9 @@
-// Package e2e runs the whole loop: three independent instances, four users, one of them an AI agent.
+// Package e2e runs the whole loop: three independent instances and four users, all through the public REST API.
 package e2e
 
 import (
 	"context"
-	"errors"
 	"io"
-	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -15,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hbroek/weft/internal/agent"
 	"github.com/hbroek/weft/internal/store"
 	"github.com/hbroek/weft/internal/web"
 )
@@ -56,8 +53,8 @@ func start(t *testing.T, name string, users ...string) *inst {
 	return i
 }
 
-func (i *inst) client(user string) *agent.Client {
-	return agent.NewClient("http://"+user+".localhost:"+i.port, i.toks[user])
+func (i *inst) client(user string) *client {
+	return newClient("http://"+user+".localhost:"+i.port, i.toks[user])
 }
 
 // settle drains every instance's Webmention queues; it fails if they never empty (a loop).
@@ -78,7 +75,7 @@ func settle(t *testing.T, ctx context.Context, insts ...*inst) {
 	t.Fatal("webmention queues did not settle: notification loop?")
 }
 
-func get(t *testing.T, c *agent.Client, path string) string {
+func get(t *testing.T, c *client, path string) string {
 	t.Helper()
 	res, err := c.HTTP.Get(c.Base + path)
 	if err != nil {
@@ -93,7 +90,7 @@ func get(t *testing.T, c *agent.Client, path string) string {
 }
 
 // login returns a client holding a session cookie, as a human in a browser would.
-func login(t *testing.T, c *agent.Client, user string) *agent.Client {
+func login(t *testing.T, c *client, user string) *client {
 	t.Helper()
 	jar, _ := cookiejar.New(nil)
 	h := *c.HTTP
@@ -107,13 +104,13 @@ func login(t *testing.T, c *agent.Client, user string) *agent.Client {
 		t.Fatal(err)
 	}
 	res.Body.Close()
-	return &agent.Client{Base: c.Base, HTTP: &h}
+	return &client{Base: c.Base, HTTP: &h}
 }
 
-// Alice (instance 1) posts. Bob (instance 2) replies, Carol (instance 3) reacts, and Dana, an
-// agent on instance 1, replies and reacts through the public API alone. Everything travels over
-// real HTTP between the instances.
-func TestRoundTripWithAgent(t *testing.T) {
+// Alice (instance 1) posts. Bob (instance 2) replies, Carol (instance 3) reacts, and Dana, a script
+// on instance 1, replies and reacts through the public API alone. Everything travels over real HTTP
+// between the instances.
+func TestRoundTripThroughThePublicAPI(t *testing.T) {
 	ctx := t.Context()
 	one := start(t, "one", "alice", "dana")
 	two := start(t, "two", "bob")
@@ -124,7 +121,7 @@ func TestRoundTripWithAgent(t *testing.T) {
 	bob, carol := two.client("bob"), three.client("carol")
 
 	// Follows: Alice follows everyone (so replies auto-approve); the others follow Alice.
-	for _, c := range []*agent.Client{bob, carol, dana} {
+	for _, c := range []*client{bob, carol, dana} {
 		if err := alice.Follow(ctx, c.Base+"/"); err != nil {
 			t.Fatal(err)
 		}
@@ -143,26 +140,18 @@ func TestRoundTripWithAgent(t *testing.T) {
 		i.s.RefreshAll(ctx)
 	}
 
-	// Bob replies and Carol reacts, as humans or scripts would.
+	// Bob replies, Carol reacts, and Dana does both, as humans or scripts would.
 	if _, err := bob.Post(ctx, "", "I do.", root.URL, alice.FeedURL()); err != nil {
 		t.Fatal(err)
 	}
 	if err := carol.Like(ctx, root.URL, alice.FeedURL()); err != nil {
 		t.Fatal(err)
 	}
-
-	// The agent, using nothing but Dana's token and the public API.
-	ag := agent.New(dana, &agent.Stub{}, agent.Config{Persona: "Dana-bot"})
-	n, err := ag.RunCycle(ctx)
-	if err != nil {
+	if err := dana.Like(ctx, root.URL, alice.FeedURL()); err != nil {
 		t.Fatal(err)
 	}
-	if n != 2 { // one like and one reply to Alice's post
-		t.Fatalf("agent acted %d times, want 2", n)
-	}
-	// Running again does nothing: each post is handled once.
-	if n, _ := ag.RunCycle(ctx); n != 0 {
-		t.Fatalf("second cycle acted %d times, want 0", n)
+	if _, err := dana.Post(ctx, "", "Dana here: noted.", root.URL, alice.FeedURL()); err != nil {
+		t.Fatal(err)
 	}
 	settle(t, ctx, all...)
 
@@ -179,7 +168,7 @@ func TestRoundTripWithAgent(t *testing.T) {
 		t.Fatalf("approved replies: %+v", rs)
 	}
 	replies := get(t, alice, strings.TrimPrefix(root.URL, alice.Base)+"/replies.xml")
-	if !strings.Contains(replies, "I do.") || !strings.Contains(replies, "Dana-bot here") {
+	if !strings.Contains(replies, "I do.") || !strings.Contains(replies, "Dana here") {
 		t.Fatalf("replies feed:\n%s", replies)
 	}
 
@@ -189,69 +178,35 @@ func TestRoundTripWithAgent(t *testing.T) {
 		t.Fatalf("alice's feed lacks the tallies:\n%s", feed)
 	}
 
-	// The agent can read the whole conversation from any post in it, root first.
+	// A script can read the whole conversation from any post in it, root first.
 	if th, err := dana.Thread(ctx, root.URL); err != nil || len(th) != 3 || th[0].URL != root.URL || th[0].Depth != 0 || th[1].Depth != 1 {
-		t.Fatalf("thread for the agent: %+v err=%v", th, err)
+		t.Fatalf("thread for the script: %+v err=%v", th, err)
 	}
 
-	// Alice answers Dana's reply; the agent notices a reply to its own post and answers back
-	// exactly once (a budget keeps two bots from talking forever).
+	// Alice answers Dana's reply, which is on Dana's instance; Dana likes the answer and replies to it.
 	m := regexp.MustCompile(`<link>(` + regexp.QuoteMeta(dana.Base) + `/posts/[^<]+)</link>`).FindStringSubmatch(get(t, dana, "/feed.xml"))
 	if m == nil {
 		t.Fatal("no post link in Dana's feed")
 	}
-	dr := agent.Reply{Source: m[1]}
-	if _, err := alice.Post(ctx, "", "Thanks Dana!", dr.Source, dana.FeedURL()); err != nil {
+	followUp, err := alice.Post(ctx, "", "Thanks Dana!", m[1], dana.FeedURL())
+	if err != nil {
 		t.Fatal(err)
 	}
 	settle(t, ctx, all...)
-	// Alice's follow-up is on Dana's timeline at once (same instance): one like and one reply,
-	// not two replies, because the follow-up and the reply notification are the same thread.
-	if n, err := ag.RunCycle(ctx); err != nil || n != 2 {
-		t.Fatalf("agent reply to a reply: n=%d err=%v", n, err)
+	one.s.RefreshAll(ctx) // Alice's follow-up is on Dana's timeline at once (same instance)
+	if err := dana.Like(ctx, followUp.URL, alice.FeedURL()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dana.Post(ctx, "", "Dana here: you are welcome.", followUp.URL, alice.FeedURL()); err != nil {
+		t.Fatal(err)
 	}
 	settle(t, ctx, all...)
-	if n, _ := ag.RunCycle(ctx); n != 0 {
-		t.Fatalf("agent kept talking: %d", n)
-	}
 
 	// Alice's curated thread view (a logged-in human) shows everyone.
 	page := get(t, login(t, alice, "alice"), "/thread?view=curated&url="+url.QueryEscape(root.URL))
-	for _, want := range []string{"I do.", "Dana-bot here", "Thanks Dana!"} {
+	for _, want := range []string{"I do.", "Dana here: noted.", "Thanks Dana!"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("curated thread lacks %q:\n%s", want, page)
 		}
-	}
-}
-
-type failingBrain struct{ calls int }
-
-func (b *failingBrain) Decide(context.Context, agent.Persona, agent.Item, []agent.ThreadNode) (agent.Decision, error) {
-	b.calls++
-	return agent.Decision{}, errors.New("model said no")
-}
-func (b *failingBrain) Post(context.Context, agent.Persona) (string, string, error) {
-	return "", "", errors.New("model said no")
-}
-
-// A post the model failed on is tried again in later cycles, but not forever.
-func TestAgentRetriesAFailedPostThreeTimes(t *testing.T) {
-	ctx := t.Context()
-	one := start(t, "one", "alice", "dana")
-	alice, dana := one.client("alice"), one.client("dana")
-	if err := dana.Follow(ctx, alice.Base+"/"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := alice.Post(ctx, "", "Anyone there?", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	one.s.RefreshAll(ctx)
-	b := &failingBrain{}
-	ag := agent.New(dana, b, agent.Config{Persona: "Dana-bot", Log: log.New(io.Discard, "", 0)})
-	for i := 0; i < 6; i++ {
-		ag.RunCycle(ctx)
-	}
-	if b.calls != 3 {
-		t.Fatalf("the brain was asked %d times, want 3", b.calls)
 	}
 }

@@ -33,13 +33,12 @@ Several hosted users, human or AI agent, can post, reply, like and edit, with ev
 
 ```
 cmd/weft/         server and admin CLI (serve, user, move, backup, restore, fsck, reindex, split, export, import)
-cmd/weft-agent/   test agent program
-cmd/hn-import/    Hacker News import, for load tests
+(the test agent program is in github.com/hbroek/weft-tools)
+internal/tools/hn-import/  Hacker News import, for load tests
 internal/store/  SQLite schema, migrations and queries (per-user files plus instance.db)
 internal/feed/   RSS 2.0, Atom and RSS 1.0: generate and parse, with weft:
 internal/fetch/  bounded, SSRF-guarded HTTP client with conditional requests
 internal/web/    HTML pages, permalinks, login, API handlers, Webmention, rate limits
-internal/agent/  the agent behind weft-agent
 internal/md/     goldmark wrapper
 e2e/             multi-instance scenario tests
 docs/
@@ -71,7 +70,7 @@ Reply composer (`weft:inReplyTo`, `weft:root`, `weft:context` as URL). On publis
 Thread view built from `weft:root` and `weft:inReplyTo`. Curated and raw views, with unapprove and re-approve. Bubble-up Webmention to ancestors. Orphan handling (rejected, offline, deleted). Edit and delete re-notify.
 
 ### 7. Agent and end-to-end scenario (done)
-`weft-agent`: poll followed feeds through the public API, pick posts to like or reply to, use the Claude API for the text, and post as its user. A stub mode gives deterministic output. The `e2e/` test starts three instances with four users, one of them an agent, and runs the scenario in the Goal. Assertions cover feeds, replies feeds, reaction counts and the thread view.
+`weft-agent` (since moved to github.com/hbroek/weft-tools): poll followed feeds through the public API, pick posts to like or reply to, use the Claude API for the text, and post as its user. The `e2e/` test starts three instances with four users, one of them a script that uses the public API as the agent did, and runs the scenario in the Goal. Assertions cover feeds, replies feeds, reaction counts and the thread view.
 
 ### Optional: vouching (web of trust)
 Not scheduled. A stranger who replies or likes counts as vouched for when feeds you follow list them in their public `following.opml` (matched by feed URL or homepage link). Fetch and cache each followee's OPML on refresh; the vouch count is how many of your followees follow the stranger, two hops at most. Candidate uses: show "followed by alice, carol" in the replies queue, and count strangers vouched by at least 2 followees in the reaction tally. Replies stay auto-approved only for direct follows. Unlike the Webmention Vouch extension, this is computed entirely by the receiver.
