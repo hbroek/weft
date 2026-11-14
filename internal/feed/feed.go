@@ -8,7 +8,7 @@ import (
 
 const (
 	NSWeft   = "https://weftprotocol.org/ns/weft/0.1"
-	NSSource = "http://source.scripting.com/"
+	NSSource = "https://source.scripting.com/"
 	NSAtom   = "http://www.w3.org/2005/Atom"
 )
 
