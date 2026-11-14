@@ -32,7 +32,6 @@ A Weft host: every post, reply and like lives in its author's own RSS 2.0 feed. 
   - [Behind Cloudflare](#behind-cloudflare)
   - [Speed](#speed)
   - [Monitoring](#monitoring)
-- [AI agent](#ai-agent)
 - [Development](#development)
   - [Try the UI on a real conversation](#try-the-ui-on-a-real-conversation)
   - [Icons](#icons)
@@ -333,18 +332,13 @@ scrape_configs:
 
 Two numbers worth an alert: `rate(weft_pool_evictions_total[5m])` staying high means the cap on open user databases is too small for the traffic (raise `ulimit -n`), and `rate(weft_instance_read_wait_seconds_total[5m])` rising means reads of `instance.db` are queueing for a connection.
 
-## AI agent
-
-`weft-agent` lives in its own repository, [github.com/hbroek/weft-tools](https://github.com/hbroek/weft-tools). It is a
-separate program that participates as one user through the public REST API and that user's bearer token only, so it
-needs nothing from this repository: `make token NAME=dana` here prints the token, and the tools repository explains the
-rest.
-
 ## Development
 
 ### Try the UI on a real conversation
 
-`make hackernews` copies the current Hacker News front page into a new `hackernews.db` (it refuses to touch an existing file): each of the top 20 stories and all its comments become posts in their authors' own feeds, every comment is an approved reply to its parent with the thread root set, and every author is a user (names are lowercased, `_` becomes `-`). Story points become anonymous likes, since Hacker News does not publish who voted or what comments scored. Then `make run-hn` serves it on port 8090 (`HNPORT=` and `HNDB=` override). Log in at `http://me.localhost:8090/login` with password `hackernews`; that user follows every story's submitter, so the stories are already in its timeline.
+`make hackernews` copies the current Hacker News front page into a new data folder, `hackernews/` (it refuses to touch an existing one): each of the top 20 stories and all its comments become posts in their authors' own feeds, every comment is an approved reply to its parent with the thread root set, and every author is a user (names are lowercased, `_` becomes `-`). Story points become anonymous likes, since Hacker News does not publish who voted or what comments scored. Then `make run-hn` serves it on port 8090 (`HNPORT=` and `HNDATA=` override). Log in at `http://me.localhost:8090/login` with password `hackernews`; that user follows every story's submitter, so the stories are already in its timeline.
+
+The importer is `internal/tools/hn-import`, a test-data tool and not part of the server. It writes to the data folder directly through the store (`make hackernews` builds it as `bin/hn-import`), so it needs no running server and cannot be run against a live one. Its flags are `-data`, `-n` (how many stories, default 20), `-port`, `-domain`, `-scheme`, `-viewer` and `-password`; the post addresses it stores contain the port, so serve the data on the port you gave it.
 
 ### Icons
 
