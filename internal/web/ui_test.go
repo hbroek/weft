@@ -718,3 +718,17 @@ func TestTemporaryPasswordMustBeChanged(t *testing.T) {
 		t.Errorf("a visitor at /password: %d %q", w.Code, w.Header().Get("Location"))
 	}
 }
+
+// The Weft logo leads to the landing page when the server has one, so a reader of someone's page can find out what
+// Weft is; a server without a landing page (one account) sends it to the site's own home page.
+func TestLogoLeadsToTheLandingPage(t *testing.T) {
+	s, _ := setup(t)
+	if page := do(s, "GET", host, "/", "", "").Body.String(); !strings.Contains(page, `class="brand" href="/" title="About Weft"`) {
+		t.Errorf("without a landing page the logo should lead to /:\n%s", page)
+	}
+	s.cfg.SiteDir = t.TempDir()
+	s.cfg.Port = ":8080"
+	if page := do(s, "GET", host, "/", "", "").Body.String(); !strings.Contains(page, `class="brand" href="http://www.localhost:8080/" title="About Weft"`) {
+		t.Errorf("with a landing page the logo should lead to www:\n%s", page)
+	}
+}

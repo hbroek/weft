@@ -40,7 +40,7 @@ var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": 
 <script>try{var t=localStorage.getItem('weft-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head><body>
 <header class="top"><div class="top-in">
-<div class="top-l"><a class="brand" href="/" title="{{.Author}}"><img src="/static/weft-icon.svg" alt="" width="36" height="36"><span>Weft</span></a></div>
+<div class="top-l"><a class="brand" href="{{.BrandHref}}" title="About Weft"><img src="/static/weft-icon.svg" alt="" width="36" height="36"><span>Weft</span></a></div>
 {{if and .Owner (not .Forced)}}<nav class="menu"><a href="/compose"{{if eq .Nav "compose"}} class="on" aria-current="page"{{end}}>Compose</a><a href="/timeline"{{if eq .Nav "timeline"}} class="on" aria-current="page"{{end}}>Timeline</a><a href="/following"{{if eq .Nav "following"}} class="on" aria-current="page"{{end}}>Following</a><a href="/replies"{{if eq .Nav "replies"}} class="on" aria-current="page"{{end}}>Replies{{if .PendingAll}} <span class="badge" title="{{.PendingAll}} waiting for your approval">{{.PendingAll}}</span><span class="sr"> waiting for your approval</span>{{end}}</a></nav>{{end}}
 <div class="top-r"><a class="site" href="/">{{template "avatar" .}}<span>{{.Author}}</span></a>
 <button type="button" class="th" id="theme" title="Theme: auto" aria-label="Theme: auto"><svg class="t-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg><svg class="t-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="t-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
@@ -484,6 +484,7 @@ type pageData struct {
 	Parent                                       *parentCard
 	Modes                                        []modeLink // Bookmark, Reply and Like links for the page the bookmarklet sent
 	Avatar, Initial                              string     // the site owner's avatar address and fallback letter, for the header
+	BrandHref                                    string     // where the Weft logo in the header goes: the landing page when this server has one, else "/"
 	Profile                                      struct {
 		Display, Bio, Avatar string
 		Local                bool // the avatar is an uploaded picture
@@ -514,9 +515,18 @@ func (s *Server) data(r *http.Request, q *req, title string) pageData {
 	return d
 }
 
+// brandHref is where the Weft logo in the header leads: the server's landing page at www when it serves one,
+// and otherwise the site's own home page (a server for one account has no landing page).
+func (s *Server) brandHref() string {
+	if s.cfg.SiteDir != "" || s.cfg.Signups {
+		return s.cfg.Scheme + "://www." + s.cfg.BaseDomain + s.cfg.Port + "/"
+	}
+	return "/"
+}
+
 func (s *Server) pageBase(r *http.Request, q *req, title string) pageData {
 	d := pageData{Title: title, FeedURL: s.base(r) + "/feed.xml", WebmentionURL: s.base(r) + "/webmention",
-		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", WantMD: negotiate(r.Header.Get("Accept")) == "markdown", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), sp: q.sp, Desc: describe(orStr(q.host.Bio, "Posts by "+orStr(q.host.Display, q.host.Name)+".")),
+		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", BrandHref: s.brandHref(), WantMD: negotiate(r.Header.Get("Accept")) == "markdown", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), sp: q.sp, Desc: describe(orStr(q.host.Bio, "Posts by "+orStr(q.host.Display, q.host.Name)+".")),
 		OGType: "website", OGURL: s.base(r) + r.URL.Path, OGImage: s.previewImage(r, q.host.Avatar)}
 	if q.owner {
 		d.PendingAll = q.sp.PendingReplyCount(q.host.ID)
