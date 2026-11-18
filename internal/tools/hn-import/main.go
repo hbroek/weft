@@ -94,7 +94,7 @@ func main() {
 	n := flag.Int("n", 20, "how many front-page stories to copy")
 	scheme := flag.String("scheme", "http", "scheme of the instance that will serve this database")
 	domain := flag.String("domain", "localhost", "base domain of that instance")
-	port := flag.String("port", "8090", "port of that instance (post URLs contain it)")
+	port := flag.String("port", "8090", "port the data will be served on (stored in every post address, so serve it on this port only)")
 	viewer := flag.String("viewer", "me", "name of the user created to browse the data, who follows every story's submitter")
 	password := flag.String("password", "hackernews", "the viewer's login password")
 	flag.Parse()
@@ -172,6 +172,7 @@ func main() {
 		*dbPath, s.users, s.posts, s.replies, s.maxDepth, s.votes, s.deleted)
 	fmt.Printf("\nServe it:   make run-hn      (or: ./bin/weft serve -data %s -addr :%s -dev -poll 30s)\n", *dbPath, *port)
 	fmt.Printf("Browse as:  %s://%s.%s:%s/login   password %q\n", *scheme, *viewer, *domain, *port, *password)
+	fmt.Printf("\nNote: every post address in this data contains the port %s. Serve it on :%s only; on another port the\nthreads show just the post, because the replies are fetched from the addresses stored here. To use another\nport, import again with -port (make hackernews HNPORT=...).\n", *port, *port)
 }
 
 func count(n *node) int {
