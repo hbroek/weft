@@ -68,5 +68,5 @@ footer a { margin-right: 1rem; }
 
 main h1 { margin-top: 2rem; }
 .draft { background: var(--soft); border-left: 4px solid var(--accent); border-radius: 6px; padding: .7rem 1rem; margin: 1rem 0; font-size: .95rem; color: var(--muted); }
-main ul { padding-left: 1.2rem; } main li { margin: .35rem 0; }
+main ul { padding-left: 1.2rem; } main ol { padding-left: 1.5rem; } main li { margin: .35rem 0; }
 .updated { color: var(--muted); font-size: .9rem; }
