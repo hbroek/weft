@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -40,5 +41,16 @@ func TestBookmarkletReadsThePage(t *testing.T) {
 		if got[k] != w {
 			t.Errorf("%s: got %+v, want %+v", k, got[k], w)
 		}
+	}
+	// a page that is not http or https (a local file) only gets a message: no compose window opens
+	var other map[string]struct {
+		Alert  string
+		Opened bool
+	}
+	if err := json.Unmarshal(out, &other); err != nil {
+		t.Fatal(err)
+	}
+	if f := other["file"]; f.Opened || !strings.Contains(f.Alert, "only bookmark web pages") || !strings.Contains(f.Alert, "file address") {
+		t.Errorf("a file page: %+v", f)
 	}
 }

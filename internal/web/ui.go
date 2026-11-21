@@ -229,6 +229,20 @@ func (s *Server) composeForm(w http.ResponseWriter, r *http.Request, q *req) {
 	title, body, kws := strings.TrimSpace(v.Get("title")), v.Get("body"), feed.SplitKeywords(v.Get("keywords"))
 	var d func(*pageData)
 	var canon, note string // a repost starts with its canonical link set; note says what could not be done
+	if raw := v.Get("page"); raw != "" && httpURL(raw) == "" {
+		// an address that is not a web page (a local file, say): there is nothing to bookmark, reply to or like, and
+		// the server could not read it, so the page is left out; what the bookmarklet read still fills the form
+		what := "it is not an http or https address"
+		if u, err := url.Parse(strings.TrimSpace(raw)); err == nil && u.Scheme != "" {
+			what = "it starts with \"" + u.Scheme + ":\""
+		}
+		note = "That address is not a web page (" + what + "), and only web pages can be bookmarked, replied to or liked, so it was left out."
+		info := feed.ParentInfo{Title: v.Get("ptitle"), Description: v.Get("pdesc")}.Clean()
+		title = orStr(title, info.Title)
+		if body == "" && info.Description != "" {
+			body = "> " + strings.ReplaceAll(info.Description, "\n", "\n> ") + "\n"
+		}
+	}
 	if page := httpURL(v.Get("page")); page != "" {
 		// the bookmarklet's page: a bookmark card, a reply to it (the default when the page can take a
 		// Webmention), a like of it, or a repost of its text

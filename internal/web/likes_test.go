@@ -1030,3 +1030,22 @@ func TestLikedByPageOfAPageThatIsNotAPost(t *testing.T) {
 		t.Errorf("liked-by of a page: %d\n%s", w.Code, w.Body.String())
 	}
 }
+
+// A page address that is not http or https (a local file, say) cannot be bookmarked, replied to or liked: the form opens
+// as a plain new post, says so, and still takes the title and description the bookmarklet read.
+func TestComposeIgnoresAPageThatIsNotAWebAddress(t *testing.T) {
+	alice := newInstance(t, "alice")
+	ck := loginCookie(t, alice)
+	v := url.Values{"page": {"file:///Users/henry/Documents/henry test.md"}, "ptitle": {"Hello World"}, "pdesc": {"A short description of the page."}, "wm": {"0"}}
+	page := do4(alice, "/compose?"+v.Encode(), ck)
+	for _, want := range []string{"That address is not a web page", `starts with &#34;file:&#34;`, `value="Hello World"`, "&gt; A short description of the page."} {
+		if !strings.Contains(page, want) {
+			t.Errorf("lacks %q:\n%s", want, page)
+		}
+	}
+	for _, bad := range []string{`name="reply_to"`, "Users/henry", "mode=reply"} {
+		if strings.Contains(page, bad) {
+			t.Errorf("should not contain %q", bad)
+		}
+	}
+}

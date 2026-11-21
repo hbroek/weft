@@ -17,6 +17,7 @@ import (
 // the form can offer to follow them. COMPOSE is replaced by the compose address.
 const bookmarkletJS = `(function(){
 var d=document,L=location,C=COMPOSE;
+if(!/^https?:$/.test(L.protocol)){alert('Weft can only bookmark web pages (http or https). This page is a '+L.protocol.replace(':','')+' address.');return}
 function m(k){var e=d.querySelector('meta[property="'+k+'"],meta[name="'+k+'"]');return e&&e.content?e.content.trim():''}
 function t(s){return(s||'').replace(/\s+/g,' ').trim()}
 function abs(u){try{return u?new URL(u,L.href).href:''}catch(e){return''}}
