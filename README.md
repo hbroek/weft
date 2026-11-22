@@ -60,6 +60,8 @@ curl -XPOST -H "Authorization: Bearer $TOKEN" \
   -d '{"title":"Optional","markdown":"Hello *world*"}' http://alice.localhost:8080/api/posts
 ```
 
+Listing, reading, editing and deleting posts, and posts as Markdown documents with frontmatter, are in [Posts through the API](#posts-through-the-api).
+
 ### Two instances on one machine
 
 To try two separate instances on one machine:
@@ -125,6 +127,40 @@ Pictures live in the author's own spool (their database file), so a post does no
 - **Pictures from other sites.** Press "Copy images" in the editor (it appears when the post shows a picture from another site) to fetch the pictures a post shows from elsewhere, store them here, and point the post at the copies (the original address is recorded). It never happens by itself; copying other people's pictures is the author's decision.
 - **Your images** (`/images`) lists them with their size, where each is used, and how much of the quota is left; a picture in use is only deleted when asked twice.
 - **Limits are the server's.** `weft serve -max-image-mb 5 -max-upload-mb 25 -media-quota-mb 200 -image-side 1600 -image-megapixels 24` (a quota of 0 is no limit). A server can set them high and charge for it, or low and be free.
+
+#### Posts through the API
+
+Every call goes to the user's own host, with `Authorization: Bearer <token>`. `{ref}` is a post's number (`42`) or its slug, the end of its address (`hello.k3x9`); create answers with both (`{"id": 42, "url": "…/posts/hello.k3x9"}`).
+
+| To | Call |
+|---|---|
+| List your posts | `GET /api/posts`: newest first, without their text. `limit` (1 to 200, default 50) and `before` (a date like `2026-10-27_14-35` in UTC, or a Unix time) page back; `Link: <…>; rel="next"` names the next page and is missing on the last. |
+| Show one | `GET /api/posts/{ref}`: JSON, or with `Accept: text/markdown` a document (below). |
+| Create | `POST /api/posts` with JSON, or `Content-Type: text/markdown` and a document. |
+| Edit | `PUT /api/posts/{ref}`, the same two ways. |
+| Delete | `DELETE /api/posts/{ref}`: answers 204, and the address answers 410 from then on. |
+
+Reading a published post needs no token: that is its public address (`GET /posts/<slug>`, with `Accept: text/markdown` for its source).
+
+**A post as a document** is for editors: the file is the post. Frontmatter between two lines of `---`, then the Markdown exactly as stored (pictures keep their `/media/…` paths; the public address makes them absolute, an editor must not save those back):
+
+```markdown
+---
+id: 42
+url: https://alice.example/posts/hello.k3x9
+title: Hello
+keywords: [weft, "two words"]
+canonical: https://example.org/original
+published: 2026-11-21T09:30:00Z
+---
+The text of the post.
+```
+
+- **Keys:** `title`, `keywords` (`[a, b]`, one `- item` a line, or `a, b`), `canonical`, and for a new post `slug` (the words of its address; the short code is added), `in_reply_to`, `in_reply_to_feed` and `context` (`title`, `description` and `image`, indented below it), all as in the JSON. `id`, `url`, `published` and `updated` are sent when you read and ignored when you write, except that an `id` that is not the post being edited is refused with 409, so a file saved to the wrong post changes nothing. As with JSON, an edit changes the title, keywords, canonical link and text only; the address and the reply links stay.
+- **A document is the whole post.** Leaving `canonical` or `keywords` out of an edit removes them, as with JSON.
+- **Other keys are ignored,** so an editor can keep its own; they are not stored and not sent back.
+- **The frontmatter is a small subset of YAML:** values are plain, `"double quoted"` (`\"`, `\\`, `\n`, `\t`, `\uXXXX`) or `'single quoted'`; a line that cannot be read is refused with 400 and its number. Without a first line of `---` the whole text is the post. A post that itself begins with a line of `---` is written with an empty frontmatter in front (`---` and `---`).
+- Any other content type is read as JSON, as before. A body over 1 MB gets 413.
 
 ### Following and the timeline
 

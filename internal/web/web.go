@@ -174,9 +174,11 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("GET /api/following", s.user(s.apiFollowing))
 	s.mux.HandleFunc("POST /api/following", s.user(s.apiFollow))
 	s.mux.HandleFunc("DELETE /api/following", s.user(s.apiUnfollow))
+	s.mux.HandleFunc("GET /api/posts", s.user(s.apiListPosts))
 	s.mux.HandleFunc("POST /api/posts", s.user(s.apiCreate))
-	s.mux.HandleFunc("PUT /api/posts/{id}", s.user(s.apiUpdate))
-	s.mux.HandleFunc("DELETE /api/posts/{id}", s.user(s.apiDelete))
+	s.mux.HandleFunc("GET /api/posts/{ref}", s.user(s.apiGetPost))
+	s.mux.HandleFunc("PUT /api/posts/{ref}", s.user(s.apiUpdate))
+	s.mux.HandleFunc("DELETE /api/posts/{ref}", s.user(s.apiDelete))
 	return s
 }
 
