@@ -238,7 +238,12 @@ func TestThreadIndexesAreAddedToOlderFiles(t *testing.T) {
 	// take the indexes away and put the files back to the versions before
 	db = openRaw(t, inst)
 	db.Exec(`DROP INDEX items_root`)
-	db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, InstanceSchemaVersion-1))
+	// back to the version before the one that added it (15), which means undoing the later ones too (16: OAuth)
+	db.Exec(`DROP TABLE oauth_tokens`)
+	db.Exec(`DROP TABLE oauth_codes`)
+	db.Exec(`DROP TABLE oauth_grants`)
+	db.Exec(`DROP TABLE oauth_clients`)
+	db.Exec(`PRAGMA user_version = 14`)
 	db.Close()
 	db = openRaw(t, spool)
 	db.Exec(`DROP INDEX posts_root`)

@@ -360,7 +360,7 @@ func (in *Instance) MarkMoved(name, to string) error {
 		return ErrNotFound
 	}
 	in.dirs.drop()
-	return nil
+	return in.RevokeOAuthGrants(name) // the apps were let in on this server; the new one asks again
 }
 
 // TrashDir is where the files of users who moved away wait to be deleted.

@@ -65,6 +65,10 @@ type Config struct {
 	// Signups turns on the self-service sign-up at www.<BaseDomain>/signup: a person who controls weft.<their domain>
 	// makes an account without the operator. Off unless asked for.
 	Signups bool
+	// OAuth lets apps that a user approves act for them through the API, with the user's own sign-in, and not only with
+	// the account's API token. Off unless the operator asks for it: with it off there are no /oauth pages, no
+	// discovery documents, and the API accepts only the account's own token, even where an OAuth token was issued before.
+	OAuth bool
 	// Admin turns on the administration pages for the accounts marked as administrators (weft user admin). They are
 	// served on the private listener (-internal) and, with AdminPublic, also at admin.<BaseDomain> on the public
 	// one, which should then be behind something that checks who asks (Cloudflare Access, a VPN).

@@ -58,7 +58,10 @@ func (in *Instance) Remove(name string) error {
 	if status == StatusMoved || status == StatusRemoved {
 		return ErrNotReady
 	}
-	return in.setStatus(name, status, StatusRemoved)
+	if err := in.setStatus(name, status, StatusRemoved); err != nil {
+		return err
+	}
+	return in.RevokeOAuthGrants(name) // an app that was let in does not outlast the account
 }
 
 func (in *Instance) setStatus(name, from, to string) error {

@@ -230,7 +230,7 @@ b.addEventListener('click',function(){if(navigator.clipboard&&navigator.clipboar
 <a class="u-like-of" href="{{.Like.Target}}">{{.Like.Target}}</a></p>{{if .Like.Card}}{{template "parentcard" .Like.Card}}{{end}}</article>
 {{template "foot"}}{{end}}
 {{define "tombstone"}}{{template "head" .}}<p>This post was removed by its author.</p>{{template "foot"}}{{end}}
-{{define "login"}}{{template "head" .}}<form method="post" action="/login">
+{{define "login"}}{{template "head" .}}<form method="post" action="/login">{{if .Next}}<input type="hidden" name="next" value="{{.Next}}">{{end}}
 <h2>Log in to {{.Author}}</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Password <input type="password" name="password" autofocus required></label>
 <p><button>Log in</button></p></form>{{template "foot"}}{{end}}
@@ -449,6 +449,7 @@ type pagePost struct {
 type pageData struct {
 	Title, FeedURL, WebmentionURL, Author, Bio string
 	Owner                                      bool
+	Next                                       string // login: the page to return to after signing in (a path on this host)
 	Posts                                      []pagePost
 	Timeline                                   []tlRow
 	Replies                                    []replyRow

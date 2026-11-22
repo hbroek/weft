@@ -400,3 +400,47 @@ func instanceV15(tx *sql.Tx) error {
 	}
 	return nil
 }
+
+// instanceV16 adds OAuth: the apps (clients) that registered, what a user let an app do (a grant), the one-time codes
+// that are swapped for tokens, and the tokens. They are kept here and not in the users' own files, which hold only
+// what the users wrote. Only hashes of codes and tokens are stored.
+func instanceV16(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+CREATE TABLE oauth_clients (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  redirect_uris TEXT NOT NULL,
+  client_uri TEXT NOT NULL DEFAULT '',
+  logo_uri TEXT NOT NULL DEFAULT '',
+  policy_uri TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL
+);
+CREATE TABLE oauth_grants (
+  id INTEGER PRIMARY KEY,
+  client_id TEXT NOT NULL REFERENCES oauth_clients(id) ON DELETE CASCADE,
+  name TEXT NOT NULL REFERENCES users(name) ON DELETE CASCADE,
+  scope TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  last_used INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX oauth_grants_name ON oauth_grants(name);
+CREATE INDEX oauth_grants_client ON oauth_grants(client_id);
+CREATE TABLE oauth_codes (
+  hash TEXT PRIMARY KEY,
+  grant_id INTEGER NOT NULL REFERENCES oauth_grants(id) ON DELETE CASCADE,
+  redirect_uri TEXT NOT NULL,
+  challenge TEXT NOT NULL,
+  expires INTEGER NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX oauth_codes_grant ON oauth_codes(grant_id);
+CREATE TABLE oauth_tokens (
+  hash TEXT PRIMARY KEY,
+  grant_id INTEGER NOT NULL REFERENCES oauth_grants(id) ON DELETE CASCADE,
+  refresh INTEGER NOT NULL,
+  expires INTEGER NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX oauth_tokens_grant ON oauth_tokens(grant_id);`)
+	return err
+}

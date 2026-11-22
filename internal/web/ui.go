@@ -20,7 +20,27 @@ import (
 const cookieName = "weft_session"
 
 func (s *Server) loginForm(w http.ResponseWriter, r *http.Request, q *req) {
-	s.show(w, "login", http.StatusOK, s.data(r, q, "Log in"))
+	next := safeNext(r.FormValue("next"))
+	if q.owner && next != "" { // already signed in: go where the sign-in was for
+		http.Redirect(w, r, next, http.StatusSeeOther)
+		return
+	}
+	d := s.data(r, q, "Log in")
+	d.Next = next
+	s.show(w, "login", http.StatusOK, d)
+}
+
+// safeNext is the page a sign-in was for, if it can be trusted: a path on this host and nothing else, so that
+// "?next=" can never send a person to another site (//evil.example, /\evil.example, https://evil.example).
+func safeNext(v string) string {
+	if v == "" || len(v) > 2000 || v[0] != '/' || strings.HasPrefix(v, "//") || strings.ContainsAny(v, "\\\x00\r\n\t") {
+		return ""
+	}
+	u, err := url.Parse(v)
+	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil || !strings.HasPrefix(u.Path, "/") {
+		return ""
+	}
+	return v
 }
 
 // guessBlocked reports whether too many wrong passwords have been tried for this user from this address, and
@@ -58,6 +78,7 @@ func waitText(wait time.Duration) string {
 func (s *Server) login(w http.ResponseWriter, r *http.Request, q *req) {
 	if blocked, wait := s.guessBlocked(w, r, q); blocked {
 		d := s.data(r, q, "Log in")
+		d.Next = safeNext(r.FormValue("next"))
 		d.Error = "Too many wrong passwords. Try again in " + waitText(wait) + "."
 		s.show(w, "login", http.StatusTooManyRequests, d)
 		return
@@ -66,6 +87,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request, q *req) {
 	s.guessed(r, q, err == nil)
 	if err != nil {
 		d := s.data(r, q, "Log in")
+		d.Next = safeNext(r.FormValue("next"))
 		d.Error = "Wrong password."
 		s.show(w, "login", http.StatusUnauthorized, d)
 		return
@@ -79,6 +101,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request, q *req) {
 		SameSite: http.SameSiteLaxMode, Secure: s.cfg.Scheme == "https", MaxAge: int(store.SessionTTL.Seconds())})
 	if q.sp.MustChangePassword() { // a temporary password opens only the page that replaces it
 		http.Redirect(w, r, "/password", http.StatusSeeOther)
+		return
+	}
+	if next := safeNext(r.FormValue("next")); next != "" {
+		http.Redirect(w, r, next, http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)

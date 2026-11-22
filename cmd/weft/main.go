@@ -82,6 +82,7 @@ func main() {
 		admin := fs.Bool("admin", false, "serve the administration pages (for accounts marked with weft user admin) on the -internal address")
 		adminPublic := fs.Bool("admin-public", false, "with -admin, also serve them at admin.<domain> on the public address: only behind something that checks who asks (Cloudflare Access, a VPN)")
 		signups := fs.Bool("signups", false, "let people sign up with weft.<their domain> at www.<domain>/signup (off: the operator makes the accounts)")
+		oauthOn := fs.Bool("oauth", false, "let apps that a user approves use the API for them (OAuth 2 with PKCE), in addition to the account's API token")
 		site := fs.String("site", "", "folder of static files (the landing page) served at www.<domain>")
 		fs.Parse(os.Args[2:])
 		port := "" // a development server is reached with its port in the address
@@ -110,7 +111,7 @@ func main() {
 			log.Fatal("-user is for -host")
 		}
 		if err := serve(*addr, *internal, *db, web.Config{BaseDomain: base, Host: *host, HostUser: *hostUser, Scheme: *scheme, Port: port, AllowPrivate: *dev, Verbose: *verbose, CNAMETarget: *cname, TrustProxy: *trustProxy, NoLimits: *noLimits,
-			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site, MaxUsers: *maxUsers, Signups: *signups, Admin: *admin, AdminPublic: *adminPublic}, *poll); err != nil {
+			MaxImageBytes: *maxImage << 20, MaxUploadBytes: *maxUpload << 20, MaxImagePixels: *pixels * 1_000_000, CompactSide: *side, MediaQuota: mediaQuota, SiteDir: *site, MaxUsers: *maxUsers, Signups: *signups, OAuth: *oauthOn, Admin: *admin, AdminPublic: *adminPublic}, *poll); err != nil {
 			log.Fatal(err)
 		}
 	case "waitlist":
