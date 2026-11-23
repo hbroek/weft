@@ -34,7 +34,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func (s *Server) apiAuth(w http.ResponseWriter, r *http.Request, q *req) bool {
 	if err := s.bearer(r, q); err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		s.denied(w, r, q, err)
 		return false
 	}
 	return true

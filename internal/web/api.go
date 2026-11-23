@@ -53,7 +53,7 @@ type postResp struct {
 // id is the post a document says it is, 0 if it does not say.
 func (s *Server) decode(w http.ResponseWriter, r *http.Request, q *req) (in postReq, id int64, ok bool) {
 	if err := s.bearer(r, q); err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		s.denied(w, r, q, err)
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
@@ -141,7 +141,7 @@ func (s *Server) apiUpdate(w http.ResponseWriter, r *http.Request, q *req) {
 
 func (s *Server) apiDelete(w http.ResponseWriter, r *http.Request, q *req) {
 	if err := s.bearer(r, q); err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		s.denied(w, r, q, err)
 		return
 	}
 	p, err := s.postByRef(q, r.PathValue("ref"))

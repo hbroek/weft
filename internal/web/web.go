@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hbroek/weft/internal/fetch"
+	"github.com/hbroek/weft/internal/oauth"
 	"github.com/hbroek/weft/internal/store"
 )
 
@@ -120,10 +121,8 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("POST /media/keep", s.user(s.mediaKeep))
 	s.mux.HandleFunc("GET /images", s.user(s.imagesPage))
 	s.mux.HandleFunc("POST /images/delete", s.user(s.imageDelete))
-	s.mux.HandleFunc("POST /api/media", s.user(s.apiMediaUpload))
 	s.mux.HandleFunc("POST /profile/avatar", s.user(s.avatarUpload))
 	s.mux.HandleFunc("POST /profile/avatar/remove", s.user(s.avatarRemove))
-	s.mux.HandleFunc("POST /api/avatar", s.user(s.apiAvatar))
 	// human UI (session cookie)
 	s.mux.HandleFunc("GET /login", s.user(s.loginForm))
 	s.mux.HandleFunc("POST /login", s.user(s.login))
@@ -140,15 +139,10 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("GET /likes/{id}", s.user(s.likePage))
 	s.mux.HandleFunc("POST /like", s.user(s.likeForm))
 	s.mux.HandleFunc("POST /unlike", s.user(s.unlikeForm))
-	s.mux.HandleFunc("POST /api/likes", s.user(s.apiLike))
-	s.mux.HandleFunc("DELETE /api/likes", s.user(s.apiUnlike))
-	s.mux.HandleFunc("GET /api/likes/received", s.user(s.apiLikesReceived))
 	s.mux.HandleFunc("GET /posts/{slug}/replies.xml", s.user(s.repliesFeed))
 	s.mux.HandleFunc("GET /posts/{slug}/likes.xml", s.user(s.postLikesFeed))
 	s.mux.HandleFunc("GET /replies", s.user(s.moderation))
 	s.mux.HandleFunc("POST /replies/{id}/status", s.user(s.moderateForm))
-	s.mux.HandleFunc("GET /api/replies", s.user(s.apiReplies))
-	s.mux.HandleFunc("POST /api/replies/{id}/status", s.user(s.apiModerate))
 	s.mux.HandleFunc("GET /following.opml", s.user(s.opml))
 	s.mux.HandleFunc("GET /timeline", s.user(s.timeline))
 	s.mux.HandleFunc("GET /liked-by", s.user(s.likedByPage))
@@ -180,21 +174,14 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("OPTIONS /oauth/revoke", s.oauthOnly(s.oauthPreflight))
 	s.mux.HandleFunc("GET /oauth/authorize", s.oauthUser(s.authorize))
 	s.mux.HandleFunc("POST /oauth/authorize", s.oauthUser(s.authorizeAnswer))
+	// REST API: with the account's own token, or an OAuth token that has the scope named here
+	for _, a := range apiRoutes(s) {
+		s.api(a.scope, a.route, a.h)
+	}
 	s.mux.HandleFunc("GET /following", s.user(s.followingPage))
 	s.mux.HandleFunc("POST /following", s.user(s.followForm))
 	s.mux.HandleFunc("POST /following/remove", s.user(s.unfollowForm))
 	s.mux.HandleFunc("POST /following/refresh", s.user(s.refreshForm))
-	// REST API (bearer token)
-	s.mux.HandleFunc("GET /api/thread", s.user(s.apiThread))
-	s.mux.HandleFunc("GET /api/timeline", s.user(s.apiTimeline))
-	s.mux.HandleFunc("GET /api/following", s.user(s.apiFollowing))
-	s.mux.HandleFunc("POST /api/following", s.user(s.apiFollow))
-	s.mux.HandleFunc("DELETE /api/following", s.user(s.apiUnfollow))
-	s.mux.HandleFunc("GET /api/posts", s.user(s.apiListPosts))
-	s.mux.HandleFunc("POST /api/posts", s.user(s.apiCreate))
-	s.mux.HandleFunc("GET /api/posts/{ref}", s.user(s.apiGetPost))
-	s.mux.HandleFunc("PUT /api/posts/{ref}", s.user(s.apiUpdate))
-	s.mux.HandleFunc("DELETE /api/posts/{ref}", s.user(s.apiDelete))
 	return s
 }
 
@@ -405,6 +392,7 @@ type req struct {
 	host  *store.User
 	sp    *store.Space // the host user's data
 	owner bool         // visitor is logged in as the host user
+	need  string       // an API call: the OAuth scope a token must have for this route
 }
 
 func (s *Server) user(h func(http.ResponseWriter, *http.Request, *req)) http.HandlerFunc {
@@ -462,15 +450,72 @@ func sameOrigin(r *http.Request) bool {
 	return true
 }
 
-// bearer checks the API token against the host's user.
+// bearer checks the token of an API call against the host's user: the account's own token, which may do anything, or
+// (with -oauth) an OAuth access token, which may do what its scope says for the route (q.need).
 func (s *Server) bearer(r *http.Request, q *req) error {
 	tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok {
-		return errors.New("missing bearer token")
+		return errMissingToken
+	}
+	if strings.HasPrefix(tok, oauth.PrefixAccess) { // not an account token, which is plain hex
+		if !s.cfg.OAuth {
+			return errBadToken
+		}
+		a, err := s.st.OAuthAccess(tok)
+		if err != nil || a.User != q.host.Name {
+			return errBadToken
+		}
+		if q.need == "" || !oauth.HasScope(a.Scope, q.need) { // a route with no scope named is closed to apps
+			return &scopeError{q.need}
+		}
+		return nil
 	}
 	u, err := q.sp.UserByToken(tok)
 	if err != nil || u.ID != q.host.ID {
-		return errors.New("invalid token for this host")
+		return errBadToken
 	}
 	return nil
+}
+
+var (
+	errMissingToken = errors.New("missing bearer token")
+	errBadToken     = errors.New("invalid token for this host")
+)
+
+// scopeError is a valid OAuth token that is not allowed to do this.
+type scopeError struct{ need string }
+
+func (e *scopeError) Error() string { return "this token does not have the " + e.need + " scope" }
+
+// denied answers an API call whose token was refused: 401 for a missing or wrong one, 403 for one that lacks the
+// scope. With OAuth on, the answer says where to find the server that issues tokens (RFC 9728, RFC 6750).
+func (s *Server) denied(w http.ResponseWriter, r *http.Request, q *req, err error) {
+	status, h := http.StatusUnauthorized, "Bearer"
+	if s.cfg.OAuth {
+		h += ` resource_metadata="` + s.originOf(q.host.Name, r) + `/.well-known/oauth-protected-resource"`
+		var se *scopeError
+		switch {
+		case errors.As(err, &se):
+			status = http.StatusForbidden
+			h += ` error="insufficient_scope"`
+			if se.need != "" {
+				h += ` scope="` + se.need + `"`
+			}
+		case err == errBadToken:
+			h += ` error="invalid_token"`
+		}
+	}
+	w.Header().Set("WWW-Authenticate", h)
+	http.Error(w, err.Error(), status)
+}
+
+// api serves an address of the REST API to a token that has scope.
+func (s *Server) api(scope, route string, h func(http.ResponseWriter, *http.Request, *req)) {
+	if scope == "" {
+		panic("API route " + route + " has no scope")
+	}
+	s.mux.HandleFunc(route, s.user(func(w http.ResponseWriter, r *http.Request, q *req) {
+		q.need = scope
+		h(w, r, q)
+	}))
 }

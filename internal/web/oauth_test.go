@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"html"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hbroek/weft/internal/oauth"
 	"github.com/hbroek/weft/internal/store"
 )
 
@@ -526,4 +528,148 @@ func TestTokenEndpoint(t *testing.T) {
 	if w, _ := post(alice, "/oauth/revoke", url.Values{"token": {"x"}}); w.Code != 404 {
 		t.Errorf("revoke with OAuth off: %d", w.Code)
 	}
+}
+
+// --- scopes on the API ---
+
+// tokenWith makes an access token for the user with the scope, as the token endpoint would.
+func tokenWith(t *testing.T, s *Server, c *store.OAuthClient, user, scope string) string {
+	t.Helper()
+	g, err := s.st.CreateOAuthGrant(c.ID, user, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _ := s.st.NewOAuthCode(g, "https://app.example/cb", pkceChallenge)
+	if _, err := s.st.RedeemOAuthCode(code); err != nil {
+		t.Fatal(err)
+	}
+	tk, err := s.st.IssueOAuthTokens(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tk.Access
+}
+
+// Every address of the API names the scope it needs, a token with that scope gets in, a token with any other does not,
+// and a token of another account, or the account's own token, is judged as before.
+func TestScopesOnTheAPI(t *testing.T) {
+	s, static := setup(t)
+	s.cfg.OAuth = true
+	if _, err := s.st.AddUser("bob", "Bob", ""); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := s.st.AddOAuthClient(store.OAuthClient{Name: "Quill", RedirectURIs: []string{"https://app.example/cb"}})
+	routes := apiRoutes(s)
+	if len(routes) < 17 {
+		t.Fatalf("only %d routes", len(routes))
+	}
+	valid := map[string]bool{}
+	for _, sc := range oauth.Scopes {
+		valid[sc.Name] = true
+	}
+	// a token for each scope in turn; one of the others never goes in
+	for _, a := range routes {
+		if !valid[a.scope] {
+			t.Errorf("%s names the scope %q, which does not exist", a.route, a.scope)
+		}
+	}
+	method := func(route string) (string, string) {
+		m, p, _ := strings.Cut(route, " ")
+		return m, strings.NewReplacer("{ref}", "1", "{id}", "1").Replace(p)
+	}
+	only := map[string]string{}
+	for _, sc := range oauth.Scopes {
+		app, _ := s.st.AddOAuthClient(store.OAuthClient{Name: sc.Name, RedirectURIs: []string{"https://app.example/cb"}}) // one grant per app and account
+		only[sc.Name] = tokenWith(t, s, app, "alice", sc.Name)
+	}
+	for _, a := range routes {
+		m, p := method(a.route)
+		for name, tok := range only {
+			w := doWith(s, m, alice, p, tok, "", "", "")
+			if name == a.scope && (w.Code == 401 || w.Code == 403) {
+				t.Errorf("%s with the %s scope: %d %s", a.route, name, w.Code, w.Body)
+			}
+			if name != a.scope && (w.Code != 403 || !strings.Contains(w.Header().Get("WWW-Authenticate"), `error="insufficient_scope"`) ||
+				!strings.Contains(w.Header().Get("WWW-Authenticate"), `scope="`+a.scope+`"`)) {
+				t.Errorf("%s with only the %s scope: %d %q", a.route, name, w.Code, w.Header().Get("WWW-Authenticate"))
+			}
+		}
+		// the account's own token is not limited by scopes
+		if w := doWith(s, m, alice, p, static, "", "", ""); w.Code == 401 || w.Code == 403 {
+			t.Errorf("%s with the account's token: %d", a.route, w.Code)
+		}
+	}
+
+	// a token with several scopes
+	multi := tokenWith(t, s, c, "alice", "read post")
+	if w := doWith(s, "GET", alice, "/api/posts", multi, "", "", ""); w.Code != 200 {
+		t.Errorf("read+post reading: %d", w.Code)
+	}
+	if w := doWith(s, "POST", alice, "/api/posts", multi, "text/markdown", "", "hello"); w.Code != 201 {
+		t.Errorf("read+post writing: %d %s", w.Code, w.Body)
+	}
+	if w := doWith(s, "POST", alice, "/api/likes", multi, "application/json", "", "{}"); w.Code != 403 {
+		t.Errorf("read+post liking: %d", w.Code)
+	}
+
+	// refused as unauthenticated: no token, a wrong one, another account's, a made-up one that looks like one
+	bobTok := tokenWith(t, s, c, "bob", "read")
+	for name, tok := range map[string]string{"none": "", "wrong": "wat_" + strings.Repeat("x", 43), "another account": bobTok, "refresh token": "wrt_" + strings.Repeat("x", 43)} {
+		w := doWith(s, "GET", alice, "/api/posts", tok, "", "", "")
+		if w.Code != 401 || !strings.Contains(w.Header().Get("WWW-Authenticate"), `resource_metadata="http://alice.localhost:8080/.well-known/oauth-protected-resource"`) {
+			t.Errorf("%s: %d %q", name, w.Code, w.Header().Get("WWW-Authenticate"))
+		}
+	}
+	if w := doWith(s, "GET", alice, "/api/posts", "", "", "", ""); strings.Contains(w.Header().Get("WWW-Authenticate"), "error=") {
+		t.Error("a call with no token says its token is invalid")
+	}
+
+	// a revoked grant, and an expired token
+	if err := s.st.RevokeOAuthGrants("alice"); err != nil {
+		t.Fatal(err)
+	}
+	if w := doWith(s, "GET", alice, "/api/posts", multi, "", "", ""); w.Code != 401 {
+		t.Errorf("revoked: %d", w.Code)
+	}
+	if w := doWith(s, "GET", alice, "/api/posts", static, "", "", ""); w.Code != 200 {
+		t.Errorf("revoking the apps closed the account's own token: %d", w.Code)
+	}
+
+	// with OAuth off, a token issued earlier is not accepted, and the answer does not mention OAuth
+	again := tokenWith(t, s, c, "alice", "read")
+	s.cfg.OAuth = false
+	w := doWith(s, "GET", alice, "/api/posts", again, "", "", "")
+	if w.Code != 401 || strings.Contains(w.Header().Get("WWW-Authenticate"), "resource_metadata") {
+		t.Errorf("OAuth off: %d %q", w.Code, w.Header().Get("WWW-Authenticate"))
+	}
+	if w := doWith(s, "GET", alice, "/api/posts", static, "", "", ""); w.Code != 200 {
+		t.Errorf("OAuth off, account token: %d", w.Code)
+	}
+	s.cfg.OAuth = true
+	if w := doWith(s, "GET", alice, "/api/posts", again, "", "", ""); w.Code != 200 {
+		t.Errorf("OAuth on again, the earlier token: %d", w.Code)
+	}
+}
+
+// A route that was added without a scope is closed to OAuth tokens, not open to them.
+func TestRouteWithoutScopeIsClosedToApps(t *testing.T) {
+	s, _ := setup(t)
+	s.cfg.OAuth = true
+	c, _ := s.st.AddOAuthClient(store.OAuthClient{Name: "Quill", RedirectURIs: []string{"https://app.example/cb"}})
+	tok := tokenWith(t, s, c, "alice", "read post follow like moderate")
+	s.mux.HandleFunc("GET /api/forgotten", s.user(func(w http.ResponseWriter, r *http.Request, q *req) {
+		if !s.apiAuth(w, r, q) {
+			return
+		}
+		w.Write([]byte("secret"))
+	}))
+	if w := doWith(s, "GET", alice, "/api/forgotten", tok, "", "", ""); w.Code != 403 || strings.Contains(w.Body.String(), "secret") {
+		t.Errorf("%d %s", w.Code, w.Body)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("a route with no scope was accepted")
+		}
+	}()
+	s.api("", "GET /api/another", func(http.ResponseWriter, *http.Request, *req) {})
 }
