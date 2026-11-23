@@ -26,12 +26,17 @@ type inst struct {
 
 func start(t *testing.T, name string, users ...string) *inst {
 	t.Helper()
+	return startWith(t, web.Config{BaseDomain: "localhost", AllowPrivate: true}, name, users...)
+}
+
+func startWith(t *testing.T, cfg web.Config, name string, users ...string) *inst {
+	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), name+".db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	s := web.New(web.Config{BaseDomain: "localhost", AllowPrivate: true}, st)
+	s := web.New(cfg, st)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 	i := &inst{s: s, st: st, port: ts.URL[strings.LastIndex(ts.URL, ":")+1:], toks: map[string]string{}}

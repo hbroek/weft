@@ -423,3 +423,62 @@ func TestFullTableDropsTheOldestUnusedApp(t *testing.T) {
 		t.Errorf("%d apps", n)
 	}
 }
+
+// A server that already has users and data, from before OAuth, opens with the new version: the tables appear, nothing
+// else changes, and a file that is at V16 (before logos) gets the logo columns without losing its apps.
+func TestOAuthTablesAreAddedToAnExistingServer(t *testing.T) {
+	dir := t.TempDir()
+	in, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := in.AddUser("alice", "Alice", "bio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(t, in, "Quill")
+	if _, err := in.db.Exec(`DROP TABLE oauth_tokens; DROP TABLE oauth_codes; DROP TABLE oauth_grants; DROP TABLE oauth_clients; PRAGMA user_version=15`); err != nil {
+		t.Fatal(err)
+	}
+	in.Close()
+
+	in, err = Open(dir) // an old server, upgraded
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v int
+	in.db.QueryRow(`PRAGMA user_version`).Scan(&v)
+	if v != InstanceSchemaVersion {
+		t.Errorf("version %d, want %d", v, InstanceSchemaVersion)
+	}
+	sp, release, err := in.Space("alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, err := sp.UserByToken(tok); err != nil || u.Name != "alice" {
+		t.Errorf("the user did not survive: %v", err)
+	}
+	release()
+	app := newClient(t, in, "Quill again") // the new tables work, logo column included
+	if err := in.SetOAuthLogo(app.ID, "image/png", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.OAuthClient(c.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("an app from before the tables existed: %v", err)
+	}
+	// from V16 (tables, no logo column) to the current one: the apps stay
+	if _, err := in.db.Exec(`ALTER TABLE oauth_clients DROP COLUMN logo; ALTER TABLE oauth_clients DROP COLUMN logo_mime; PRAGMA user_version=16`); err != nil {
+		t.Fatal(err)
+	}
+	in.Close()
+	if in, err = Open(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.OAuthClient(app.ID); err != nil || got.Name != "Quill again" || got.HasLogo {
+		t.Errorf("an app across the logo migration: %+v %v", got, err)
+	}
+	if err := in.SetOAuthLogo(app.ID, "image/png", []byte("x")); err != nil {
+		t.Errorf("logo after V17: %v", err)
+	}
+}
