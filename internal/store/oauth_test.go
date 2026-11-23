@@ -83,7 +83,7 @@ func TestOAuthClients(t *testing.T) {
 
 func TestOAuthRegistrationIsCapped(t *testing.T) {
 	in := oauthInstance(t)
-	if _, err := in.db.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?) INSERT INTO oauth_clients(id,name,redirect_uris,created) SELECT 'x'||i,'x','https://a/',1 FROM n`, MaxOAuthClients); err != nil {
+	if _, err := in.db.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?) INSERT INTO oauth_clients(id,name,redirect_uris,created) SELECT 'x'||i,'x','https://a/',? FROM n`, MaxOAuthClients, time.Now().Unix()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := in.AddOAuthClient(OAuthClient{Name: "one more", RedirectURIs: []string{"https://a/"}}); !errors.Is(err, ErrTooManyClients) {
@@ -378,5 +378,41 @@ func TestOAuthPrune(t *testing.T) {
 func TestOAuthLeavesUserFilesAlone(t *testing.T) {
 	if strings.Contains(spaceSchema+lazySchema, "oauth") {
 		t.Error("OAuth data must live in instance.db, not in users' files")
+	}
+}
+
+// One source filling the table with apps nobody connects must not keep real apps out; an app somebody connected stays.
+func TestFullTableDropsTheOldestUnusedApp(t *testing.T) {
+	in := oauthInstance(t)
+	mk := func() *OAuthClient {
+		c, err := in.AddOAuthClient(OAuthClient{Name: "x", RedirectURIs: []string{"https://a.example/cb"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	first := mk()
+	if _, err := in.CreateOAuthGrant(first.ID, "alice", "read"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < MaxOAuthClients; i++ {
+		mk()
+	}
+	if _, err := in.AddOAuthClient(OAuthClient{Name: "y", RedirectURIs: []string{"https://a.example/cb"}}); !errors.Is(err, ErrTooManyClients) {
+		t.Fatalf("full table, all new: %v", err)
+	}
+	if _, err := in.db.Exec(`UPDATE oauth_clients SET created=created-3600`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.AddOAuthClient(OAuthClient{Name: "y", RedirectURIs: []string{"https://a.example/cb"}}); err != nil {
+		t.Fatalf("old unused apps should make room: %v", err)
+	}
+	if _, err := in.OAuthClient(first.ID); err != nil {
+		t.Errorf("the connected app was dropped: %v", err)
+	}
+	var n int
+	in.db.QueryRow(`SELECT COUNT(*) FROM oauth_clients`).Scan(&n)
+	if n != MaxOAuthClients {
+		t.Errorf("%d apps", n)
 	}
 }

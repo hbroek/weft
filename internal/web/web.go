@@ -174,6 +174,8 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("OPTIONS /oauth/register", s.oauthOnly(s.oauthPreflight))
 	s.mux.HandleFunc("OPTIONS /.well-known/oauth-authorization-server", s.oauthOnly(s.oauthPreflight))
 	s.mux.HandleFunc("OPTIONS /.well-known/oauth-protected-resource", s.oauthOnly(s.oauthPreflight))
+	s.mux.HandleFunc("GET /oauth/authorize", s.oauthUser(s.authorize))
+	s.mux.HandleFunc("POST /oauth/authorize", s.oauthUser(s.authorizeAnswer))
 	s.mux.HandleFunc("GET /following", s.user(s.followingPage))
 	s.mux.HandleFunc("POST /following", s.user(s.followForm))
 	s.mux.HandleFunc("POST /following/remove", s.user(s.unfollowForm))

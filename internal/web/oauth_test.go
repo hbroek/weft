@@ -2,7 +2,11 @@ package web
 
 import (
 	"encoding/json"
+	"html"
+	"net/http/httptest"
+	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -165,8 +169,195 @@ func TestRegistrationStopsAtTheServerCap(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// nothing is old enough to drop yet, so the table is full
 	w := doWith(s, "POST", alice, "/oauth/register", "", "application/json", "", `{"client_name":"A","redirect_uris":["https://a.example/cb"]}`)
 	if w.Code != 503 || w.Header().Get("Retry-After") == "" {
 		t.Errorf("%d %s", w.Code, w.Body)
+	}
+}
+
+// --- the consent page ---
+
+const pkceChallenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+
+// backTo is where the page that sends a person back to the app sends them.
+func backTo(t *testing.T, body string) *url.URL {
+	t.Helper()
+	m := regexp.MustCompile(`http-equiv="refresh" content="0;url=([^"]+)"`).FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("not a page that goes back to the app:\n%s", body)
+	}
+	u, err := url.Parse(html.UnescapeString(m[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+func TestAuthorizeAndConsent(t *testing.T) {
+	s, _ := setup(t)
+	s.cfg.OAuth = true
+	s.space("alice").SetPassword("correct horse")
+	c, err := s.st.AddOAuthClient(store.OAuthClient{Name: "<b>Quill</b>", RedirectURIs: []string{"https://app.example/cb", "http://127.0.0.1/cb"}, ClientURI: "https://app.example/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := func(over map[string]string) string {
+		v := url.Values{"response_type": {"code"}, "client_id": {c.ID}, "redirect_uri": {"https://app.example/cb"}, "code_challenge": {pkceChallenge},
+			"code_challenge_method": {"S256"}, "scope": {"post read"}, "state": {"s t&a=te"}}
+		for k, val := range over {
+			if val == "-" {
+				v.Del(k)
+			} else {
+				v.Set(k, val)
+			}
+		}
+		return "/oauth/authorize?" + v.Encode()
+	}
+	cookie := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+
+	// not signed in: sign in, and come back to this same request
+	w := form(s, "GET", q(nil), "", nil, "")
+	if loc := w.Header().Get("Location"); w.Code != 303 || !strings.HasPrefix(loc, "/login?next=") {
+		t.Fatalf("anonymous: %d %q", w.Code, loc)
+	} else if u, _ := url.Parse(loc); u.Query().Get("next") != q(nil) {
+		t.Errorf("next is %q", u.Query().Get("next"))
+	}
+
+	// signed in: the consent page
+	w = form(s, "GET", q(nil), cookie, nil, "")
+	page := w.Body.String()
+	if w.Code != 200 {
+		t.Fatalf("consent: %d\n%s", w.Code, page)
+	}
+	for _, want := range []string{"&lt;b&gt;Quill&lt;/b&gt;", "Read your posts", "Write, change and delete your posts", "app.example", `name="decision" value="allow"`, `name="decision" value="deny"`, `name="csrf"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page lacks %q", want)
+		}
+	}
+	if strings.Contains(page, "<b>Quill") || strings.Contains(page, "Follow and unfollow") {
+		t.Error("the app's name is not escaped, or a scope that was not asked for is shown")
+	}
+	csp := w.Header().Get("Content-Security-Policy")
+	for _, want := range []string{"frame-ancestors 'none'", "form-action 'self' https://app.example", "script-src 'none'", "default-src 'none'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("CSP %q lacks %q", csp, want)
+		}
+	}
+	if w.Header().Get("X-Frame-Options") != "DENY" || !strings.Contains(w.Header().Get("Cache-Control"), "no-store") {
+		t.Error("framing or caching headers")
+	}
+	// a loopback app may listen on any port
+	if csp := form(s, "GET", q(map[string]string{"redirect_uri": "http://127.0.0.1:5123/cb"}), cookie, nil, "").Header().Get("Content-Security-Policy"); !strings.Contains(csp, "http://127.0.0.1:*") {
+		t.Errorf("loopback CSP %q", csp)
+	}
+
+	// an app or a redirect address that is not known: shown to the person, never redirected to
+	for name, p := range map[string]map[string]string{
+		"unknown client":      {"client_id": "wc_nope"},
+		"unregistered":        {"redirect_uri": "https://evil.example/cb"},
+		"other path":          {"redirect_uri": "https://app.example/cb/x"},
+		"no redirect":         {"redirect_uri": "-"},
+		"unregistered deny":   {"redirect_uri": "https://evil.example/cb", "response_type": "token"},
+		"unregistered scheme": {"redirect_uri": "javascript:alert(1)"},
+	} {
+		w := form(s, "GET", q(p), cookie, nil, "")
+		if w.Code != 400 || w.Header().Get("Location") != "" || strings.Contains(w.Body.String(), "refresh") {
+			t.Errorf("%s: %d %q", name, w.Code, w.Header().Get("Location"))
+		}
+		if w := form(s, "GET", q(p), "", nil, ""); w.Code != 400 { // not even a sign-in first
+			t.Errorf("%s, signed out: %d", name, w.Code)
+		}
+	}
+
+	// the app's own mistakes go back to the app, with its state
+	for name, c := range map[string]struct {
+		over map[string]string
+		code string
+	}{
+		"response type": {map[string]string{"response_type": "token"}, "unsupported_response_type"},
+		"no challenge":  {map[string]string{"code_challenge": "-"}, "invalid_request"},
+		"plain":         {map[string]string{"code_challenge_method": "plain"}, "invalid_request"},
+		"no method":     {map[string]string{"code_challenge_method": "-"}, "invalid_request"},
+		"scope":         {map[string]string{"scope": "read root"}, "invalid_scope"},
+	} {
+		for _, ck := range []string{cookie, ""} { // before any sign-in
+			w := form(s, "GET", q(c.over), ck, nil, "")
+			u := backTo(t, w.Body.String())
+			if w.Code != 200 || u.Host != "app.example" || u.Query().Get("error") != c.code || u.Query().Get("state") != "s t&a=te" || u.Query().Get("iss") != "http://alice.localhost:8080" {
+				t.Errorf("%s: %d %v", name, w.Code, u)
+			}
+		}
+	}
+
+	csrf := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindStringSubmatch(page)[1]
+	answer := func(ck string, over map[string]string, origin string) *httptest.ResponseRecorder {
+		v := url.Values{"response_type": {"code"}, "client_id": {c.ID}, "redirect_uri": {"https://app.example/cb"}, "code_challenge": {pkceChallenge},
+			"code_challenge_method": {"S256"}, "scope": {"read post"}, "state": {"s t&a=te"}, "csrf": {csrf}, "decision": {"allow"}}
+		for k, val := range over {
+			v.Set(k, val)
+		}
+		return form(s, "POST", "/oauth/authorize", ck, v, origin)
+	}
+	grants := func() int {
+		g, _ := s.st.OAuthGrants("alice")
+		return len(g)
+	}
+
+	// everything that must refuse, refuses and makes no grant
+	for name, w := range map[string]*httptest.ResponseRecorder{
+		"signed out":       answer("", nil, ""),
+		"no token":         answer(cookie, map[string]string{"csrf": ""}, ""),
+		"wrong token":      answer(cookie, map[string]string{"csrf": strings.Repeat("0", 64)}, ""),
+		"another redirect": answer(cookie, map[string]string{"redirect_uri": "https://evil.example/cb"}, ""),
+		"another client":   answer(cookie, map[string]string{"client_id": "wc_nope"}, ""),
+		"cross-origin":     answer(cookie, nil, "https://evil.example"),
+	} {
+		if w.Code < 400 || w.Header().Get("Location") != "" || strings.Contains(w.Body.String(), "wco_") || grants() != 0 {
+			t.Errorf("%s: %d", name, w.Code)
+		}
+	}
+	if w := answer(cookie, map[string]string{"csrf": ""}, ""); strings.Contains(w.Body.String(), "refresh") {
+		t.Error("a request without the token was sent back to the app")
+	}
+
+	// deny
+	w = answer(cookie, map[string]string{"decision": "deny"}, "http://"+host)
+	if u := backTo(t, w.Body.String()); u.Query().Get("error") != "access_denied" || u.Query().Get("code") != "" || u.Query().Get("state") != "s t&a=te" || grants() != 0 {
+		t.Errorf("deny: %v", u)
+	}
+	// anything but "allow" is a no
+	if u := backTo(t, answer(cookie, map[string]string{"decision": "ALLOW"}, "").Body.String()); u.Query().Get("error") != "access_denied" {
+		t.Errorf("odd decision: %v", u)
+	}
+
+	// allow: a code, the state, the issuer, and a pending grant for exactly what was shown
+	w = answer(cookie, map[string]string{"scope": "post  read read"}, "http://"+host)
+	u := backTo(t, w.Body.String())
+	if w.Code != 200 || u.Host != "app.example" || u.Path != "/cb" || u.Query().Get("state") != "s t&a=te" || u.Query().Get("iss") != "http://alice.localhost:8080" || !strings.HasPrefix(u.Query().Get("code"), "wco_") {
+		t.Fatalf("allow: %d %v", w.Code, u)
+	}
+	got, err := s.st.RedeemOAuthCode(u.Query().Get("code"))
+	if err != nil || got.User != "alice" || got.ClientID != c.ID || got.Scope != "read post" || got.RedirectURI != "https://app.example/cb" || got.Challenge != pkceChallenge {
+		t.Errorf("code %+v %v", got, err)
+	}
+	if w.Header().Get("Cache-Control") != "no-store" {
+		t.Error("the page with the code can be cached")
+	}
+
+	// an address that already has a query keeps it
+	c2, _ := s.st.AddOAuthClient(store.OAuthClient{Name: "Q", RedirectURIs: []string{"https://q.example/cb?tenant=1"}})
+	u = backTo(t, form(s, "GET", q(map[string]string{"client_id": c2.ID, "redirect_uri": "https://q.example/cb?tenant=1", "code_challenge": "-"}), cookie, nil, "").Body.String())
+	if u.Query().Get("tenant") != "1" || u.Query().Get("error") != "invalid_request" {
+		t.Errorf("query lost: %v", u)
+	}
+
+	// off: the page does not exist
+	s.cfg.OAuth = false
+	if w := form(s, "GET", q(nil), cookie, nil, ""); w.Code != 404 {
+		t.Errorf("with OAuth off: %d", w.Code)
+	}
+	if w := answer(cookie, nil, ""); w.Code != 404 {
+		t.Errorf("answer with OAuth off: %d", w.Code)
 	}
 }

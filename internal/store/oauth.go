@@ -76,6 +76,9 @@ type OAuthTokens struct {
 	Scope           string
 }
 
+// OAuthEvictAfter is how old an app nobody connected must be before a full table may drop it for a new one.
+const OAuthEvictAfter = 10 * time.Minute
+
 // AddOAuthClient registers an app and gives it its id. The caller has already checked the addresses with package oauth.
 func (in *Instance) AddOAuthClient(c OAuthClient) (*OAuthClient, error) {
 	if c.Name == "" || len(c.RedirectURIs) == 0 || len(c.RedirectURIs) > oauth.MaxRedirects {
@@ -87,6 +90,13 @@ func (in *Instance) AddOAuthClient(c OAuthClient) (*OAuthClient, error) {
 		}
 	}
 	c.ID, c.Created = oauth.NewClientID(), time.Now()
+	// When the table is full, the oldest app that nobody has ever connected (and is not brand new) makes room: one
+	// source registering thousands of apps then cannot keep real ones out. An app somebody connected is never evicted.
+	if _, err := in.db.Exec(`DELETE FROM oauth_clients WHERE id=(SELECT id FROM oauth_clients
+			WHERE created<? AND NOT EXISTS (SELECT 1 FROM oauth_grants WHERE client_id=oauth_clients.id) ORDER BY created LIMIT 1)
+		AND (SELECT COUNT(*) FROM oauth_clients)>=?`, c.Created.Add(-OAuthEvictAfter).Unix(), MaxOAuthClients); err != nil {
+		return nil, err
+	}
 	res, err := in.db.Exec(`INSERT INTO oauth_clients(id,name,redirect_uris,client_uri,logo_uri,policy_uri,created)
 		SELECT ?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM oauth_clients)<?`,
 		c.ID, c.Name, strings.Join(c.RedirectURIs, "\n"), c.ClientURI, c.LogoURI, c.PolicyURI, c.Created.Unix(), MaxOAuthClients)

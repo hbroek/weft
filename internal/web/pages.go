@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hbroek/weft/internal/feed"
+	"github.com/hbroek/weft/internal/oauth"
 	"github.com/hbroek/weft/internal/store"
 )
 
@@ -234,6 +235,21 @@ b.addEventListener('click',function(){if(navigator.clipboard&&navigator.clipboar
 <h2>Log in to {{.Author}}</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <label>Password <input type="password" name="password" autofocus required></label>
 <p><button>Log in</button></p></form>{{template "foot"}}{{end}}
+{{define "oauth_problem"}}{{template "head" .}}<h2>Cannot connect</h2><p class="err">{{.Error}}</p><p>Nothing was shared. You can close this page.</p>{{template "foot"}}{{end}}
+{{define "oauth_consent"}}{{template "head" .}}<h2>Connect {{.OAuth.Client.Name}}</h2>
+<p><strong>{{.OAuth.Client.Name}}</strong>{{if .OAuth.ClientHost}} (<a href="{{.OAuth.Client.ClientURI}}" rel="noopener noreferrer">{{.OAuth.ClientHost}}</a>){{end}} wants to act for <strong>{{.Author}}</strong> on this site. It will be able to:</p>
+<ul>{{range .OAuth.Scopes}}<li>{{.Description}}</li>{{end}}</ul>
+<p><small>It will never see your password. After you choose, you are sent back to {{.OAuth.RedirectHost}}. You can disconnect it at any time from your profile.</small></p>
+<form method="post" action="/oauth/authorize">
+<input type="hidden" name="response_type" value="code">
+<input type="hidden" name="client_id" value="{{.OAuth.Client.ID}}">
+<input type="hidden" name="redirect_uri" value="{{.OAuth.Redirect}}">
+<input type="hidden" name="code_challenge" value="{{.OAuth.Challenge}}">
+<input type="hidden" name="code_challenge_method" value="S256">
+<input type="hidden" name="scope" value="{{.OAuth.Scope}}">
+<input type="hidden" name="state" value="{{.OAuth.State}}">
+<input type="hidden" name="csrf" value="{{.OAuth.CSRF}}">
+<p><button name="decision" value="allow">Allow</button> <button name="decision" value="deny" class="linkbtn">Deny</button></p></form>{{template "foot"}}{{end}}
 {{define "timeline"}}{{template "head" .}}{{if .Keyword}}<p class="kwhead">Tagged <strong>{{.Keyword}}</strong>{{if .Only}} from <strong>{{.Heading}}</strong>{{end}} <small>· <a href="{{.ClearKeyword}}">Clear filter</a></small></p>{{end}}<h2>{{if .Only}}{{.Heading}}</h2><p><small>{{.Only}} · <a href="/timeline">All feeds</a> · <a href="/following">Following</a></small></p>{{else}}Timeline</h2>{{end}}
 <p><small>{{if not .Keyword}}<a href="{{.LikesToggle}}">{{if .ShowLikes}}Hide likes{{else}}Show likes{{end}}</a>{{end}}{{if not .Only}}{{if not .Keyword}} · {{end}}<a href="{{.MineToggle}}">{{if .ShowMine}}Hide my posts{{else}}Show my posts{{end}}</a>{{end}}</small></p>
 {{range .Timeline}}{{if .IsLike}}<article class="likeevent"><p>{{if .AuthorHref}}<a href="{{.AuthorHref}}"><strong>{{.Author}}</strong></a>{{else}}<strong>{{.Author}}</strong>{{end}} liked {{if .LikedHref}}<a href="{{.LikedHref}}">{{.LikedAs}}</a>{{else}}{{.LikedAs}}{{end}} <small><time>{{.Date}}</time></small>{{if .Target}} <small><a href="/liked-by?target={{.Target | urlquery}}">Who liked</a></small>{{end}}</p>{{if .Mine}}<form method="post" action="/unlike"><input type="hidden" name="target" value="{{.Target}}"><button class="linkbtn">Unlike</button></form>{{end}}</article>
@@ -449,7 +465,8 @@ type pagePost struct {
 type pageData struct {
 	Title, FeedURL, WebmentionURL, Author, Bio string
 	Owner                                      bool
-	Next                                       string // login: the page to return to after signing in (a path on this host)
+	OAuth                                      *oauthPage // the consent page of an app
+	Next                                       string     // login: the page to return to after signing in (a path on this host)
 	Posts                                      []pagePost
 	Timeline                                   []tlRow
 	Replies                                    []replyRow
@@ -835,4 +852,12 @@ func (s *Server) previewImage(r *http.Request, src string) string {
 		return src
 	}
 	return ""
+}
+
+// oauthPage is what the consent page shows and carries.
+type oauthPage struct {
+	Client                                               *store.OAuthClient
+	ClientHost, Redirect, RedirectHost, Challenge, Scope string
+	State, CSRF                                          string
+	Scopes                                               []oauth.Scope
 }
