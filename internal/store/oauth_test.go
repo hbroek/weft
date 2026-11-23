@@ -113,7 +113,7 @@ func TestOAuthCodeWorksOnceAndOnlyBriefly(t *testing.T) {
 	if _, err := in.OAuthAccess(tk.Access); !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("tokens survived a reused code: %v", err)
 	}
-	if _, err := in.RefreshOAuthTokens(tk.Refresh, c.ID); !errors.Is(err, ErrTokenInvalid) {
+	if _, err := in.RefreshOAuthTokens(tk.Refresh, c.ID, "alice"); !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("refresh token survived a reused code: %v", err)
 	}
 
@@ -150,7 +150,7 @@ func TestOAuthAccessToken(t *testing.T) {
 	if _, err := in.OAuthAccess(hashToken(tk.Access)); !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("the stored hash works as a token: %v", err)
 	}
-	if _, err := in.RefreshOAuthTokens(tk.Access, c.ID); !errors.Is(err, ErrTokenInvalid) {
+	if _, err := in.RefreshOAuthTokens(tk.Access, c.ID, "alice"); !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("access token used as a refresh token: %v", err)
 	}
 	// it expires
@@ -184,13 +184,13 @@ func TestOAuthRefreshRotates(t *testing.T) {
 	other := newClient(t, in, "Other")
 	t1 := connect(t, in, c, "alice", "read")
 
-	if _, err := in.RefreshOAuthTokens(t1.Refresh, other.ID); !errors.Is(err, ErrTokenInvalid) {
+	if _, err := in.RefreshOAuthTokens(t1.Refresh, other.ID, "alice"); !errors.Is(err, ErrTokenInvalid) {
 		t.Fatalf("another app's refresh: %v", err)
 	}
 	if _, err := in.OAuthAccess(t1.Access); err != nil {
 		t.Fatalf("another app's try ended the grant: %v", err)
 	}
-	t2, err := in.RefreshOAuthTokens(t1.Refresh, c.ID)
+	t2, err := in.RefreshOAuthTokens(t1.Refresh, c.ID, "alice")
 	if err != nil || t2.Access == t1.Access || t2.Refresh == t1.Refresh || t2.Scope != "read" {
 		t.Fatalf("%+v %v", t2, err)
 	}
@@ -201,7 +201,7 @@ func TestOAuthRefreshRotates(t *testing.T) {
 		t.Errorf("the new access token does not work: %v", err)
 	}
 	// the old refresh token, at once: a retry whose answer got lost; refused, but the grant stays
-	if _, err := in.RefreshOAuthTokens(t1.Refresh, c.ID); !errors.Is(err, ErrTokenInvalid) {
+	if _, err := in.RefreshOAuthTokens(t1.Refresh, c.ID, "alice"); !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("old refresh token: %v", err)
 	}
 	if _, err := in.OAuthAccess(t2.Access); err != nil {
@@ -209,13 +209,13 @@ func TestOAuthRefreshRotates(t *testing.T) {
 	}
 	// the old refresh token later: it was stolen or kept; everything of the grant goes
 	in.db.Exec(`UPDATE oauth_tokens SET used=used-60 WHERE used<>0`)
-	if _, err := in.RefreshOAuthTokens(t1.Refresh, c.ID); !errors.Is(err, ErrTokenInvalid) {
+	if _, err := in.RefreshOAuthTokens(t1.Refresh, c.ID, "alice"); !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("reused refresh token: %v", err)
 	}
 	if _, err := in.OAuthAccess(t2.Access); !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("the grant survived a reused refresh token: %v", err)
 	}
-	if _, err := in.RefreshOAuthTokens(t2.Refresh, c.ID); !errors.Is(err, ErrTokenInvalid) {
+	if _, err := in.RefreshOAuthTokens(t2.Refresh, c.ID, "alice"); !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("the new refresh token survived: %v", err)
 	}
 }
@@ -290,6 +290,13 @@ func TestOAuthConnectingAgainReplacesTheOldGrant(t *testing.T) {
 	}
 	code, _ := in.NewOAuthCode(g, "https://app.example/cb", "ch")
 	if _, err := in.RedeemOAuthCode(code); err != nil {
+		t.Fatal(err)
+	}
+	// a code that is redeemed but fails the PKCE check is never followed by tokens, and must not end the old grant
+	if _, err := in.OAuthAccess(old.Access); err != nil {
+		t.Fatalf("redeeming a code ended the old grant: %v", err)
+	}
+	if _, err := in.IssueOAuthTokens(g); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := in.OAuthAccess(old.Access); !errors.Is(err, ErrTokenInvalid) {

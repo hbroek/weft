@@ -361,3 +361,169 @@ func TestAuthorizeAndConsent(t *testing.T) {
 		t.Errorf("answer with OAuth off: %d", w.Code)
 	}
 }
+
+// --- the token endpoint ---
+
+const pkceVerifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk" // the one of RFC 7636 that makes pkceChallenge
+
+func TestTokenEndpoint(t *testing.T) {
+	s, _ := setup(t)
+	s.cfg.OAuth = true
+	if _, err := s.st.AddUser("bob", "Bob", ""); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := s.st.AddOAuthClient(store.OAuthClient{Name: "Quill", RedirectURIs: []string{"https://app.example/cb"}})
+	other, _ := s.st.AddOAuthClient(store.OAuthClient{Name: "Other", RedirectURIs: []string{"https://other.example/cb"}})
+	const redirect = "https://app.example/cb"
+	newCode := func() string {
+		g, err := s.st.CreateOAuthGrant(c.ID, "alice", "read post")
+		if err != nil {
+			t.Fatal(err)
+		}
+		code, _ := s.st.NewOAuthCode(g, redirect, pkceChallenge)
+		return code
+	}
+	post := func(host, path string, v url.Values) (*httptest.ResponseRecorder, map[string]any) {
+		w := doWith(s, "POST", host, path, "", "application/x-www-form-urlencoded", "", v.Encode())
+		var m map[string]any
+		json.Unmarshal(w.Body.Bytes(), &m)
+		return w, m
+	}
+	exchange := func(code string, over map[string]string) (*httptest.ResponseRecorder, map[string]any) {
+		v := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "client_id": {c.ID}, "redirect_uri": {redirect}, "code_verifier": {pkceVerifier}}
+		for k, val := range over {
+			v.Set(k, val)
+		}
+		return post(alice, "/oauth/token", v)
+	}
+
+	// the whole exchange
+	w, m := exchange(newCode(), nil)
+	if w.Code != 200 || m["token_type"] != "Bearer" || m["scope"] != "read post" || m["expires_in"] != float64(3600) ||
+		!strings.HasPrefix(m["access_token"].(string), "wat_") || !strings.HasPrefix(m["refresh_token"].(string), "wrt_") {
+		t.Fatalf("%d %v", w.Code, m)
+	}
+	if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("Pragma") != "no-cache" {
+		t.Error("a token response can be cached")
+	}
+	access, refresh := m["access_token"].(string), m["refresh_token"].(string)
+	if a, err := s.st.OAuthAccess(access); err != nil || a.User != "alice" || a.ClientID != c.ID {
+		t.Errorf("the access token: %+v %v", a, err)
+	}
+
+	// every way to get it wrong is "invalid_grant", and a code that was tried is gone
+	for name, over := range map[string]map[string]string{
+		"wrong verifier":  {"code_verifier": strings.Repeat("a", 43)},
+		"no verifier":     {"code_verifier": ""},
+		"other redirect":  {"redirect_uri": "https://app.example/cb2"},
+		"no redirect":     {"redirect_uri": ""},
+		"another app":     {"client_id": other.ID},
+		"not a code":      {"code": "wco_" + strings.Repeat("x", 43)},
+		"plain challenge": {"code_verifier": pkceChallenge},
+	} {
+		code := newCode()
+		w, m := exchange(code, over)
+		if w.Code != 400 || m["error"] != "invalid_grant" || m["access_token"] != nil {
+			t.Errorf("%s: %d %v", name, w.Code, m)
+		}
+		if name != "not a code" {
+			if w, _ := exchange(code, nil); w.Code != 400 { // the right request, with the same code, is too late
+				t.Errorf("%s: the code worked after a wrong try: %d", name, w.Code)
+			}
+		}
+	}
+	// a code of alice's, sent to bob's address
+	code := newCode()
+	if w, m := post("bob.localhost:8080", "/oauth/token", url.Values{"grant_type": {"authorization_code"}, "code": {code}, "client_id": {c.ID}, "redirect_uri": {redirect}, "code_verifier": {pkceVerifier}}); w.Code != 400 || m["error"] != "invalid_grant" {
+		t.Errorf("another account's address: %d %v", w.Code, m)
+	}
+
+	// refresh: a new pair, and the old refresh token is spent
+	rf := func(host, tok, client string) (*httptest.ResponseRecorder, map[string]any) {
+		return post(host, "/oauth/token", url.Values{"grant_type": {"refresh_token"}, "refresh_token": {tok}, "client_id": {client}})
+	}
+	if w, m := rf(alice, refresh, other.ID); w.Code != 400 || m["error"] != "invalid_grant" {
+		t.Errorf("another app's refresh: %d %v", w.Code, m)
+	}
+	if w, m := rf("bob.localhost:8080", refresh, c.ID); w.Code != 400 || m["error"] != "invalid_grant" {
+		t.Errorf("another account's refresh: %d %v", w.Code, m)
+	}
+	w, m = rf(alice, refresh, c.ID)
+	if w.Code != 200 || m["access_token"] == access || m["refresh_token"] == refresh {
+		t.Fatalf("refresh: %d %v", w.Code, m)
+	}
+	if _, err := s.st.OAuthAccess(access); err == nil {
+		t.Error("the old access token still works")
+	}
+	newAccess, newRefresh := m["access_token"].(string), m["refresh_token"].(string)
+	// the old refresh token again, after the moment of grace: someone else has it, so the grant ends
+	if _, err := s.st.RawDBForTests().Exec(`UPDATE oauth_tokens SET used=used-3600 WHERE used>0`); err != nil {
+		t.Fatal(err)
+	}
+	if w, m := rf(alice, refresh, c.ID); w.Code != 400 || m["error"] != "invalid_grant" {
+		t.Errorf("reused refresh: %d %v", w.Code, m)
+	}
+	if _, err := s.st.OAuthAccess(newAccess); err == nil {
+		t.Error("the grant survived a reused refresh token")
+	}
+	if w, _ := rf(alice, newRefresh, c.ID); w.Code != 400 {
+		t.Error("the newer refresh token survived")
+	}
+
+	// malformed requests
+	for name, v := range map[string]url.Values{
+		"no grant type":  {"client_id": {c.ID}},
+		"password grant": {"grant_type": {"password"}, "client_id": {c.ID}},
+		"unknown client": {"grant_type": {"authorization_code"}, "client_id": {"wc_nope"}, "code": {"x"}},
+		"with a secret":  {"grant_type": {"authorization_code"}, "client_id": {c.ID}, "client_secret": {"s"}, "code": {"x"}},
+		"unknown scope":  {"grant_type": {"refresh_token"}, "client_id": {c.ID}, "refresh_token": {"x"}, "scope": {"root"}},
+		"missing client": {"grant_type": {"authorization_code"}, "code": {"x"}},
+	} {
+		if w, m := post(alice, "/oauth/token", v); w.Code < 400 || m["error"] == nil {
+			t.Errorf("%s: %d %v", name, w.Code, m)
+		}
+	}
+	// parameters belong in the body, not in the address
+	r := httptest.NewRequest("POST", "http://"+alice+"/oauth/token?grant_type=authorization_code&client_id="+c.ID, nil)
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, r)
+	if rec.Code < 400 || strings.Contains(rec.Body.String(), "access_token") {
+		t.Errorf("query parameters: %d", rec.Code)
+	}
+	if w := doWith(s, "POST", alice, "/oauth/token", "", "application/json", "", `{"grant_type":"authorization_code"}`); w.Code != 400 {
+		t.Errorf("json body: %d", w.Code)
+	}
+	if w := doWith(s, "GET", alice, "/oauth/token", "", "", "", ""); w.Code != 405 {
+		t.Errorf("GET: %d", w.Code)
+	}
+
+	// revoke: the app ends its own grant; an unknown token is no error and tells nothing
+	_, m = exchange(newCode(), nil)
+	acc := m["access_token"].(string)
+	if w, _ := post(alice, "/oauth/revoke", url.Values{"token": {"wat_nothing"}, "client_id": {c.ID}}); w.Code != 200 {
+		t.Errorf("revoking an unknown token: %d", w.Code)
+	}
+	post(alice, "/oauth/revoke", url.Values{"token": {acc}, "client_id": {other.ID}}) // another app cannot
+	if _, err := s.st.OAuthAccess(acc); err != nil {
+		t.Errorf("another app revoked it: %v", err)
+	}
+	if w, _ := post(alice, "/oauth/revoke", url.Values{"token": {acc}, "client_id": {c.ID}}); w.Code != 200 {
+		t.Errorf("revoke: %d", w.Code)
+	}
+	if _, err := s.st.OAuthAccess(acc); err == nil {
+		t.Error("a revoked token works")
+	}
+	if w, _ := post(alice, "/oauth/revoke", url.Values{"token": {acc}, "client_id": {"wc_nope"}}); w.Code != 401 {
+		t.Errorf("revoke by an unknown app: %d", w.Code)
+	}
+
+	// off: neither exists
+	s.cfg.OAuth = false
+	if w, _ := post(alice, "/oauth/token", url.Values{"grant_type": {"refresh_token"}}); w.Code != 404 {
+		t.Errorf("token with OAuth off: %d", w.Code)
+	}
+	if w, _ := post(alice, "/oauth/revoke", url.Values{"token": {"x"}}); w.Code != 404 {
+		t.Errorf("revoke with OAuth off: %d", w.Code)
+	}
+}

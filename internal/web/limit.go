@@ -168,6 +168,7 @@ type limits struct {
 	signup   *rateLimiter // the start of a sign-up, per address
 	dnsCheck *rateLimiter // a look at a sign-up's DNS record, per address
 	register *rateLimiter // an app registering itself (OAuth), per address
+	tokens   *rateLimiter // the token and revoke endpoints (OAuth), per address
 }
 
 func newLimits() *limits {
@@ -182,6 +183,7 @@ func newLimits() *limits {
 		signup:   newRateLimiter(1, 5),
 		dnsCheck: newRateLimiter(6, 12),
 		register: newRateLimiter(6, 10),
+		tokens:   newRateLimiter(60, 30),
 	}
 }
 
@@ -230,6 +232,8 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request) bool {
 		return ok
 	}
 	switch {
+	case r.Method == http.MethodPost && (path == "/oauth/token" || path == "/oauth/revoke"):
+		return use(s.lim.tokens, ip)
 	case r.Method == http.MethodPost && path == "/oauth/register":
 		return use(s.lim.register, ip)
 	case r.Method == http.MethodPost && path == "/webmention":

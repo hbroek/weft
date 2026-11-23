@@ -150,8 +150,7 @@ func (in *Instance) NewOAuthCode(grantID int64, redirectURI, challenge string) (
 
 // RedeemOAuthCode uses up a code. It works once: a second try with the same code means someone else has a copy, so
 // the grant is revoked with everything issued from it. The caller must still check the app, the redirect address
-// and the PKCE verifier against what it returns. A grant that was connected before by the same app for the same
-// account is replaced by this one.
+// and the PKCE verifier against what it returns, and only then call IssueOAuthTokens.
 func (in *Instance) RedeemOAuthCode(code string) (*OAuthCode, error) {
 	tx, err := in.db.Begin()
 	if err != nil {
@@ -182,9 +181,6 @@ func (in *Instance) RedeemOAuthCode(code string) (*OAuthCode, error) {
 	if _, err := tx.Exec(`UPDATE oauth_codes SET used=? WHERE hash=?`, now, hashToken(code)); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(`DELETE FROM oauth_grants WHERE client_id=? AND name=? AND id<>?`, c.ClientID, c.User, c.GrantID); err != nil {
-		return nil, err
-	}
 	return &c, tx.Commit()
 }
 
@@ -200,16 +196,22 @@ func issue(tx *sql.Tx, grantID int64, scope string) (*OAuthTokens, error) {
 	return t, nil
 }
 
-// IssueOAuthTokens makes the first tokens of a grant, after its code was redeemed.
+// IssueOAuthTokens makes the first tokens of a grant, after its code was redeemed and checked. A grant that the same
+// app held before for the same account is replaced by this one.
 func (in *Instance) IssueOAuthTokens(grantID int64) (*OAuthTokens, error) {
 	tx, err := in.db.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	var scope string
-	if err := tx.QueryRow(`SELECT scope FROM oauth_grants WHERE id=?`, grantID).Scan(&scope); err != nil {
+	var scope, client, user string
+	if err := tx.QueryRow(`SELECT scope,client_id,name FROM oauth_grants WHERE id=?`, grantID).Scan(&scope, &client, &user); err != nil {
 		return nil, ErrTokenInvalid
+	}
+	// Connecting the same app again replaces the older connection, but only now, when the app has proved itself with
+	// the PKCE verifier: a code that is stolen and fails the check must not end a connection that works.
+	if _, err := tx.Exec(`DELETE FROM oauth_grants WHERE client_id=? AND name=? AND id<>?`, client, user, grantID); err != nil {
+		return nil, err
 	}
 	t, err := issue(tx, grantID, scope)
 	if err != nil {
@@ -218,19 +220,19 @@ func (in *Instance) IssueOAuthTokens(grantID int64) (*OAuthTokens, error) {
 	return t, tx.Commit()
 }
 
-// RefreshOAuthTokens swaps a refresh token for a new pair; the old refresh token and the old access tokens stop
+// RefreshOAuthTokens swaps a refresh token, of this app and this account, for a new pair; the old refresh token and the old access tokens stop
 // working. Using a refresh token that was already used (more than a moment ago) means two parties hold it, so the
 // whole grant is revoked.
-func (in *Instance) RefreshOAuthTokens(refresh, clientID string) (*OAuthTokens, error) {
+func (in *Instance) RefreshOAuthTokens(refresh, clientID, user string) (*OAuthTokens, error) {
 	tx, err := in.db.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 	var grantID, expires, used int64
-	var gclient, scope string
-	err = tx.QueryRow(`SELECT t.grant_id,t.expires,t.used,g.client_id,g.scope FROM oauth_tokens t JOIN oauth_grants g ON g.id=t.grant_id
-		WHERE t.hash=? AND t.refresh=1`, hashToken(refresh)).Scan(&grantID, &expires, &used, &gclient, &scope)
+	var gclient, gname, scope string
+	err = tx.QueryRow(`SELECT t.grant_id,t.expires,t.used,g.client_id,g.name,g.scope FROM oauth_tokens t JOIN oauth_grants g ON g.id=t.grant_id
+		WHERE t.hash=? AND t.refresh=1`, hashToken(refresh)).Scan(&grantID, &expires, &used, &gclient, &gname, &scope)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrTokenInvalid
 	}
@@ -239,7 +241,7 @@ func (in *Instance) RefreshOAuthTokens(refresh, clientID string) (*OAuthTokens, 
 	}
 	now := time.Now()
 	switch {
-	case gclient != clientID || expires < now.Unix():
+	case gclient != clientID || gname != user || expires < now.Unix():
 		return nil, ErrTokenInvalid
 	case used != 0 && now.Unix()-used <= int64(oauthRetry.Seconds()):
 		return nil, ErrTokenInvalid // a retry of the same call

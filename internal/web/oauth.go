@@ -425,3 +425,106 @@ func (s *Server) authorizeAnswer(w http.ResponseWriter, r *http.Request, q *req)
 		back(map[string]string{"code": c})
 	}
 }
+
+// --- tokens ---
+
+// tokenError is an error of the token endpoint (RFC 6749, 5.2).
+func tokenError(w http.ResponseWriter, status int, code, desc string) {
+	oauthError(w, status, code, desc)
+}
+
+// formParams reads the body of a token request: a form, as the RFC says, and only the body (a secret in a
+// query string ends up in logs).
+func formParams(w http.ResponseWriter, r *http.Request) (url.Values, bool) {
+	if ct := strings.TrimSpace(strings.SplitN(r.Header.Get("Content-Type"), ";", 2)[0]); ct != "application/x-www-form-urlencoded" {
+		tokenError(w, http.StatusBadRequest, "invalid_request", "send the request as application/x-www-form-urlencoded")
+		return nil, false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	if err := r.ParseForm(); err != nil {
+		tokenError(w, http.StatusBadRequest, "invalid_request", "the body is not a form of at most 16 KB")
+		return nil, false
+	}
+	return r.PostForm, true
+}
+
+// token swaps a code, or a refresh token, for tokens. The app is a public client, so what proves it is the code
+// itself and the PKCE verifier only the app that started the request knows.
+func (s *Server) token(w http.ResponseWriter, r *http.Request, name string) {
+	v, ok := formParams(w, r)
+	if !ok {
+		return
+	}
+	clientID := v.Get("client_id")
+	if v.Get("client_secret") != "" || v.Get("client_assertion") != "" {
+		tokenError(w, http.StatusBadRequest, "invalid_client", "apps here are public clients and have no secret")
+		return
+	}
+	if _, err := s.st.OAuthClient(clientID); err != nil {
+		tokenError(w, http.StatusUnauthorized, "invalid_client", "unknown client_id")
+		return
+	}
+	var t *store.OAuthTokens
+	var err error
+	switch v.Get("grant_type") {
+	case "authorization_code":
+		var c *store.OAuthCode
+		if c, err = s.st.RedeemOAuthCode(v.Get("code")); err != nil {
+			break
+		}
+		// the code is used up now, whatever follows: a wrong guess does not get another try
+		if c.ClientID != clientID || c.User != name || c.RedirectURI != v.Get("redirect_uri") || !oauth.VerifyPKCE(v.Get("code_verifier"), c.Challenge) {
+			err = store.ErrCodeInvalid
+			break
+		}
+		t, err = s.st.IssueOAuthTokens(c.GrantID)
+	case "refresh_token":
+		if sc := v.Get("scope"); sc != "" { // a refresh may ask for less, but this server only gives what was granted
+			if _, perr := oauth.ParseScope(sc); perr != nil {
+				tokenError(w, http.StatusBadRequest, "invalid_scope", perr.Error())
+				return
+			}
+		}
+		t, err = s.st.RefreshOAuthTokens(v.Get("refresh_token"), clientID, name)
+	case "":
+		tokenError(w, http.StatusBadRequest, "invalid_request", "grant_type is required")
+		return
+	default:
+		tokenError(w, http.StatusBadRequest, "unsupported_grant_type", "grant_type may be authorization_code or refresh_token")
+		return
+	}
+	switch {
+	case errors.Is(err, store.ErrCodeInvalid), errors.Is(err, store.ErrTokenInvalid):
+		tokenError(w, http.StatusBadRequest, "invalid_grant", "the code or refresh token is wrong, used, or expired")
+		return
+	case err != nil:
+		tokenError(w, http.StatusInternalServerError, "server_error", "could not issue tokens")
+		return
+	}
+	oauthCORS(w)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"access_token": t.Access, "token_type": "Bearer", "expires_in": t.ExpiresIn, "refresh_token": t.Refresh, "scope": t.Scope,
+	})
+}
+
+// revoke ends the grant a token belongs to (RFC 7009), at the app's request. It says 200 whether or not the token
+// was known, so that it tells nobody what is valid.
+func (s *Server) revoke(w http.ResponseWriter, r *http.Request, name string) {
+	v, ok := formParams(w, r)
+	if !ok {
+		return
+	}
+	if _, err := s.st.OAuthClient(v.Get("client_id")); err != nil {
+		tokenError(w, http.StatusUnauthorized, "invalid_client", "unknown client_id")
+		return
+	}
+	if err := s.st.RevokeOAuthToken(v.Get("token"), v.Get("client_id")); err != nil {
+		tokenError(w, http.StatusInternalServerError, "server_error", "could not revoke")
+		return
+	}
+	oauthCORS(w)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+}
