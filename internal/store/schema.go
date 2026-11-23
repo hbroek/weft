@@ -444,3 +444,11 @@ CREATE TABLE oauth_tokens (
 CREATE INDEX oauth_tokens_grant ON oauth_tokens(grant_id);`)
 	return err
 }
+
+// instanceV17 adds the logo of an app: a copy, made small by the server when the app registered.
+func instanceV17(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+ALTER TABLE oauth_clients ADD COLUMN logo BLOB;
+ALTER TABLE oauth_clients ADD COLUMN logo_mime TEXT NOT NULL DEFAULT '';`)
+	return err
+}

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -10,7 +11,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/hbroek/weft/internal/img"
 	"github.com/hbroek/weft/internal/oauth"
 	"github.com/hbroek/weft/internal/store"
 )
@@ -199,6 +202,9 @@ func (s *Server) registerClient(w http.ResponseWriter, r *http.Request, _ string
 	case err != nil:
 		oauthError(w, http.StatusInternalServerError, "server_error", "could not save the registration")
 		return
+	}
+	if saved.LogoURI != "" {
+		saved.HasLogo = s.keepLogo(r.Context(), saved)
 	}
 	oauthCORS(w)
 	w.Header().Set("Cache-Control", "no-store")
@@ -527,4 +533,46 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request, name string) {
 	oauthCORS(w)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
+}
+
+// --- logos ---
+
+// logoSize is the side, in pixels, of the logo kept for an app.
+const logoSize = 96
+
+// logoLimits are what a logo may be before it is made small: a logo is a small picture, and the fetch happens in the
+// request of whoever registers.
+var logoLimits = img.Limits{MaxBytes: 1 << 20, MaxInput: 2 << 20, MaxPixels: 4_000_000}
+
+// keepLogo fetches the logo an app gave, once, and keeps a small square copy of it. The person looking at the consent page
+// then loads it from here: the app's server learns nothing about who looks, and a file that is not a picture, or is
+// too big, never reaches anyone's browser. It reports whether a logo was kept; a logo that cannot be had is no
+// reason to refuse the app.
+func (s *Server) keepLogo(ctx context.Context, c *store.OAuthClient) bool {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	res, err := s.web.GetAs(ctx, c.LogoURI, "image/png, image/jpeg, image/gif")
+	if err != nil {
+		return false
+	}
+	pic, err := img.Avatar(res.Body, logoLimits, logoSize)
+	if err != nil {
+		return false
+	}
+	return s.st.SetOAuthLogo(c.ID, pic.Mime, pic.Data) == nil
+}
+
+// logo serves an app's kept logo.
+func (s *Server) logo(w http.ResponseWriter, r *http.Request, _ string) {
+	mime, data, err := s.st.OAuthLogo(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", mime)
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	h.Set("Cache-Control", "public, max-age=86400")
+	w.Write(data)
 }

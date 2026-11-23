@@ -3,14 +3,17 @@ package web
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/hbroek/weft/internal/img"
+	"github.com/hbroek/weft/internal/oauth"
 	"github.com/hbroek/weft/internal/store"
 )
 
@@ -137,6 +140,7 @@ func (s *Server) renderProfile(w http.ResponseWriter, r *http.Request, q *req, s
 	d.UploadMax = s.limitFor(img.Compact)
 	d.Domain = s.domainView(r, q)
 	d.Move = s.moveView(r, q)
+	d.Apps = s.appRows(q)
 	s.show(w, "profile", status, d)
 }
 
@@ -193,4 +197,52 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request, q *req) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%s.weft.zip"`, q.host.Name, time.Now().Format("2006-01-02")))
 	w.Header().Set("Cache-Control", "no-store")
 	http.ServeContent(w, r, "", time.Time{}, tmp)
+}
+
+// appRow is an app the owner has connected, as the profile shows it.
+type appRow struct {
+	ID         int64
+	ClientID   string
+	Logo       bool
+	Name, Host string
+	Can        []string // what it may do, in plain words
+	Since      string
+	Used       string // when it last did something, or "not yet"
+}
+
+// appRows lists the apps the owner has connected. With OAuth off there is nothing to show unless some were
+// connected earlier, which the owner can still end.
+func (s *Server) appRows(q *req) []appRow {
+	grants, err := s.st.OAuthGrants(q.host.Name)
+	if err != nil {
+		return nil
+	}
+	var out []appRow
+	for _, g := range grants {
+		row := appRow{ID: g.ID, ClientID: g.ClientID, Logo: g.HasLogo, Name: g.ClientName, Host: hostOf(g.ClientURI), Since: stampAt(g.Created), Used: "not yet"}
+		if !g.LastUsed.IsZero() {
+			row.Used = ago(g.LastUsed)
+		}
+		for _, sc := range oauth.Scopes {
+			if oauth.HasScope(g.Scope, sc.Name) {
+				row.Can = append(row.Can, sc.Description)
+			}
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// appRevoke disconnects one app: its tokens stop working at once.
+func (s *Server) appRevoke(w http.ResponseWriter, r *http.Request, q *req) {
+	if !s.requireOwner(w, r, q) {
+		return
+	}
+	if id, err := strconv.ParseInt(r.FormValue("id"), 10, 64); err == nil {
+		if err := s.st.RevokeOAuthGrant(q.host.Name, id); err != nil && !errors.Is(err, store.ErrNotFound) {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	http.Redirect(w, r, "/profile#apps", http.StatusSeeOther)
 }

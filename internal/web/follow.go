@@ -713,6 +713,7 @@ func (s *Server) StartPoller(ctx context.Context, every time.Duration) <-chan st
 			case <-queues.C:
 				s.ProcessQueues(ctx)
 				s.endMoves()
+				s.pruneOAuth()
 				go s.checkDomains(ctx, time.Now())
 			case <-s.wake:
 				s.ProcessQueues(ctx)
@@ -807,4 +808,15 @@ func siteOf(feedURL string) string {
 		u.Path = u.Path[:i+1]
 	}
 	return u.String()
+}
+
+// pruneOAuth, at most once an hour, forgets the OAuth codes, tokens and apps that can no longer be used.
+func (s *Server) pruneOAuth() {
+	if time.Since(s.oauthPruned) < time.Hour {
+		return
+	}
+	s.oauthPruned = time.Now()
+	if err := s.st.PruneOAuth(time.Now()); err != nil {
+		log.Printf("pruning OAuth data: %v", err)
+	}
 }

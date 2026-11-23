@@ -19,6 +19,7 @@ A Weft host: every post, reply and like lives in its author's own RSS 2.0 feed. 
   - [Following and the timeline](#following-and-the-timeline)
   - [Replies, likes and threads](#replies-likes-and-threads)
   - [Your profile](#your-profile)
+  - [Apps that act for you (OAuth)](#apps-that-act-for-you-oauth)
   - [Weft it (bookmarklet)](#weft-it-bookmarklet)
   - [Pages as Markdown](#pages-as-markdown)
   - [Which feeds Weft can follow](#which-feeds-weft-can-follow)
@@ -27,6 +28,7 @@ A Weft host: every post, reply and like lives in its author's own RSS 2.0 feed. 
   - [Data, backups and moving](#data-backups-and-moving)
   - [Custom domains](#custom-domains)
   - [Limits](#limits)
+  - [OAuth for apps](#oauth-for-apps)
   - [Landing page and sign-ups](#landing-page-and-sign-ups)
   - [Administration](#administration)
   - [Behind Cloudflare](#behind-cloudflare)
@@ -229,6 +231,31 @@ On the profile page, *Your address* lets you add a domain such as `weft.example.
 
 See [Custom domains](#custom-domains) under Running a server for the proxy and certificate side.
 
+### Apps that act for you (OAuth)
+
+If the server has turned it on, an app can act for you through the API without ever holding your password or your API token: you say yes once, on your own site, and can end it at any time. The app opens your address's `/oauth/authorize`, you sign in if you are not, and you see its name, where it will send you back and what it asks to do. **Allow** connects it. The apps you have connected are listed on your profile under *Connected apps*, each with what it may do and when it last did something; **Disconnect** stops it at once. Changing your password disconnects all of them, and so does leaving the server.
+
+What an app can be allowed to do (it is asked for by name, and you see each one in plain words):
+
+| Scope | Lets the app |
+|---|---|
+| `read` | read your posts, your timeline, who you follow, and the replies and likes you have received |
+| `post` | write, change and delete your posts, and upload pictures, including your profile picture |
+| `follow` | follow and unfollow feeds |
+| `like` | like and unlike |
+| `moderate` | approve or hide replies to your posts |
+
+Your own API token is not limited by scopes and keeps working. An app that asks for something its token is not allowed to do gets `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="post"`.
+
+**For app developers.** Each account is its own authorization server, at its own address (`https://alice.example.org`, or her own domain). An app finds the rest from `/.well-known/oauth-authorization-server` ([RFC 8414](https://www.rfc-editor.org/rfc/rfc8414)) or, from a `401` on the API, `/.well-known/oauth-protected-resource` ([RFC 9728](https://www.rfc-editor.org/rfc/rfc9728)).
+
+1. **Register** the app, once per server, with `POST /oauth/register` and a JSON body ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)): `client_name` and `redirect_uris` (1 to 10); optionally `client_uri`, `logo_uri` and `policy_uri` (https addresses). The answer holds the `client_id`. The server fetches the logo once, while you register, and keeps a 96-pixel square copy (JPEG, PNG or GIF; a wide picture is cropped to its middle) to show on the consent page: people's browsers never load it from you. A logo that cannot be fetched or is not a picture is left out, and the app is registered all the same. Apps are public clients: there is no secret, and `token_endpoint_auth_method` can only be `none`. Redirect addresses are `https`, or `http` to `localhost`, `127.0.0.1` or `[::1]` (any port), or a private scheme such as `com.example.app:/cb`; no fragment.
+2. **Send the person to** `/oauth/authorize` with `response_type=code`, `client_id`, `redirect_uri` (exactly as registered), `code_challenge` and `code_challenge_method=S256` ([PKCE](https://www.rfc-editor.org/rfc/rfc7636): `plain` is not accepted), `scope` (space-separated; `read` when left out) and a `state`. They come back to your `redirect_uri` with `code`, `state` and `iss`, or with `error` (`access_denied` when they say no).
+3. **Swap the code** at `POST /oauth/token` (form-encoded, in the body): `grant_type=authorization_code`, `code`, `client_id`, `redirect_uri` and `code_verifier`. The code works once, for 60 seconds. The answer has `access_token` (an hour), `refresh_token` (30 days), `expires_in` and `scope`.
+4. **Call the API** with `Authorization: Bearer <access_token>`, at the same address.
+5. **Renew** with `grant_type=refresh_token`, `refresh_token` and `client_id`. Each refresh token works once and comes with a new pair; using an old one again ends the whole connection. Keep the new pair before you use it.
+6. **Disconnect** with `POST /oauth/revoke` (`token`, `client_id`), which ends the connection a token belongs to.
+
 ### Weft it (bookmarklet)
 
 Your home page shows a "Weft it" link to drag to the bookmarks bar. Clicking it on any page opens the compose form with the page's title, description and image (from Open Graph or Twitter tags, falling back to the page itself). It also checks whether the page can take a Webmention (a `rel="webmention"` link in the page, or in the `Link` header of its response). If it can, the form starts as a **reply to the page**; if not, as a **bookmark card** (the image, the description as a quote and a link). A link under the form switches between the two, and nothing is published until you press Publish. If the page advertises RSS or Atom feeds (up to five), they are listed above the form with a **Follow** button, or "Following ✓" for those you already follow; the button follows without leaving the form, so what you have typed stays. A reply to a page carries what the page looked like as optional attributes of `weft:context` (`title`, `description`, `image`), so followers see a card for it. The API takes the same as `"context": {"title": "", "description": "", "image": ""}` next to `in_reply_to`.
@@ -325,6 +352,12 @@ The server keeps one caller from using it up. Each limit answers `429 Too Many R
 - **Connections:** 10 seconds to send the headers, 30 to send the request, 60 to answer, 2 minutes idle.
 
 Behind a reverse proxy every request comes from the proxy, so start the server with `-trust-proxy` and the limits use the address in `X-Forwarded-For`, the last entry, which Caddy sets to the client. Do that only behind a proxy that sets it: otherwise anyone can claim to be any address. `-no-rate-limits` turns the limits off, for load tests. Reading public pages (the feed, permalinks) is not limited by the server: put a limit on those at the proxy or a CDN (the standard Caddy has none; the `caddy-ratelimit` module adds one, and Cloudflare has rate limiting rules).
+
+### OAuth for apps
+
+`weft serve -oauth` (off by default) lets the people on this server connect apps that act for them through the API (see [Apps that act for you](#apps-that-act-for-you-oauth)). Off, the addresses `/oauth/…` and `/.well-known/oauth-…` answer 404 and the API accepts only each account's own token, even from an app that was connected earlier; turning it on again brings those connections back. Switching it off does not delete them.
+
+Everything about apps is kept in the server's own database (`instance.db`), not in the users' files: the apps that registered (with a small copy of each logo), who connected what, and the hashes of the codes and tokens (the tokens themselves are never stored). A user's export and a move to another server carry none of it, and a move or removal ends the account's connections. Anyone can register an app, so registration is limited: 6 a minute per address (10 at once), at most 2,000 apps on the server (when it is full an app nobody ever connected, at least 10 minutes old, is dropped to make room), and at most 100 connections for one account. Expired codes and tokens, connections that were never finished and apps nobody connected within 7 days are deleted every hour. The token endpoints are limited to 60 calls a minute per address.
 
 ### Landing page and sign-ups
 

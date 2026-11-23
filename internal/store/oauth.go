@@ -45,6 +45,7 @@ type OAuthClient struct {
 	ID, Name                      string
 	RedirectURIs                  []string
 	ClientURI, LogoURI, PolicyURI string
+	HasLogo                       bool // a copy of the logo was made at registration and is served from here
 	Created                       time.Time
 }
 
@@ -53,6 +54,7 @@ type OAuthGrant struct {
 	ID                         int64
 	ClientID, ClientName, User string
 	ClientURI                  string
+	HasLogo                    bool
 	Scope                      string    // space-separated, as package oauth parses it
 	Created, LastUsed          time.Time // LastUsed is the zero time before the first use
 }
@@ -114,8 +116,8 @@ func (in *Instance) OAuthClient(id string) (*OAuthClient, error) {
 	var c OAuthClient
 	var uris string
 	var created int64
-	err := in.rdb.QueryRow(`SELECT id,name,redirect_uris,client_uri,logo_uri,policy_uri,created FROM oauth_clients WHERE id=?`, id).
-		Scan(&c.ID, &c.Name, &uris, &c.ClientURI, &c.LogoURI, &c.PolicyURI, &created)
+	err := in.rdb.QueryRow(`SELECT id,name,redirect_uris,client_uri,logo_uri,policy_uri,logo IS NOT NULL,created FROM oauth_clients WHERE id=?`, id).
+		Scan(&c.ID, &c.Name, &uris, &c.ClientURI, &c.LogoURI, &c.PolicyURI, &c.HasLogo, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -316,7 +318,7 @@ func (in *Instance) RevokeOAuthGrants(user string) error {
 // OAuthGrants lists the apps the user has connected, newest first. A grant whose code was never swapped for tokens
 // is not one yet.
 func (in *Instance) OAuthGrants(user string) ([]OAuthGrant, error) {
-	rows, err := in.rdb.Query(`SELECT g.id,g.client_id,c.name,c.client_uri,g.name,g.scope,g.created,g.last_used FROM oauth_grants g
+	rows, err := in.rdb.Query(`SELECT g.id,g.client_id,c.name,c.client_uri,c.logo IS NOT NULL,g.name,g.scope,g.created,g.last_used FROM oauth_grants g
 		JOIN oauth_clients c ON c.id=g.client_id WHERE g.name=? AND EXISTS (SELECT 1 FROM oauth_codes WHERE grant_id=g.id AND used<>0)
 		ORDER BY g.created DESC, g.id DESC`, user)
 	if err != nil {
@@ -327,7 +329,7 @@ func (in *Instance) OAuthGrants(user string) ([]OAuthGrant, error) {
 	for rows.Next() {
 		var g OAuthGrant
 		var created, last int64
-		if err := rows.Scan(&g.ID, &g.ClientID, &g.ClientName, &g.ClientURI, &g.User, &g.Scope, &created, &last); err != nil {
+		if err := rows.Scan(&g.ID, &g.ClientID, &g.ClientName, &g.ClientURI, &g.HasLogo, &g.User, &g.Scope, &created, &last); err != nil {
 			return nil, err
 		}
 		g.Created = time.Unix(created, 0)
@@ -369,4 +371,20 @@ func commitThen(tx *sql.Tx, err error) error {
 		return cerr
 	}
 	return err
+}
+
+// SetOAuthLogo keeps the small picture made from an app's logo. It is made by the server, from the address the app gave,
+// so that nobody's browser has to load it from the app.
+func (in *Instance) SetOAuthLogo(clientID, mime string, data []byte) error {
+	_, err := in.db.Exec(`UPDATE oauth_clients SET logo=?,logo_mime=? WHERE id=?`, data, mime, clientID)
+	return err
+}
+
+// OAuthLogo returns an app's logo, or ErrNotFound if it has none.
+func (in *Instance) OAuthLogo(clientID string) (mime string, data []byte, err error) {
+	err = in.rdb.QueryRow(`SELECT logo_mime,logo FROM oauth_clients WHERE id=? AND logo IS NOT NULL`, clientID).Scan(&mime, &data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil, ErrNotFound
+	}
+	return mime, data, err
 }

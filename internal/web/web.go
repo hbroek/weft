@@ -83,8 +83,10 @@ type Config struct {
 type Server struct {
 	cfg Config
 	st  *store.Instance
-	mux *http.ServeMux
-	web *fetch.Client
+
+	oauthPruned time.Time // when OAuth data was last pruned; used only by the poller's goroutine
+	mux         *http.ServeMux
+	web         *fetch.Client
 	// wake nudges the background worker after a Webmention job is queued.
 	wake chan struct{}
 	// adj holds the user's own likes and unlikes not yet in the authors' published counts.
@@ -148,6 +150,7 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("GET /liked-by", s.user(s.likedByPage))
 	s.mux.HandleFunc("GET /profile", s.user(s.profileForm))
 	s.mux.HandleFunc("POST /profile", s.user(s.profile))
+	s.mux.HandleFunc("POST /profile/apps/revoke", s.user(s.appRevoke))
 	s.mux.HandleFunc("POST /export", s.user(s.export))
 	s.mux.HandleFunc("GET /password", s.user(s.passwordForm))
 	s.mux.HandleFunc("POST /password", s.user(s.password))
@@ -172,6 +175,7 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("POST /oauth/revoke", s.oauthOnly(s.revoke))
 	s.mux.HandleFunc("OPTIONS /oauth/token", s.oauthOnly(s.oauthPreflight))
 	s.mux.HandleFunc("OPTIONS /oauth/revoke", s.oauthOnly(s.oauthPreflight))
+	s.mux.HandleFunc("GET /oauth/logo/{id}", s.oauthOnly(s.logo))
 	s.mux.HandleFunc("GET /oauth/authorize", s.oauthUser(s.authorize))
 	s.mux.HandleFunc("POST /oauth/authorize", s.oauthUser(s.authorizeAnswer))
 	// REST API: with the account's own token, or an OAuth token that has the scope named here

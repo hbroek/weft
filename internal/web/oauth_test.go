@@ -1,16 +1,26 @@
 package web
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"html"
+	"image"
+	"image/color"
+	_ "image/jpeg"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/hbroek/weft/internal/fetch"
 	"github.com/hbroek/weft/internal/oauth"
 	"github.com/hbroek/weft/internal/store"
 )
@@ -672,4 +682,237 @@ func TestRouteWithoutScopeIsClosedToApps(t *testing.T) {
 		}
 	}()
 	s.api("", "GET /api/another", func(http.ResponseWriter, *http.Request, *req) {})
+}
+
+// --- connected apps ---
+
+func TestConnectedAppsOnTheProfile(t *testing.T) {
+	s, static := setup(t)
+	s.cfg.OAuth = true
+	s.space("alice").SetPassword("correct horse")
+	if _, err := s.st.AddUser("bob", "Bob", ""); err != nil {
+		t.Fatal(err)
+	}
+	cookie := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+	quill, _ := s.st.AddOAuthClient(store.OAuthClient{Name: "<i>Quill</i>", RedirectURIs: []string{"https://app.example/cb"}, ClientURI: "https://quill.example/"})
+	other, _ := s.st.AddOAuthClient(store.OAuthClient{Name: "Other", RedirectURIs: []string{"https://app.example/cb"}})
+
+	if page := form(s, "GET", "/profile", cookie, nil, "").Body.String(); strings.Contains(page, "Connected apps") {
+		t.Error("the section shows with no apps")
+	}
+	tok := tokenWith(t, s, quill, "alice", "read post")
+	bobTok := tokenWith(t, s, other, "bob", "read")
+	page := form(s, "GET", "/profile", cookie, nil, "").Body.String()
+	for _, want := range []string{"Connected apps", "&lt;i&gt;Quill&lt;/i&gt;", "quill.example", "Read your posts", "Write, change and delete", "last used not yet", `action="/profile/apps/revoke"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the profile lacks %q", want)
+		}
+	}
+	if strings.Contains(page, "Other") || strings.Contains(page, "Follow and unfollow") || strings.Contains(page, "<i>Quill") {
+		t.Error("another account's app, a scope not granted, or unescaped markup is on the page")
+	}
+	grants, _ := s.st.OAuthGrants("alice")
+	id := strconv.FormatInt(grants[0].ID, 10)
+
+	// disconnecting needs the owner, and cannot reach another account's app
+	if w := form(s, "POST", "/profile/apps/revoke", "", url.Values{"id": {id}}, ""); w.Code == 200 || w.Code == 303 && w.Header().Get("Location") == "/profile#apps" {
+		if _, err := s.st.OAuthAccess(tok); err != nil {
+			t.Errorf("signed out, the app was disconnected: %d", w.Code)
+		}
+	}
+	bobGrants, _ := s.st.OAuthGrants("bob")
+	form(s, "POST", "/profile/apps/revoke", cookie, url.Values{"id": {strconv.FormatInt(bobGrants[0].ID, 10)}}, "")
+	if _, err := s.st.OAuthAccess(bobTok); err != nil {
+		t.Errorf("alice disconnected bob's app: %v", err)
+	}
+	if w := form(s, "POST", "/profile/apps/revoke", cookie, url.Values{"id": {id}}, "https://evil.example"); w.Code != 403 {
+		t.Errorf("cross-origin: %d", w.Code)
+	}
+	if _, err := s.st.OAuthAccess(tok); err != nil {
+		t.Fatalf("still connected, but: %v", err)
+	}
+	if w := form(s, "POST", "/profile/apps/revoke", cookie, url.Values{"id": {id}}, "http://"+host); w.Code != 303 {
+		t.Errorf("disconnect: %d", w.Code)
+	}
+	if _, err := s.st.OAuthAccess(tok); err == nil {
+		t.Error("a disconnected app still works")
+	}
+	if w := doWith(s, "GET", alice, "/api/posts", static, "", "", ""); w.Code != 200 {
+		t.Errorf("the account's own token: %d", w.Code)
+	}
+	if w := form(s, "POST", "/profile/apps/revoke", cookie, url.Values{"id": {"junk"}}, ""); w.Code != 303 {
+		t.Errorf("junk id: %d", w.Code)
+	}
+}
+
+// A new password ends what apps were allowed under the old one; the account's own token is not touched.
+func TestPasswordChangeDisconnectsApps(t *testing.T) {
+	s, static := setup(t)
+	s.cfg.OAuth = true
+	s.space("alice").SetPassword("correct horse")
+	cookie := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+	c, _ := s.st.AddOAuthClient(store.OAuthClient{Name: "Quill", RedirectURIs: []string{"https://app.example/cb"}})
+	tok := tokenWith(t, s, c, "alice", "read")
+
+	if w := form(s, "POST", "/password", cookie, url.Values{"current": {"wrong"}, "new": {"another horse"}, "again": {"another horse"}}, ""); w.Code != 400 {
+		t.Fatalf("wrong current password: %d", w.Code)
+	}
+	if _, err := s.st.OAuthAccess(tok); err != nil {
+		t.Fatalf("a failed change disconnected the app: %v", err)
+	}
+	if w := form(s, "POST", "/password", cookie, url.Values{"current": {"correct horse"}, "new": {"another horse"}, "again": {"another horse"}}, ""); w.Code != 303 {
+		t.Fatalf("change: %d", w.Code)
+	}
+	if _, err := s.st.OAuthAccess(tok); err == nil {
+		t.Error("the app survived a password change")
+	}
+	if w := doWith(s, "GET", alice, "/api/posts", static, "", "", ""); w.Code != 200 {
+		t.Errorf("the account's token after a password change: %d", w.Code)
+	}
+}
+
+func TestPruningRunsOncePerHour(t *testing.T) {
+	s, _ := setup(t)
+	s.pruneOAuth()
+	first := s.oauthPruned
+	if first.IsZero() {
+		t.Fatal("did not run")
+	}
+	s.pruneOAuth()
+	if !s.oauthPruned.Equal(first) {
+		t.Error("ran twice within the hour")
+	}
+}
+
+// --- logos ---
+
+func TestAppLogoIsKeptHereAndServedFromHere(t *testing.T) {
+	var hits atomic.Int32
+	var logo []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		switch r.URL.Path {
+		case "/logo.png":
+			w.Header().Set("Content-Type", "image/png")
+			w.Write(logo)
+		case "/text.png":
+			w.Write([]byte("<html>not a picture</html>"))
+		case "/huge.png":
+			w.Write(append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 3<<20)...))
+		case "/slow.png":
+			time.Sleep(7 * time.Second)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	// a 300 x 200 picture with some transparency, as a logo might be
+	pic := image.NewRGBA(image.Rect(0, 0, 300, 200))
+	for x := 0; x < 300; x++ {
+		for y := 0; y < 200; y++ {
+			pic.Set(x, y, color.RGBA{200, 30, 60, 255})
+		}
+	}
+	var buf bytes.Buffer
+	png.Encode(&buf, pic)
+	logo = buf.Bytes()
+
+	s := oauthServer(t, true)
+	s.web = fetch.New(true) // the test's picture is on this computer
+	s.space("alice").SetPassword("correct horse")
+	cookie := cookieOf(form(s, "POST", "/login", "", url.Values{"password": {"correct horse"}}, ""))
+	// the test's server speaks http, which registration refuses for a logo; the same code runs from keepLogo
+	register := func(logoURI string) map[string]any {
+		c, err := s.st.AddOAuthClient(store.OAuthClient{Name: "Quill", RedirectURIs: []string{"https://app.example/cb"}, LogoURI: logoURI})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.keepLogo(context.Background(), c)
+		return map[string]any{"client_id": c.ID, "logo_uri": logoURI}
+	}
+
+	m := register(srv.URL + "/logo.png")
+	id := m["client_id"].(string)
+	if m["logo_uri"] == nil {
+		t.Error("the logo address is not echoed")
+	}
+	c, _ := s.st.OAuthClient(id)
+	if !c.HasLogo {
+		t.Fatal("the logo was not kept")
+	}
+	w := doWith(s, "GET", alice, "/oauth/logo/"+id, "", "", "", "")
+	cfg, format, err := image.DecodeConfig(w.Body) // an opaque picture is kept as a JPEG
+	if w.Code != 200 || err != nil || format != "jpeg" || cfg.Width != 96 || cfg.Height != 96 || w.Header().Get("Content-Type") != "image/jpeg" ||
+		w.Header().Get("X-Content-Type-Options") != "nosniff" || !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Errorf("the logo: %d %v %dx%d %v", w.Code, err, cfg.Width, cfg.Height, w.Header())
+	}
+
+	// the consent page shows it from here, never from the app, and says it is unverified
+	hits.Store(0)
+	q := url.Values{"response_type": {"code"}, "client_id": {id}, "redirect_uri": {"https://app.example/cb"}, "code_challenge": {pkceChallenge}, "code_challenge_method": {"S256"}, "scope": {"read"}}
+	w = form(s, "GET", "/oauth/authorize?"+q.Encode(), cookie, nil, "")
+	page := w.Body.String()
+	if !strings.Contains(page, `src="/oauth/logo/`+id+`"`) || strings.Contains(page, srv.URL) || !strings.Contains(page, "Unverified app") || hits.Load() != 0 {
+		t.Errorf("consent page: hits %d\n%s", hits.Load(), page)
+	}
+	if !strings.Contains(w.Header().Get("Content-Security-Policy"), "img-src 'self'") {
+		t.Error("the page may load pictures from elsewhere")
+	}
+	tokenWith(t, s, c, "alice", "read")
+	if page := form(s, "GET", "/profile", cookie, nil, "").Body.String(); !strings.Contains(page, `src="/oauth/logo/`+id+`"`) {
+		t.Error("the connected apps list lacks the logo")
+	}
+
+	// a logo that cannot be used is dropped, and the app is registered all the same
+	for name, u := range map[string]string{
+		"not a picture": srv.URL + "/text.png", "too big": srv.URL + "/huge.png", "missing": srv.URL + "/none.png",
+		"unreachable": "http://127.0.0.1:1/logo.png", "slow": srv.URL + "/slow.png",
+	} {
+		if name == "slow" && testing.Short() {
+			continue
+		}
+		start := time.Now()
+		bad := register(u)["client_id"].(string)
+		if c, _ := s.st.OAuthClient(bad); c.HasLogo {
+			t.Errorf("%s: a logo was kept", name)
+		}
+		if w := doWith(s, "GET", alice, "/oauth/logo/"+bad, "", "", "", ""); w.Code != 404 {
+			t.Errorf("%s: the logo answers %d", name, w.Code)
+		}
+		if time.Since(start) > 6*time.Second {
+			t.Errorf("%s: registration waited %v", name, time.Since(start))
+		}
+	}
+	if w := doWith(s, "GET", alice, "/oauth/logo/wc_nope", "", "", "", ""); w.Code != 404 {
+		t.Errorf("unknown app: %d", w.Code)
+	}
+	// an app with no logo address makes no fetch
+	hits.Store(0)
+	body := `{"client_name":"Plain","redirect_uris":["https://app.example/cb"]}`
+	if w := doWith(s, "POST", alice, "/oauth/register", "", "application/json", "", body); w.Code != 201 || hits.Load() != 0 {
+		t.Errorf("no logo: %d, %d fetches", w.Code, hits.Load())
+	}
+	// off: no logos either
+	s.cfg.OAuth = false
+	if w := doWith(s, "GET", alice, "/oauth/logo/"+id, "", "", "", ""); w.Code != 404 {
+		t.Errorf("logo with OAuth off: %d", w.Code)
+	}
+}
+
+// Through /oauth/register itself: a logo that cannot be fetched does not stop the app registering, and the fetch
+// does not reach private addresses.
+func TestRegistrationWithALogoThatCannotBeFetched(t *testing.T) {
+	s := oauthServer(t, true) // the server's fetcher does not reach private addresses
+	for _, u := range []string{"https://127.0.0.1:1/logo.png", "https://localhost/logo.png", "https://nothing.invalid/logo.png"} {
+		body, _ := json.Marshal(map[string]any{"client_name": "Quill", "redirect_uris": []string{"https://app.example/cb"}, "logo_uri": u})
+		w := doWith(s, "POST", alice, "/oauth/register", "", "application/json", "", string(body))
+		var m map[string]any
+		json.Unmarshal(w.Body.Bytes(), &m)
+		if w.Code != 201 {
+			t.Fatalf("%s: %d %v", u, w.Code, m)
+		}
+		if c, _ := s.st.OAuthClient(m["client_id"].(string)); c.HasLogo {
+			t.Errorf("%s: a logo was kept", u)
+		}
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"html/template"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -161,6 +162,9 @@ func (s *Server) password(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	switch {
 	case err == nil:
+		if err := s.st.RevokeOAuthGrants(q.host.Name); err != nil { // a new password ends what apps were allowed under the old one
+			log.Printf("ending the connected apps of %s after a password change: %v", q.host.Name, err)
+		}
 		if forced {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 		} else {

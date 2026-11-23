@@ -141,6 +141,13 @@ f.addEventListener('change',function(){
 </script>
 <hr>
 <p><a href="/password">Change password</a></p>
+{{if .Apps}}<hr>
+<h3 id="apps">Connected apps</h3>
+<p><small>These apps can act for you through the API, with the permissions listed. Disconnecting one stops it at once.</small></p>
+{{range .Apps}}<div class="app"><p>{{if .Logo}}<img src="/oauth/logo/{{.ClientID}}" width="24" height="24" alt="" style="vertical-align:middle;border-radius:5px;margin-right:.3em">{{end}}<strong>{{.Name}}</strong>{{if .Host}} <small>({{.Host}})</small>{{end}}<br><small>Connected {{.Since}} · last used {{.Used}}</small></p>
+<ul>{{range .Can}}<li><small>{{.}}</small></li>{{end}}</ul>
+<form method="post" action="/profile/apps/revoke"><input type="hidden" name="id" value="{{.ID}}"><button class="linkbtn">Disconnect</button></form></div>
+{{end}}{{end}}
 <hr>
 <h3>Your data</h3>
 <p><small>Everything you have here in one file: posts, replies, likes, who you follow and your login. It holds no sessions and no API token. Whoever runs a Weft server can import it to bring you there.</small></p>
@@ -236,7 +243,8 @@ b.addEventListener('click',function(){if(navigator.clipboard&&navigator.clipboar
 <label>Password <input type="password" name="password" autofocus required></label>
 <p><button>Log in</button></p></form>{{template "foot"}}{{end}}
 {{define "oauth_problem"}}{{template "head" .}}<h2>Cannot connect</h2><p class="err">{{.Error}}</p><p>Nothing was shared. You can close this page.</p>{{template "foot"}}{{end}}
-{{define "oauth_consent"}}{{template "head" .}}<h2>Connect {{.OAuth.Client.Name}}</h2>
+{{define "oauth_consent"}}{{template "head" .}}<h2>{{if .OAuth.Client.HasLogo}}<img src="/oauth/logo/{{.OAuth.Client.ID}}" width="48" height="48" alt="" style="vertical-align:middle;border-radius:8px;margin-right:.4em">{{end}}Connect {{.OAuth.Client.Name}}</h2>
+<p><small>Unverified app: the name{{if .OAuth.Client.HasLogo}} and picture are{{else}} is{{end}} what the app says about itself. Check that you are sent to <strong>{{.OAuth.RedirectHost}}</strong>.</small></p>
 <p><strong>{{.OAuth.Client.Name}}</strong>{{if .OAuth.ClientHost}} (<a href="{{.OAuth.Client.ClientURI}}" rel="noopener noreferrer">{{.OAuth.ClientHost}}</a>){{end}} wants to act for <strong>{{.Author}}</strong> on this site. It will be able to:</p>
 <ul>{{range .OAuth.Scopes}}<li>{{.Description}}</li>{{end}}</ul>
 <p><small>It will never see your password. After you choose, you are sent back to {{.OAuth.RedirectHost}}. You can disconnect it at any time from your profile.</small></p>
@@ -465,6 +473,7 @@ type pagePost struct {
 type pageData struct {
 	Title, FeedURL, WebmentionURL, Author, Bio string
 	Owner                                      bool
+	Apps                                       []appRow   // the profile: apps the owner has connected
 	OAuth                                      *oauthPage // the consent page of an app
 	Next                                       string     // login: the page to return to after signing in (a path on this host)
 	Posts                                      []pagePost
