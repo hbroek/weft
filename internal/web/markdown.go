@@ -83,7 +83,7 @@ func (d pageData) mdKeywords(keywords []string, path string) string {
 func (d pageData) mdPosts(b *strings.Builder) {
 	fmt.Fprintf(b, "# %s\n", mdLine(d.Author))
 	if d.Bio != "" {
-		b.WriteString("\n" + mdLine(d.Bio) + "\n")
+		b.WriteString("\n" + strings.TrimSpace(d.Bio) + "\n") // the bio is Markdown already
 	}
 	if d.Keyword != "" {
 		fmt.Fprintf(b, "\nPosts tagged **%s**. %s · %s\n", mdLine(d.Keyword), mdLink("All posts", d.abs("/")), mdLink("Feed for this topic", d.TopicFeed))

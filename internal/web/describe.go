@@ -14,8 +14,7 @@ var (
 // describe makes the text for a page's meta description from some HTML or plain text: the first words of it,
 // on one line, about 160 characters.
 func describe(markup string) string {
-	text := html.UnescapeString(htmlTag.ReplaceAllString(blockTag.ReplaceAllString(markup, " "), ""))
-	text = strings.Join(strings.Fields(text), " ")
+	text := plainText(markup)
 	const limit = 160
 	if r := []rune(text); len(r) > limit {
 		cut := string(r[:limit])
@@ -25,4 +24,10 @@ func describe(markup string) string {
 		return cut + "…"
 	}
 	return text
+}
+
+// plainText is the text of some HTML or plain text, on one line.
+func plainText(markup string) string {
+	text := html.UnescapeString(htmlTag.ReplaceAllString(blockTag.ReplaceAllString(markup, " "), ""))
+	return strings.Join(strings.Fields(text), " ")
 }

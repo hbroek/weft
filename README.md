@@ -221,6 +221,8 @@ A post's permalink answers to its `Accept` header: `text/markdown` returns the s
 
 #### Avatars
 
+The bio is Markdown, up to 2,000 characters, written in a text area on the Profile page (or with `weft user set -bio`). The home page shows the first two lines of it, as they fall on the screen, and puts the rest behind a **More** that opens in place (a small script adds the button only when the bio is longer; without script the whole bio shows). A bio that fits in two lines has no More. The meta description and the feed's description use the bio as plain text, and the Markdown form of the home page carries it as written.
+
 A user can have an avatar image address (`http://` or `https://`): set it on the Profile page (the "Edit profile" link under your bio) or with `weft user set -avatar URL NAME` (`weft user add` takes `-avatar` too, and `-avatar ""` removes it). It shows in the header and on your cards, and it is published as the feed's RSS `<image>`, so people who follow you see it on your posts in their timeline. Without one, or if the image fails to load, a circle with the first letter of the name is shown. Avatars from other feeds are only used if they are plain http(s) addresses, and are loaded without sending a referrer.
 
 You can also upload a picture on the Profile page (or `POST /api/avatar` with the picture as the body). It is cropped to the middle square, made at most 256 pixels wide, stripped of metadata, and kept in your own database like any other picture, so it moves with your account. The feed's channel image gives its full address, so readers on other servers show it. Replacing or removing it deletes the old picture, unless a post shows it.

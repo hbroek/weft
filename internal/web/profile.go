@@ -30,7 +30,7 @@ func initial(name string) string {
 
 const (
 	maxDisplay = 80
-	maxBio     = 500
+	maxBio     = 2000
 )
 
 // avatarSize is the side, in pixels, of an uploaded profile picture.
@@ -148,7 +148,7 @@ func (s *Server) profile(w http.ResponseWriter, r *http.Request, q *req) {
 	if !s.requireOwner(w, r, q) {
 		return
 	}
-	display, bio, avatar := strings.TrimSpace(r.FormValue("display")), strings.TrimSpace(r.FormValue("bio")), strings.TrimSpace(r.FormValue("avatar"))
+	display, bio, avatar := strings.TrimSpace(r.FormValue("display")), strings.TrimSpace(strings.ReplaceAll(r.FormValue("bio"), "\r\n", "\n")), strings.TrimSpace(r.FormValue("avatar"))
 	cur := localAvatar(q.host.Avatar)
 	if avatar == "" && cur != "" && r.FormValue("keep_avatar") == "1" { // the uploaded picture stays unless a link replaces it
 		avatar = cur

@@ -49,7 +49,8 @@ var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": 
 <script>(function(){var b=document.getElementById('theme'),r=document.documentElement,o=['auto','light','dark'];function cur(){return r.getAttribute('data-theme')||'auto'}function label(){b.title='Theme: '+cur()+' (click to change)';b.setAttribute('aria-label',b.title)}label();b.addEventListener('click',function(){var n=o[(o.indexOf(cur())+1)%3];if(n==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',n);try{if(n==='auto')localStorage.removeItem('weft-theme');else localStorage.setItem('weft-theme',n)}catch(e){}label()})})()</script>
 <div class="wrap">
 {{if .DomainWarn}}<p class="err" role="alert">{{.DomainWarn}} <a href="/profile">Fix it on your profile page</a></p>{{end}}
-{{if .Home}}{{if or .Bio .Owner}}<p class="bio">{{.Bio}}{{if .Owner}} <small><a href="/profile">Edit profile</a></small>{{end}}</p>{{end}}{{end}}
+{{if .Home}}{{if .Bio}}<div class="bio"><div class="bio-text" id="bio-text">{{.BioHTML}}</div><button type="button" class="linkbtn bio-more" id="bio-more" aria-controls="bio-text" aria-expanded="false" hidden>More</button></div>
+<script>(function(){var t=document.getElementById('bio-text'),b=document.getElementById('bio-more');if(!t||!b)return;t.classList.add('clamp');if(t.scrollHeight<=t.clientHeight+1){t.classList.remove('clamp');return}b.hidden=false;b.addEventListener('click',function(){var open=t.classList.toggle('clamp')===false;b.textContent=open?'Less':'More';b.setAttribute('aria-expanded',open)})})()</script>{{end}}{{if .Owner}}<p class="bio"><small><a href="/profile">Edit profile</a></small></p>{{end}}{{end}}
 <main>{{end}}
 {{define "foot"}}</main><footer><small><a href="https://weftseed.com"><img src="/static/weft-icon.svg" alt="" width="18" height="18"> Published with Weft</a></small></footer></div>
 <script>
@@ -112,7 +113,7 @@ document.querySelectorAll('form.followform').forEach(function(f){
 {{define "profile"}}{{template "head" .}}<h2>Profile</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 <form method="post" action="/profile">
 <label>Name <input type="text" name="display" value="{{.Profile.Display}}" maxlength="80"></label>
-<label>Bio <input type="text" name="bio" value="{{.Profile.Bio}}" maxlength="500"></label>
+<label>Bio (Markdown; your home page shows the first two lines and opens the rest under "More") <textarea name="bio" class="bio-field" rows="8" maxlength="2000">{{.Profile.Bio}}</textarea></label>
 <label>Picture from a link (optional, an http:// or https:// address{{if .Profile.Local}}; you have uploaded a picture, and a link here replaces it{{end}}) <input type="text" name="avatar" value="{{.Profile.Avatar}}" placeholder="https://example.com/me.jpg" inputmode="url"></label>
 {{if .Profile.Local}}<input type="hidden" name="keep_avatar" value="1">{{end}}
 <p><button>Save</button></p></form>
@@ -505,6 +506,7 @@ type pageData struct {
 	MineToggle                                   string
 	Nav                                          string          // which menu entry the page belongs to
 	WantMD                                       bool            // the request asked for the page as Markdown
+	BioHTML                                      template.HTML   // the bio, rendered
 	Home                                         bool            // the site's home page: it shows the bio
 	SiteURL                                      string          // this site's home address, for the author's h-card
 	PInfo                                        feed.ParentInfo // the snapshot of the page being replied to, kept in hidden fields
@@ -553,7 +555,7 @@ func (s *Server) brandHref() string {
 
 func (s *Server) pageBase(r *http.Request, q *req, title string) pageData {
 	d := pageData{Title: title, FeedURL: s.base(r) + "/feed.xml", WebmentionURL: s.base(r) + "/webmention",
-		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", BrandHref: s.brandHref(), WantMD: negotiate(r.Header.Get("Accept")) == "markdown", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), sp: q.sp, Desc: describe(orStr(q.host.Bio, "Posts by "+orStr(q.host.Display, q.host.Name)+".")),
+		Author: q.host.Display, Bio: q.host.Bio, Owner: q.owner, SiteURL: s.base(r) + "/", BrandHref: s.brandHref(), WantMD: negotiate(r.Header.Get("Accept")) == "markdown", Nav: navOf(r.URL.Path), Avatar: q.host.Avatar, Initial: initial(orStr(q.host.Display, q.host.Name)), sp: q.sp, Desc: describe(orStr(bioText(q.host.Bio), "Posts by "+orStr(q.host.Display, q.host.Name)+".")),
 		OGType: "website", OGURL: s.base(r) + r.URL.Path, OGImage: s.previewImage(r, q.host.Avatar)}
 	if q.owner {
 		d.PendingAll = q.sp.PendingReplyCount(q.host.ID)
@@ -652,6 +654,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	s.renderPosts(w, r, q, q.host.Display, posts, func(d *pageData) {
 		d.Home = true
+		d.BioHTML = bioHTML(q.host.Bio)
 		if kw != "" {
 			// the page's feed is the topic feed, so following this address follows just these posts
 			d.Keyword, d.TopicFeed = kw, s.topicFeed(r, kw)
@@ -811,7 +814,7 @@ func (s *Server) writeFeed(w http.ResponseWriter, r *http.Request, q *req, posts
 		selfLinks = links[0]
 	}
 	ch := feed.Channel{
-		Title: title, Link: s.base(r) + "/", Description: q.host.Bio,
+		Title: title, Link: s.base(r) + "/", Description: bioText(q.host.Bio),
 		Links:      selfLinks,
 		Webmention: s.base(r) + "/webmention",
 		Following:  s.base(r) + "/following.opml", LikesFeed: s.base(r) + "/likes.xml",
