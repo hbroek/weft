@@ -20,6 +20,7 @@ A Weft host: every post, reply and like lives in its author's own RSS 2.0 feed. 
   - [Replies, likes and threads](#replies-likes-and-threads)
   - [Your profile](#your-profile)
   - [Apps that act for you (OAuth)](#apps-that-act-for-you-oauth)
+  - [The fediverse (ActivityPub)](#the-fediverse-activitypub)
   - [Weft it (bookmarklet)](#weft-it-bookmarklet)
   - [Pages as Markdown](#pages-as-markdown)
   - [Which feeds Weft can follow](#which-feeds-weft-can-follow)
@@ -395,6 +396,23 @@ Behind a reverse proxy every request comes from the proxy, so start the server w
 ### OAuth for apps
 
 `weft serve -oauth` (off by default) lets the people on this server connect apps that act for them through the API (see [Apps that act for you](#apps-that-act-for-you-oauth)). Off, the addresses `/oauth/…` and `/.well-known/oauth-…` answer 404 and the API accepts only each account's own token, even from an app that was connected earlier; turning it on again brings those connections back. Switching it off does not delete them.
+
+## The fediverse (ActivityPub)
+
+*Phase 1 of 6: an account can be found, and looked at, from Mastodon and the rest of the fediverse. It cannot be followed yet and sends nothing.*
+
+`weft serve -activitypub` (off by default) lets each account switch ActivityPub on, on its profile page (also off by default). Switched on, the account answers:
+
+- **WebFinger** at `/.well-known/webfinger?resource=acct:name@host` (or the actor's address), as `application/jrd+json`, naming the actor. `host` is the account's address with or without a port.
+- **The actor** at `/`, the same address as the home page: a request with `Accept: application/activity+json` (or `application/ld+json` with the ActivityStreams profile) gets a `Person` with the name, the bio as the summary, the picture, `inbox`, `outbox` and the public key. Every other `Accept` keeps getting the page or the Markdown.
+- **NodeInfo 2.1** at `/.well-known/nodeinfo` and `/nodeinfo/2.1`.
+- `/outbox` is an empty collection and `POST /inbox` answers 501 until the next phases.
+
+**The actor's id is pinned.** It is the account's origin and `/`, fixed when ActivityPub is first switched on (with the custom domain if the account has one), because servers that know the account know it by that address. The instance's own address redirects to the custom domain as for every page, and an address that is no longer the pinned one answers nothing here (the profile page says so). Set up a custom domain before switching it on if you want one. Switching off keeps the address and the key, so switching on again is the same account.
+
+**A handle on your own domain** is that domain's WebFinger file pointing at the actor, for example `https://example.com/.well-known/webfinger` answering with `{"subject":"acct:you@example.com","aliases":["https://you.example.net/"],"links":[{"rel":"self","type":"application/activity+json","href":"https://you.example.net/"}]}`, served as `application/jrd+json`. A redirect to the Weft address works as well. Weft does not need to serve the domain for that. Also name the domain on the profile page ("Domain of your handle"): Weft's own WebFinger then answers with `acct:you@example.com` as the subject, which is what makes Mastodon and the others show that handle and not the Weft address; without it they ask the actor's own host who it is and show what it says. The domain's file must point at the actor, as above, because the asking server checks it.
+
+**The key.** Each account has an RSA key of 2048 bits, made when it is first switched on and kept in the account's file. An export leaves the private key out, like the sessions and the API token, and an account imported from an export makes a new key. Moving an account with its fediverse identity comes in a later phase.
 
 Everything about apps is kept in the server's own database (`instance.db`), not in the users' files: the apps that registered (with a small copy of each logo), who connected what, and the hashes of the codes and tokens (the tokens themselves are never stored). A user's export and a move to another server carry none of it, and a move or removal ends the account's connections. Anyone can register an app, so registration is limited: 6 a minute per address (10 at once), at most 2,000 apps on the server (when it is full an app nobody ever connected, at least 10 minutes old, is dropped to make room), and at most 100 connections for one account. Expired codes and tokens, connections that were never finished and apps nobody connected within 7 days are deleted every hour. The token endpoints are limited to 60 calls a minute per address.
 

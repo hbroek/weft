@@ -141,6 +141,7 @@ func (s *Server) renderProfile(w http.ResponseWriter, r *http.Request, q *req, s
 	d.Domain = s.domainView(r, q)
 	d.Move = s.moveView(r, q)
 	d.Apps = s.appRows(q)
+	d.AP = s.apView(r, q)
 	s.show(w, "profile", status, d)
 }
 

@@ -70,6 +70,9 @@ type Config struct {
 	// the account's API token. Off unless the operator asks for it: with it off there are no /oauth pages, no
 	// discovery documents, and the API accepts only the account's own token, even where an OAuth token was issued before.
 	OAuth bool
+	// ActivityPub lets an account that switches it on on its profile page be found from the fediverse: WebFinger, the actor
+	// and NodeInfo. It is off unless the operator asks for it, and then off for each account until the account says so.
+	ActivityPub bool
 	// Admin turns on the administration pages for the accounts marked as administrators (weft user admin). They are
 	// served on the private listener (-internal) and, with AdminPublic, also at admin.<BaseDomain> on the public
 	// one, which should then be behind something that checks who asks (Cloudflare Access, a VPN).
@@ -154,6 +157,13 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("POST /export", s.user(s.export))
 	s.mux.HandleFunc("GET /password", s.user(s.passwordForm))
 	s.mux.HandleFunc("POST /password", s.user(s.password))
+	s.mux.HandleFunc("GET /.well-known/webfinger", s.user(s.webfinger))
+	s.mux.HandleFunc("GET /.well-known/nodeinfo", s.user(s.nodeInfoLinks))
+	s.mux.HandleFunc("GET /nodeinfo/2.1", s.user(s.nodeInfo))
+	s.mux.HandleFunc("GET /outbox", s.user(s.outbox))
+	s.mux.HandleFunc("POST /inbox", s.user(s.inbox))
+	s.mux.HandleFunc("POST /profile/activitypub", s.user(s.apSwitch))
+	s.mux.HandleFunc("POST /profile/activitypub/handle", s.user(s.apHandle))
 	s.mux.HandleFunc("GET /search", s.user(s.search))
 	s.mux.HandleFunc("GET /.well-known/bonbon.json", s.user(s.bonbon))
 	s.mux.HandleFunc("GET /.well-known/weft-domain", s.user(s.domainProof))

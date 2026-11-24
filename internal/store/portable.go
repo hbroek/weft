@@ -30,6 +30,9 @@ type Manifest struct {
 	Exported time.Time `json:"exported"`
 }
 
+// Version is the version of this Weft.
+func Version() string { return weftVersion() }
+
 func weftVersion() string {
 	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
 		return bi.Main.Version
@@ -63,7 +66,8 @@ func (s *Space) export(w io.Writer, domain string) (fp string, schema int, err e
 		return "", 0, err
 	}
 	db.SetMaxOpenConns(1)
-	for _, q := range []string{`DELETE FROM sessions`, `UPDATE users SET token_hash=''`} {
+	// the signing key stays out too: a file that is kept and sent must not let anyone speak as the account
+	for _, q := range []string{`DELETE FROM sessions`, `UPDATE users SET token_hash=''`, `UPDATE ap_account SET private_pem=''`} {
 		if _, err := db.Exec(q); err != nil && !missing(err) { // a file with no sessions table has none to scrub
 			db.Close()
 			return "", 0, err

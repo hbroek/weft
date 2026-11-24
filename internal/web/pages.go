@@ -141,6 +141,19 @@ f.addEventListener('change',function(){
 });
 })();
 </script>
+{{if .AP}}<hr>
+<h3 id="fediverse">Fediverse (ActivityPub)</h3>
+{{if .AP.Enabled}}<p>Switched on. People on Mastodon and other servers can find you as <strong>{{.AP.Handle}}</strong>; your address for them is <code>{{.AP.Actor}}</code>.</p>
+{{if .AP.Moved}}<p class="err" role="alert">Your address is no longer <code>{{.AP.Pinned}}</code>, the one this was switched on for, so nothing here answers the fediverse. Restore that address to go on.</p>{{end}}
+<p><small>For now you can be found and looked at. Following you, and sending your posts, come next. The address you are known by is fixed once this is on, so set up your own domain first if you want to use one.</small></p>
+<form method="post" action="/profile/activitypub/handle"><label>Domain of your handle (optional, such as example.com) <input type="text" name="handle_host" value="{{.AP.HandleHost}}" placeholder="example.com" maxlength="253"></label>
+<p><small>To be known as <strong>{{.Author}}</strong> at your own domain, put it here and make that domain's <code>/.well-known/webfinger</code> answer with the link to <code>{{.AP.Actor}}</code> (a redirect to <code>{{.AP.Pinned}}/.well-known/webfinger</code> does it). Leave it empty to be known by {{.AP.Pinned}}.</small></p>
+<p><button>Save</button></p></form>
+<form method="post" action="/profile/activitypub"><input type="hidden" name="enable" value="0"><button>Switch off</button></form>
+{{else}}<p>Let people on Mastodon and other servers find you. For now they can look you up and see your profile; following you and sending your posts come next.</p>
+{{if .AP.Actor}}<p><small>You had this on before: your address stays <code>{{.AP.Actor}}</code>.</small></p>{{else}}<p><small>The address you are known by is fixed when you switch this on: {{.SiteURL}}. If you want a domain of your own, set it up first.</small></p>{{end}}
+<form method="post" action="/profile/activitypub"><input type="hidden" name="enable" value="1"><button>Switch on</button></form>{{end}}
+{{end}}
 <hr>
 <p><a href="/password">Change password</a></p>
 {{if .Apps}}<hr>
@@ -478,6 +491,7 @@ type pageData struct {
 	Title, FeedURL, WebmentionURL, Author, Bio string
 	Owner                                      bool
 	Apps                                       []appRow   // the profile: apps the owner has connected
+	AP                                         *apView    // the profile: ActivityPub, when the operator has it on
 	OAuth                                      *oauthPage // the consent page of an app
 	Next                                       string     // login: the page to return to after signing in (a path on this host)
 	Posts                                      []pagePost
@@ -638,6 +652,10 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request, q *req) {
+	w.Header().Add("Vary", "Accept")
+	if s.actor(w, r, q) { // the same address, asked for as ActivityStreams
+		return
+	}
 	if negotiate(r.Header.Get("Accept")) == "markdown" { // an editor asks what it may do here: add a post
 		w.Header().Add("Vary", "Authorization")
 		w.Header().Set("Allow", "GET, HEAD")

@@ -385,6 +385,32 @@ func spaceV4(tx *sql.Tx) error {
 	return err
 }
 
+// spaceV5 adds the ActivityPub identity of an account: the actor address, pinned when it is switched on, and the
+// keypair that signs what the account sends. A row that is not enabled keeps the identity for when it is switched on
+// again, because a new address or key would look like another account to the servers that know this one.
+func spaceV5(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS ap_account (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id),
+  enabled INTEGER NOT NULL DEFAULT 1,
+  actor TEXT NOT NULL,
+  public_pem TEXT NOT NULL,
+  private_pem TEXT NOT NULL,
+  created INTEGER NOT NULL
+)`)
+	return err
+}
+
+// spaceV6 adds the domain of the account's handle: the account is found at weft.example.com, but may be known as
+// you@example.com, the name that its WebFinger answers with when asked.
+func spaceV6(tx *sql.Tx) error {
+	var have int // a file that was put back to an older version has the column already
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('ap_account') WHERE name='handle_host'`).Scan(&have); err != nil || have > 0 {
+		return err
+	}
+	_, err := tx.Exec(`ALTER TABLE ap_account ADD COLUMN handle_host TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
 // instanceV15 indexes the cached items by thread root. The thread view of a reader who follows many feeds read every
 // item of those feeds: 130 ms at 100,000 cached items, 1 ms with the index. (A lookup by permalink always names the
 // feeds as well, and the primary key (feed_url, guid) serves it.)

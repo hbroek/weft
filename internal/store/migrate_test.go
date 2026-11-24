@@ -247,7 +247,8 @@ func TestThreadIndexesAreAddedToOlderFiles(t *testing.T) {
 	db.Close()
 	db = openRaw(t, spool)
 	db.Exec(`DROP INDEX posts_root`)
-	db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, SpaceSchemaVersion-1))
+	db.Exec(`DROP TABLE ap_account`) // added by version 5, after the index of version 4
+	db.Exec(`PRAGMA user_version = 3`)
 	db.Close()
 
 	st, err = Open(dir)
