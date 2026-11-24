@@ -142,7 +142,7 @@ Every call goes to the user's own host, with `Authorization: Bearer <token>`. `{
 | Edit | `PUT /api/posts/{ref}`, the same two ways. |
 | Delete | `DELETE /api/posts/{ref}`: answers 204, and the address answers 410 from then on. |
 
-Reading a published post needs no token: that is its public address (`GET /posts/<slug>`, with `Accept: text/markdown` for its source).
+Reading a published post needs no token: that is its public address (`GET /posts/<slug>`, with `Accept: text/markdown` for its source as a document, below). The same address takes the document back with `PUT /posts/<slug>` (a bearer token with the `post` scope; `If-Match` with the `ETag` of what you read guards against overwriting a change, and a mismatch answers `412`). For a reader who may change the post, the `GET` says so with `Allow: GET, HEAD, PUT` and `Link: </posts/<slug>>; rel="edit"`; everyone else gets `Allow: GET, HEAD`. The `ETag` is strong.
 
 **A post as a document** is for editors: the file is the post. Frontmatter between two lines of `---`, then the Markdown exactly as stored (pictures keep their `/media/…` paths; the public address makes them absolute, an editor must not save those back):
 
@@ -215,7 +215,7 @@ is re-sent up the chain so each ancestor's cached second level stays fresh.
 
 `replies.xml` items carry `weft:replies` (href and the count cached by the host) for the replies that have their own replies feed, so a closed branch can show its size without being opened.
 
-A post's permalink answers to its `Accept` header: `text/markdown` returns the source, and `application/rss+xml` (without `text/html` or `*/*`) returns the post as a one-item feed, with all its `weft:` links. A thread is built from posts, not feeds: a reader asks each post's URL for the one-item form to get the post, its parent and the link to its replies, so old posts work. A feed holds the newest 100 posts and links to older pages (`/feed.xml?page=2`, RFC 5005 `rel="next"`); a new follower reads all of them.
+A post's permalink answers to its `Accept` header: `text/markdown` returns the source as a document with frontmatter, and `application/rss+xml` (without `text/html` or `*/*`) returns the post as a one-item feed, with all its `weft:` links. A thread is built from posts, not feeds: a reader asks each post's URL for the one-item form to get the post, its parent and the link to its replies, so old posts work. A feed holds the newest 100 posts and links to older pages (`/feed.xml?page=2`, RFC 5005 `rel="next"`); a new follower reads all of them.
 
 ### Your profile
 
@@ -256,6 +256,41 @@ Your own API token is not limited by scopes and keeps working. An app that asks 
 5. **Renew** with `grant_type=refresh_token`, `refresh_token` and `client_id`. Each refresh token works once and comes with a new pair; using an old one again ends the whole connection. Keep the new pair before you use it.
 6. **Disconnect** with `POST /oauth/revoke` (`token`, `client_id`), which ends the connection a token belongs to.
 
+The whole flow with `curl`, for an app that listens on a port of the computer (the browser step is the one thing a script cannot do):
+
+```sh
+SITE=https://alice.example.org
+
+# 1. register once (keep the client_id)
+curl -s $SITE/oauth/register -H 'Content-Type: application/json' \
+  -d '{"client_name":"My editor","redirect_uris":["http://127.0.0.1/callback"]}'
+CLIENT=wc_...   # from the answer
+
+# 2. a PKCE pair: keep the verifier, send the challenge
+VERIFIER=$(openssl rand -base64 48 | tr -d '=+/\n' | cut -c1-64)
+CHALLENGE=$(printf %s "$VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+
+# 3. open this in the browser; after Allow it goes to http://127.0.0.1:53124/callback?code=...&state=...&iss=...
+echo "$SITE/oauth/authorize?response_type=code&client_id=$CLIENT&redirect_uri=http%3A%2F%2F127.0.0.1%3A53124%2Fcallback&code_challenge=$CHALLENGE&code_challenge_method=S256&scope=read+post&state=abc"
+CODE=wco_...    # from the address the browser ended at
+
+# 4. swap the code (within 60 seconds) for tokens
+curl -s $SITE/oauth/token -d grant_type=authorization_code -d code=$CODE -d client_id=$CLIENT \
+  -d redirect_uri=http://127.0.0.1:53124/callback -d code_verifier=$VERIFIER
+ACCESS=wat_...; REFRESH=wrt_...
+
+# 5. use the API: create a post from a Markdown document, then read it back as one
+curl -s $SITE/api/posts -H "Authorization: Bearer $ACCESS" -H 'Content-Type: text/markdown' \
+  --data-binary $'---\ntitle: Hello from my editor\n---\nThe text.\n'
+curl -s $SITE/api/posts/42 -H "Authorization: Bearer $ACCESS" -H 'Accept: text/markdown'
+
+# 6. an hour later: a new pair (the old refresh token is now spent: keep the new one)
+curl -s $SITE/oauth/token -d grant_type=refresh_token -d refresh_token=$REFRESH -d client_id=$CLIENT
+
+# 7. disconnect
+curl -s $SITE/oauth/revoke -d token=$ACCESS -d client_id=$CLIENT
+```
+
 ### Weft it (bookmarklet)
 
 Your home page shows a "Weft it" link to drag to the bookmarks bar. Clicking it on any page opens the compose form with the page's title, description and image (from Open Graph or Twitter tags, falling back to the page itself). It also checks whether the page can take a Webmention (a `rel="webmention"` link in the page, or in the `Link` header of its response). If it can, the form starts as a **reply to the page**; if not, as a **bookmark card** (the image, the description as a quote and a link). A link under the form switches between the two, and nothing is published until you press Publish. If the page advertises RSS or Atom feeds (up to five), they are listed above the form with a **Follow** button, or "Following ✓" for those you already follow; the button follows without leaving the form, so what you have typed stays. A reply to a page carries what the page looked like as optional attributes of `weft:context` (`title`, `description`, `image`), so followers see a card for it. The API takes the same as `"context": {"title": "", "description": "", "image": ""}` next to `in_reply_to`.
@@ -268,7 +303,7 @@ Post and like pages mark up their author as an `h-card` (`p-author` with the dis
 
 ### Pages as Markdown
 
-Send `Accept: text/markdown` to any page a person navigates and it answers with the content the page shows as one Markdown document, with absolute links to the other pages: `/` (including `?keyword=`), `/timeline`, `/thread?url=`, `/following`, `/replies`, `/liked-by?target=`, `/likes/<id>` and a removed post's 410. It is the content, not the interface: no menus, forms or buttons. A post's own address (`/posts/<slug>`) still returns just that post's source.
+Send `Accept: text/markdown` to any page a person navigates and it answers with the content the page shows as one Markdown document, with absolute links to the other pages: `/` (including `?keyword=`), `/timeline`, `/thread?url=`, `/following`, `/replies`, `/liked-by?target=`, `/likes/<id>` and a removed post's 410. It is the content, not the interface: no menus, forms or buttons. A post's own address (`/posts/<slug>`) returns the post as a document, with its frontmatter (see the API above).
 
 The feeds do the same: `/feed.xml` (with `?page=` and `?category=`), `/posts/<slug>/replies.xml`, `/likes.xml` and `/following.opml` return their content as Markdown for `Accept: text/markdown`, with "Older posts" and "Newer posts" links for the pages of a feed. A feed reader that accepts anything (`*/*`, or `application/rss+xml`) keeps getting the XML. Pages without content of their own (the login and edit forms) stay HTML, and the pages for the owner still need the owner's session. Posts from other people's feeds are passed through as their authors wrote them, so a reader of the document should treat them as untrusted.
 

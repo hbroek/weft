@@ -674,8 +674,8 @@ func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
 	w.Header().Add("Vary", "Accept")
 	switch negotiate(r.Header.Get("Accept")) {
 	case "markdown":
-		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		io.WriteString(w, absMedia(p.Markdown, s.base(r)))
+		base := s.base(r)
+		s.postDocument(w, r, q, p.Slug, absMedia(postDoc(p, base+"/posts/"+p.Slug), base))
 		return
 	case "rss":
 		s.writeFeed(w, r, q, []*store.Post{p}, "") // this one post, as a feed item with all its weft: links

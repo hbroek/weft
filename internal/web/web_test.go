@@ -109,12 +109,12 @@ func TestPublishAndFeed(t *testing.T) {
 	if pw.Code != http.StatusOK || !strings.Contains(string(body), `rel="webmention"`) || !strings.Contains(string(body), `type="application/rss+xml"`) {
 		t.Errorf("permalink page missing discovery links: %d", pw.Code)
 	}
-	// content negotiation: text/markdown gets the source, browsers keep the page
+	// content negotiation: text/markdown gets the source as a document, browsers keep the page
 	mr := httptest.NewRequest("GET", "http://"+host+pathOf(note.Link), nil)
 	mr.Header.Set("Accept", "text/markdown")
 	mw := httptest.NewRecorder()
 	s.ServeHTTP(mw, mr)
-	if ct := mw.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/markdown") || !strings.HasPrefix(mw.Body.String(), "A short *note*.") || mw.Header().Get("Vary") != "Accept" {
+	if ct := mw.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/markdown") || !strings.HasSuffix(mw.Body.String(), "---\nA short *note*. <script>x</script>") || !strings.HasPrefix(mw.Body.String(), "---\nid: 1\n") || !strings.Contains(strings.Join(mw.Header().Values("Vary"), ","), "Accept") {
 		t.Errorf("markdown request: %q %q", ct, mw.Body)
 	}
 	br := httptest.NewRequest("GET", "http://"+host+pathOf(note.Link), nil)

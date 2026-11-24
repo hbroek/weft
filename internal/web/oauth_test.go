@@ -585,7 +585,7 @@ func TestScopesOnTheAPI(t *testing.T) {
 	}
 	method := func(route string) (string, string) {
 		m, p, _ := strings.Cut(route, " ")
-		return m, strings.NewReplacer("{ref}", "1", "{id}", "1").Replace(p)
+		return m, strings.NewReplacer("{ref}", "1", "{id}", "1", "{slug}", "1").Replace(p)
 	}
 	only := map[string]string{}
 	for _, sc := range oauth.Scopes {

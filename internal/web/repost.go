@@ -32,6 +32,9 @@ func (s *Server) repostSource(ctx context.Context, page string) repostText {
 	if res, err := s.web.GetAs(ctx, page, "text/markdown, text/html;q=0.5"); err == nil {
 		if strings.HasPrefix(strings.ToLower(res.ContentType), "text/markdown") {
 			out.Markdown = strings.TrimSpace(string(res.Body))
+			if doc, _, err := parseDoc(string(res.Body)); err == nil && doc.Markdown != "" { // a post served with frontmatter
+				out.Title, out.Markdown = strings.TrimSpace(doc.Title), strings.TrimSpace(doc.Markdown)
+			}
 			return out
 		}
 		a := extract.Page(res.Body, res.URL)

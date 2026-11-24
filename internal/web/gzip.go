@@ -59,7 +59,7 @@ func (g *gzipWriter) decide(status int) {
 	}
 	g.decided = true
 	h := g.Header()
-	if status == http.StatusNoContent || status == http.StatusNotModified || h.Get("Content-Encoding") != "" || !compressible(h.Get("Content-Type")) {
+	if status == http.StatusNoContent || status == http.StatusNotModified || h.Get("Content-Encoding") != "" || !compressible(h.Get("Content-Type")) || strings.Contains(h.Get("Cache-Control"), "no-transform") {
 		return
 	}
 	h.Set("Content-Encoding", "gzip")

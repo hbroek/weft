@@ -28,5 +28,6 @@ func apiRoutes(s *Server) []apiRoute {
 		{"read", "GET /api/posts/{ref}", s.apiGetPost},
 		{"post", "PUT /api/posts/{ref}", s.apiUpdate},
 		{"post", "DELETE /api/posts/{ref}", s.apiDelete},
+		{"post", "PUT /posts/{slug}", s.putPost},
 	}
 }

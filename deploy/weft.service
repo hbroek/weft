@@ -19,7 +19,7 @@ ExecStart=/opt/weft/weft serve \
   -cname-target weft.weftseed.com \
   -data /var/lib/weft \
   -site /opt/weft/site \
-  -trust-proxy -signups -admin -max-users 100
+  -trust-proxy -signups -oauth -admin -max-users 100
 Restart=on-failure
 RestartSec=3
 # the server stops gracefully within 15 seconds
