@@ -194,6 +194,7 @@ var (
 	reHostE = regexp.MustCompile(`(?:[a-z0-9]+\.)?localhost%3A\d+`)
 	reSlugE = regexp.MustCompile(`(%2Fposts%2F[a-z0-9-]+)\.[a-z0-9]{4}\b`)
 	reSlug  = regexp.MustCompile(`(/posts/[a-z0-9-]+)\.[a-z0-9]{4}\b`)
+	reSlugL = regexp.MustCompile(`(?m)^(slug: [a-z0-9-]+)\.[a-z0-9]{4}$`) // a post's document names its address
 	reUUID  = regexp.MustCompile(`urn:uuid:[0-9a-f-]{36}`)
 	reRFC   = regexp.MustCompile(`[A-Z][a-z]{2}, \d\d [A-Z][a-z]{2} \d{4} \d\d:\d\d:\d\d [+-]\d{4}`)
 	reISO   = regexp.MustCompile(`\d{4}-\d\d-\d\d[T ][\d:]+(Z|[+-]\d\d:?\d\d)?`)
@@ -209,6 +210,7 @@ func norm(s string) string {
 	s = reSlugE.ReplaceAllString(s, "$1.SUFFIX")
 	s = reHost.ReplaceAllString(s, "$1.H")
 	s = reSlug.ReplaceAllString(s, "$1.SUFFIX")
+	s = reSlugL.ReplaceAllString(s, "$1.SUFFIX")
 	s = reUUID.ReplaceAllString(s, "urn:uuid:UUID")
 	s = reRFC.ReplaceAllString(s, "DATE")
 	s = reISO.ReplaceAllString(s, "DATE")

@@ -29,5 +29,7 @@ func apiRoutes(s *Server) []apiRoute {
 		{"post", "PUT /api/posts/{ref}", s.apiUpdate},
 		{"post", "DELETE /api/posts/{ref}", s.apiDelete},
 		{"post", "PUT /posts/{slug}", s.putPost},
+		{"post", "DELETE /posts/{slug}", s.removePost},
+		{"post", "POST /{$}", s.apiCreate}, // an editor adds a post at the root of the site, where it reads the posts
 	}
 }

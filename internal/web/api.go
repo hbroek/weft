@@ -81,6 +81,9 @@ func (s *Server) decode(w http.ResponseWriter, r *http.Request, q *req) (in post
 
 func (s *Server) reply(w http.ResponseWriter, r *http.Request, status int, id int64) {
 	w.Header().Set("Content-Type", "application/json")
+	if status == http.StatusCreated {
+		w.Header().Set("Location", s.postURL(r, id))
+	}
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(postResp{ID: id, URL: s.postURL(r, id)})
 }
@@ -126,6 +129,10 @@ func (s *Server) apiUpdate(w http.ResponseWriter, r *http.Request, q *req) {
 	}
 	if id != 0 && id != p.ID {
 		http.Error(w, "the document is post "+itoa(id)+", not post "+itoa(p.ID), http.StatusConflict)
+		return
+	}
+	if in.Slug != "" && in.Slug != p.Slug { // the address is chosen once, when the post is made
+		http.Error(w, "the address of a post cannot be changed: this one is "+p.Slug, http.StatusConflict)
 		return
 	}
 	if _, msg := s.update(r, q.host, p.ID, in.Title, in.Markdown, feed.Keywords(in.Keywords), in.Canonical); msg != "" {

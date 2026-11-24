@@ -66,7 +66,7 @@ func TestAPostIsEditedAtItsOwnAddress(t *testing.T) {
 	for name, tok := range map[string]string{"oauth": writer, "account token": own} {
 		w := getDoc(s, path, tok, "gzip")
 		et := w.Header().Get("ETag")
-		if w.Code != 200 || w.Header().Get("Allow") != "GET, HEAD, PUT" || w.Header().Get("Link") != "<"+path+`>; rel="edit"` ||
+		if w.Code != 200 || w.Header().Get("Allow") != "GET, HEAD, PUT, DELETE" || w.Header().Get("Link") != "<"+path+`>; rel="edit"` ||
 			et == "" || strings.HasPrefix(et, "W/") || w.Header().Get("Content-Encoding") != "" || !strings.Contains(strings.Join(w.Header().Values("Vary"), ","), "Authorization") {
 			t.Errorf("%s: %d %v", name, w.Code, w.Header())
 		}
@@ -124,6 +124,42 @@ func TestAPostIsEditedAtItsOwnAddress(t *testing.T) {
 	if w := putDoc(s, path, writer, "", edited); w.Code != 401 {
 		t.Errorf("oauth off, put: %d", w.Code)
 	}
+	s.cfg.OAuth = true
+	// delete: not without the post scope, not with a stale tag, then the address answers 410
+	del := func(tok, ifMatch string) int {
+		r := httptest.NewRequest("DELETE", "http://"+alice+path, nil)
+		if tok != "" {
+			r.Header.Set("Authorization", "Bearer "+tok)
+		}
+		if ifMatch != "" {
+			r.Header.Set("If-Match", ifMatch)
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w.Code
+	}
+	cur := getDoc(s, path, writer, "").Header().Get("ETag")
+	if c := del("", ""); c != 401 {
+		t.Errorf("delete, no token: %d", c)
+	}
+	if c := del(reader, ""); c != 403 {
+		t.Errorf("delete, read scope: %d", c)
+	}
+	if c := del(other, ""); c != 401 {
+		t.Errorf("delete, other account: %d", c)
+	}
+	if c := del(writer, et); c != 412 {
+		t.Errorf("delete, stale tag: %d", c)
+	}
+	if c := del(writer, cur); c != 204 {
+		t.Errorf("delete: %d", c)
+	}
+	if g := getDoc(s, path, writer, ""); g.Code != 410 {
+		t.Errorf("after the delete: %d", g.Code)
+	}
+	if c := del(writer, ""); c != 404 {
+		t.Errorf("delete twice: %d", c)
+	}
 }
 
 // The page a person reads is not affected by any of this.
@@ -139,5 +175,68 @@ func TestThePostPageStaysHTML(t *testing.T) {
 	s.ServeHTTP(rec, r)
 	if !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") || rec.Header().Get("Allow") != "" || strings.Contains(rec.Body.String(), "id: ") {
 		t.Errorf("%d %v", rec.Code, rec.Header())
+	}
+}
+
+// An editor adds a post at the root of the site, where it reads the posts.
+func TestAPostIsAddedAtTheRoot(t *testing.T) {
+	s, own := setup(t)
+	s.cfg.OAuth = true
+	mk := func(name, scope string) string {
+		c, _ := s.st.AddOAuthClient(store.OAuthClient{Name: name, RedirectURIs: []string{"https://app.example/cb"}})
+		return tokenWith(t, s, c, "alice", scope)
+	}
+	writer, reader := mk("w", "read post"), mk("r", "read")
+
+	for name, tc := range map[string]struct{ tok, allow string }{"signed out": {"", "GET, HEAD"}, "read scope": {reader, "GET, HEAD"}, "post scope": {writer, "GET, HEAD, POST"}, "account token": {own, "GET, HEAD, POST"}} {
+		w := getDoc(s, "/", tc.tok, "")
+		if w.Code != 200 || w.Header().Get("Allow") != tc.allow || !strings.Contains(strings.Join(w.Header().Values("Vary"), ","), "Authorization") {
+			t.Errorf("%s: %d %v", name, w.Code, w.Header())
+		}
+	}
+	// a browser asking for the page is told nothing of the kind
+	r := httptest.NewRequest("GET", "http://"+alice+"/", nil)
+	r.Header.Set("Authorization", "Bearer "+writer)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, r)
+	if rec.Header().Get("Allow") != "" {
+		t.Errorf("the page has an Allow: %v", rec.Header())
+	}
+
+	const doc = "---\ntitle: A new one\nslug: my words\nkeywords: [x, y]\n---\nFresh words.\n"
+	if w := doWith(s, "POST", alice, "/", "", "text/markdown", "", doc); w.Code != 401 {
+		t.Errorf("no token: %d", w.Code)
+	}
+	if w := doWith(s, "POST", alice, "/", reader, "text/markdown", "", doc); w.Code != 403 {
+		t.Errorf("read scope: %d", w.Code)
+	}
+	w := doWith(s, "POST", alice, "/", writer, "text/markdown; charset=utf-8", "", doc)
+	var made postResp
+	json.Unmarshal(w.Body.Bytes(), &made)
+	if w.Code != 201 || made.URL == "" || w.Header().Get("Location") != made.URL || w.Header().Get("Allow") != "" {
+		t.Fatalf("create: %d %v %s", w.Code, w.Header(), w.Body)
+	}
+	if !strings.HasPrefix(pathOf(made.URL), "/posts/my-words.") {
+		t.Errorf("the chosen words are not in the address: %s", made.URL)
+	}
+	got := getDoc(s, pathOf(made.URL), writer, "")
+	slug := pathOf(made.URL)[len("/posts/"):]
+	if !strings.Contains(got.Body.String(), "\nslug: "+slug+"\n") {
+		t.Errorf("the document does not say its address: %q", got.Body)
+	}
+	// saving it as it is works; naming another address does not, and nothing is changed
+	if w := putDoc(s, pathOf(made.URL), writer, "", got.Body.String()); w.Code != 200 {
+		t.Errorf("save with its own slug: %d %s", w.Code, w.Body)
+	}
+	other := strings.Replace(got.Body.String(), "slug: "+slug, "slug: something-else", 1)
+	if w := putDoc(s, pathOf(made.URL), writer, "", other); w.Code != 409 || !strings.Contains(w.Body.String(), slug) {
+		t.Errorf("save with another slug: %d %s", w.Code, w.Body)
+	}
+	if !strings.Contains(got.Body.String(), "title: A new one") || !strings.Contains(got.Body.String(), "Fresh words.") || got.Header().Get("Allow") != "GET, HEAD, PUT, DELETE" {
+		t.Errorf("read back: %v %q", got.Header(), got.Body)
+	}
+	s.cfg.OAuth = false
+	if w := doWith(s, "POST", alice, "/", writer, "text/markdown", "", doc); w.Code != 401 {
+		t.Errorf("oauth off: %d", w.Code)
 	}
 }

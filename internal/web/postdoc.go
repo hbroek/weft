@@ -373,7 +373,7 @@ func out(s string, flow bool) string {
 func postDoc(p *store.Post, url string) string {
 	var b strings.Builder
 	b.WriteString("---\n")
-	fmt.Fprintf(&b, "id: %d\nurl: %s\n", p.ID, out(url, false))
+	fmt.Fprintf(&b, "id: %d\nurl: %s\nslug: %s\n", p.ID, out(url, false), out(p.Slug, false))
 	if p.Title != "" {
 		fmt.Fprintf(&b, "title: %s\n", out(p.Title, false))
 	}

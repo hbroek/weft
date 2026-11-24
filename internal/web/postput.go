@@ -47,7 +47,7 @@ func (s *Server) postDocument(w http.ResponseWriter, r *http.Request, q *req, sl
 	h.Set("Cache-Control", "no-transform") // a changed encoding would make the tag weak
 	allow := "GET, HEAD"
 	if s.mayEdit(r, q) {
-		allow += ", PUT"
+		allow += ", PUT, DELETE"
 		h.Set("Link", "</posts/"+slug+`>; rel="edit"`)
 		h.Set("Cache-Control", "private, no-transform")
 	}
@@ -81,4 +81,24 @@ func (s *Server) putPost(w http.ResponseWriter, r *http.Request, q *req) {
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.SetPathValue("ref", p.Slug)
 	s.apiUpdate(w, r, q)
+}
+
+// removePost deletes a post at its own address (DELETE /posts/<slug>), as DELETE /api/posts/<slug> does: the address
+// then answers 410 and stays reserved. If-Match, when sent, has to name the document as it is now.
+func (s *Server) removePost(w http.ResponseWriter, r *http.Request, q *req) {
+	if !s.apiAuth(w, r, q) {
+		return
+	}
+	p, err := q.sp.PostBySlug(q.host.ID, r.PathValue("slug"))
+	if err != nil || p.Deleted {
+		http.NotFound(w, r)
+		return
+	}
+	base := s.base(r)
+	if im := r.Header.Get("If-Match"); im != "" && !etagMatches(im, docETag(absMedia(postDoc(p, base+"/posts/"+p.Slug), base))) {
+		http.Error(w, "the post has changed since you read it", http.StatusPreconditionFailed)
+		return
+	}
+	r.SetPathValue("ref", p.Slug)
+	s.apiDelete(w, r, q)
 }

@@ -631,6 +631,13 @@ func (s *Server) renderPosts(w http.ResponseWriter, r *http.Request, q *req, tit
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request, q *req) {
+	if negotiate(r.Header.Get("Accept")) == "markdown" { // an editor asks what it may do here: add a post
+		w.Header().Add("Vary", "Authorization")
+		w.Header().Set("Allow", "GET, HEAD")
+		if s.mayEdit(r, q) {
+			w.Header().Set("Allow", "GET, HEAD, POST")
+		}
+	}
 	kw := feed.Keyword(r.FormValue("keyword"))
 	var posts []*store.Post
 	var err error

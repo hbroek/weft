@@ -760,7 +760,7 @@ func TestPagesAsMarkdown(t *testing.T) {
 	check := func(name string, w *httptest.ResponseRecorder, want ...string) string {
 		t.Helper()
 		body := w.Body.String()
-		if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/markdown") || w.Header().Get("Vary") != "Accept" {
+		if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/markdown") || !strings.Contains(strings.Join(w.Header().Values("Vary"), ","), "Accept") {
 			t.Errorf("%s: %d %q vary=%q\n%s", name, w.Code, w.Header().Get("Content-Type"), w.Header().Get("Vary"), body)
 		}
 		for _, x := range want {
@@ -849,7 +849,7 @@ func TestFeedsAsMarkdown(t *testing.T) {
 		t.Helper()
 		w := getAccept(alice, path, "text/markdown")
 		body := w.Body.String()
-		if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/markdown") || w.Header().Get("Vary") != "Accept" {
+		if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/markdown") || !strings.Contains(strings.Join(w.Header().Values("Vary"), ","), "Accept") {
 			t.Errorf("%s: %d %q vary=%q\n%s", name, w.Code, w.Header().Get("Content-Type"), w.Header().Get("Vary"), body)
 		}
 		for _, x := range want {
