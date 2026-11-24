@@ -154,6 +154,8 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("POST /export", s.user(s.export))
 	s.mux.HandleFunc("GET /password", s.user(s.passwordForm))
 	s.mux.HandleFunc("POST /password", s.user(s.password))
+	s.mux.HandleFunc("GET /search", s.user(s.search))
+	s.mux.HandleFunc("GET /.well-known/bonbon.json", s.user(s.bonbon))
 	s.mux.HandleFunc("GET /.well-known/weft-domain", s.user(s.domainProof))
 	s.mux.HandleFunc("POST /domain", s.user(s.domainSet))
 	s.mux.HandleFunc("POST /domain/check", s.user(s.domainCheck))

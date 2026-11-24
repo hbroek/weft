@@ -21,7 +21,11 @@ func (d pageData) markdown(name string) (string, bool) {
 	var b strings.Builder
 	switch name {
 	case "posts":
-		d.mdPosts(&b)
+		if d.Searching {
+			d.mdSearch(&b)
+		} else {
+			d.mdPosts(&b)
+		}
 	case "timeline":
 		d.mdTimeline(&b)
 	case "thread":

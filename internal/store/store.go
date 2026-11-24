@@ -279,6 +279,37 @@ func (s *Space) PostsWithKeyword(userID int64, kw string, limit, offset int) ([]
 	return out, rows.Err()
 }
 
+// SearchPosts returns the user's posts that contain every one of the words in the title, the text or the keywords
+// (ignoring case), newest first. Only this user's file is read, so nothing of other accounts can turn up.
+func (s *Space) SearchPosts(userID int64, words []string, limit int) ([]*Post, error) {
+	if len(words) == 0 {
+		return nil, nil
+	}
+	where := `user_id=? AND deleted=0`
+	args := []any{userID}
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	for _, w := range words {
+		where += ` AND (title LIKE ? ESCAPE '\' OR markdown LIKE ? ESCAPE '\' OR keywords LIKE ? ESCAPE '\')`
+		pat := "%" + esc.Replace(w) + "%"
+		args = append(args, pat, pat, pat)
+	}
+	args = append(args, limit)
+	rows, err := s.db.Query(`SELECT `+postCols+` FROM posts WHERE `+where+` ORDER BY created DESC, id DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Post
+	for rows.Next() {
+		p, err := scanPost(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // UpdatePost replaces a post's title, content and keywords and stamps its update time.
 func (s *Space) UpdatePost(userID, id int64, title, markdown, html string, keywords []string, canonical string) (*Post, error) {
 	res, err := s.db.Exec(`UPDATE posts SET title=?,markdown=?,html=?,keywords=?,canonical=?,updated=? WHERE user_id=? AND id=? AND deleted=0`,

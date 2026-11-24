@@ -49,6 +49,7 @@ var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": 
 <script>(function(){var b=document.getElementById('theme'),r=document.documentElement,o=['auto','light','dark'];function cur(){return r.getAttribute('data-theme')||'auto'}function label(){b.title='Theme: '+cur()+' (click to change)';b.setAttribute('aria-label',b.title)}label();b.addEventListener('click',function(){var n=o[(o.indexOf(cur())+1)%3];if(n==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',n);try{if(n==='auto')localStorage.removeItem('weft-theme');else localStorage.setItem('weft-theme',n)}catch(e){}label()})})()</script>
 <div class="wrap">
 {{if .DomainWarn}}<p class="err" role="alert">{{.DomainWarn}} <a href="/profile">Fix it on your profile page</a></p>{{end}}
+{{if or .Home .Searching}}<form class="search" role="search" method="get" action="/search"><input type="search" name="q" value="{{.Query}}" placeholder="Search {{.Author}}&#39;s posts" aria-label="Search {{.Author}}&#39;s posts" maxlength="200"{{if .Searching}} autofocus{{end}}><button>Search</button></form>{{end}}
 {{if .Home}}{{if .Bio}}<div class="bio"><div class="bio-text" id="bio-text">{{.BioHTML}}</div><button type="button" class="linkbtn bio-more" id="bio-more" aria-controls="bio-text" aria-expanded="false" hidden>More</button></div>
 <script>(function(){var t=document.getElementById('bio-text'),b=document.getElementById('bio-more');if(!t||!b)return;t.classList.add('clamp');if(t.scrollHeight<=t.clientHeight+1){t.classList.remove('clamp');return}b.hidden=false;b.addEventListener('click',function(){var open=t.classList.toggle('clamp')===false;b.textContent=open?'Less':'More';b.setAttribute('aria-expanded',open)})})()</script>{{end}}{{if .Owner}}<p class="bio"><small><a href="/profile">Edit profile</a></small></p>{{end}}{{end}}
 <main>{{end}}
@@ -216,6 +217,7 @@ b.addEventListener('click',function(){if(navigator.clipboard&&navigator.clipboar
 {{if .ReplyHref}}<div class="meta"><div class="m-l"></div><div class="m-r"><a class="ico" href="{{.ReplyHref}}" title="Reply" aria-label="Reply">{{template "ic-reply"}}</a></div></div>{{end}}</div>
 {{if .Children}}<ol class="comments">{{range .Children}}{{template "comment" .}}{{end}}</ol>{{end}}</li>{{end}}
 {{define "posts"}}{{template "head" .}}
+{{if .Searching}}<p class="kwhead">{{if .Query}}{{len .Posts}}{{if ge (len .Posts) 50}}+{{end}} {{if eq (len .Posts) 1}}post matches{{else}}posts match{{end}} <strong>{{.Query}}</strong> <small>· <a href="/">All posts</a></small>{{else}}Type a word or two to look through the posts.{{end}}</p>{{end}}
 {{if .Keyword}}<p class="kwhead">Posts tagged <strong>{{.Keyword}}</strong> <small>· <a href="/">All posts</a> · <a href="{{.TopicFeed}}">Feed for this topic</a></small></p>{{end}}
 {{if and .Bookmarklet .PendingAll}}<p class="pending"><a href="/replies">{{.PendingAll}} {{if eq .PendingAll 1}}reply is{{else}}replies are{{end}} waiting for your review</a></p>{{end}}
 {{if .Bookmarklet}}<p class="bm"><small>Bookmark card: drag <a href="{{.Bookmarklet}}">Weft it</a> to your bookmarks bar, then click it on any page to compose a post from that page.</small></p>{{end}}
@@ -459,6 +461,7 @@ if(file&&add){
 
 type pagePost struct {
 	Title, URL, ISO, Date, Ago string
+	Snippet                    string // a search result: a line of what the post says
 	Markdown                   string // the post as its author wrote it, for the Markdown form of the page
 	HTML                       template.HTML
 	Edited                     bool
@@ -529,6 +532,8 @@ type pageData struct {
 	MediaUsed, MediaQuota                string
 	LikeTarget, LikeTitle, LikeNote      string
 	ClearKeyword                         string
+	Query                                string       // the words of a search on this site (the search page only)
+	Searching                            bool         // this is the search page, so the search box shows and the Markdown is a list of links
 	Keyword, TopicFeed                   string       // a keyword filter on the home page, and the feed of just those posts
 	Bookmarklet                          template.URL // javascript: link that sends the current page to /compose; owner's home page only
 	LikesToggle                          string

@@ -263,3 +263,7 @@ article pre code, .node pre code, .comment pre code, #preview pre code { backgro
 .clipbtn { display: block; margin: .25rem 0 .5rem; padding: 0; border: 0; background: none; color: var(--link, inherit); font: inherit; font-size: .9rem; text-decoration: underline; cursor: pointer; }
 
 .pager { display: flex; gap: 1.5rem; margin: 1.5rem 0; }
+
+form.search { display: flex; gap: .5rem; align-items: stretch; margin: 1rem 0; }
+form.search input[type=search] { flex: 1; min-width: 0; box-sizing: border-box; font: inherit; padding: .4rem .55rem; background: var(--field); color: var(--text); border: 1px solid var(--field-border); border-radius: 8px; -webkit-appearance: none; appearance: none; }
+form.search input[type=search]:focus { outline: 2px solid var(--orange); outline-offset: 2px; }
