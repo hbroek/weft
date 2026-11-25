@@ -149,11 +149,11 @@ func TestAnAccountIsFoundFromTheFediverse(t *testing.T) {
 		t.Errorf("nodeinfo: %d %s", n.Code, n.Body)
 	}
 
-	// the outbox is an empty collection, and the inbox says it takes nothing yet
+	// the outbox is an empty collection, and the inbox wants a signature
 	if o := apGet(s, alice, "/outbox", activityJSON); o.Code != 200 || !strings.Contains(o.Body.String(), `"totalItems":0`) {
 		t.Errorf("outbox: %d %s", o.Code, o.Body)
 	}
-	if in := do(s, "POST", alice, "/inbox", "", `{}`); in.Code != 501 {
+	if in := do(s, "POST", alice, "/inbox", "", `{}`); in.Code != 401 { // nobody signed it
 		t.Errorf("inbox: %d", in.Code)
 	}
 

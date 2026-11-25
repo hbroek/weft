@@ -411,6 +411,41 @@ func spaceV6(tx *sql.Tx) error {
 	return err
 }
 
+// spaceV7 keeps the account's followers on the fediverse: who they are and where their server takes what is sent them.
+// A follower is named by its actor address, which is what stays when its handle or server software changes.
+func spaceV7(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS ap_followers (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  actor TEXT NOT NULL,
+  follow_id TEXT NOT NULL DEFAULT '',
+  inbox TEXT NOT NULL,
+  shared_inbox TEXT NOT NULL DEFAULT '',
+  handle TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL DEFAULT '',
+  since INTEGER NOT NULL,
+  PRIMARY KEY (user_id, actor)
+)`)
+	return err
+}
+
+// instanceV18 caches the actors of other servers that have written to an account here: their key, to check what they
+// send, and their inbox. It is a cache: whatever is lost is fetched again.
+func instanceV18(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS ap_actors (
+  id TEXT PRIMARY KEY,
+  key_id TEXT NOT NULL,
+  public_pem TEXT NOT NULL,
+  inbox TEXT NOT NULL,
+  shared_inbox TEXT NOT NULL DEFAULT '',
+  username TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL DEFAULT '',
+  icon TEXT NOT NULL DEFAULT '',
+  fetched INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ap_actors_key ON ap_actors(key_id)`)
+	return err
+}
+
 // instanceV15 indexes the cached items by thread root. The thread view of a reader who follows many feeds read every
 // item of those feeds: 130 ms at 100,000 cached items, 1 ms with the index. (A lookup by permalink always names the
 // feeds as well, and the primary key (feed_url, guid) serves it.)

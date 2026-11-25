@@ -124,13 +124,19 @@ func (c *Client) Get(ctx context.Context, rawurl string) (*Result, error) {
 
 // GetAs is Get with an explicit Accept header, for asking a URL for one particular representation.
 func (c *Client) GetAs(ctx context.Context, rawurl, accept string) (*Result, error) {
-	return c.get(ctx, rawurl, accept, "", "")
+	return c.get(ctx, rawurl, accept, "", "", nil)
+}
+
+// GetSigned is GetAs for a server that only answers a signed request (Mastodon's "authorized fetch"): sign is called
+// with the request, before it is sent, to add the signature.
+func (c *Client) GetSigned(ctx context.Context, rawurl, accept string, sign func(*http.Request) error) (*Result, error) {
+	return c.get(ctx, rawurl, accept, "", "", sign)
 }
 
 // GetIf asks for the document only if it changed since the copy that came with etag and lastModified. When
 // it did not, the result has NotModified set and no body.
 func (c *Client) GetIf(ctx context.Context, rawurl, etag, lastModified string) (*Result, error) {
-	return c.get(ctx, rawurl, defaultAccept, etag, lastModified)
+	return c.get(ctx, rawurl, defaultAccept, etag, lastModified, nil)
 }
 
 // retryAfter reads a Retry-After header, in seconds or as a date.
@@ -144,7 +150,7 @@ func retryAfter(v string, now time.Time) time.Duration {
 	return 0
 }
 
-func (c *Client) get(ctx context.Context, rawurl, accept, etag, lastModified string) (*Result, error) {
+func (c *Client) get(ctx context.Context, rawurl, accept, etag, lastModified string, sign func(*http.Request) error) (*Result, error) {
 	u, err := url.Parse(rawurl)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("not a http(s) URL: %q", rawurl)
@@ -156,6 +162,11 @@ func (c *Client) get(ctx context.Context, rawurl, accept, etag, lastModified str
 	}
 	req.Header.Set("User-Agent", "Weft/0.1 (+https://weftseed.com)")
 	req.Header.Set("Accept", accept)
+	if sign != nil {
+		if err := sign(req); err != nil {
+			return nil, err
+		}
+	}
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}
@@ -259,6 +270,21 @@ func (c *Client) PostForm(ctx context.Context, rawurl string, form url.Values) (
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "Weft/0.1 (+https://weftseed.com)")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	return resp.StatusCode, nil
+}
+
+// Send sends a request the caller built, through the same address guard and time limits, and returns the status. The
+// caller sets the headers (a signature, for one) and the body; the answer's body is discarded.
+func (c *Client) Send(req *http.Request) (int, error) {
+	if req.URL == nil || (req.URL.Scheme != "http" && req.URL.Scheme != "https") || req.URL.Host == "" {
+		return 0, fmt.Errorf("not a http(s) URL: %q", req.URL)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return 0, err

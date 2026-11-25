@@ -160,6 +160,7 @@ var limitsOffInTests bool
 type limits struct {
 	logins   *failLimiter
 	webment  *rateLimiter // POST /webmention, per address
+	inbox    *rateLimiter // POST /inbox (ActivityPub): each request may make us fetch a key, per address
 	api      *rateLimiter // any API call, per address and user
 	apiWrite *rateLimiter // an API call that changes something
 	follow   *rateLimiter // following, or refreshing the follows: each fetches from other servers
@@ -175,6 +176,7 @@ func newLimits() *limits {
 	return &limits{
 		logins:   newFailLimiter(15*time.Minute, 5, 100),
 		webment:  newRateLimiter(30, 20),
+		inbox:    newRateLimiter(600, 120), // a big server delivers to many followers at once
 		api:      newRateLimiter(600, 120),
 		apiWrite: newRateLimiter(60, 30),
 		follow:   newRateLimiter(10, 10),
@@ -236,6 +238,8 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request) bool {
 		return use(s.lim.tokens, ip)
 	case r.Method == http.MethodPost && path == "/oauth/register":
 		return use(s.lim.register, ip)
+	case r.Method == http.MethodPost && path == "/inbox":
+		return use(s.lim.inbox, ip)
 	case r.Method == http.MethodPost && path == "/webmention":
 		return use(s.lim.webment, ip)
 	case strings.HasPrefix(path, "/api/"):

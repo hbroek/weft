@@ -16,7 +16,7 @@ import (
 	"github.com/hbroek/weft/internal/store"
 )
 
-var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": func(t time.Time) string { return t.Format("2 January 2006") }, "copyScript": copyHTML, "fitScript": fitHTML, "cssv": func() string { return cssV }}).Parse(`{{define "head"}}<!doctype html>
+var layout = template.Must(template.New("layout").Funcs(template.FuncMap{"day": func(t time.Time) string { return t.Format("2 January 2006") }, "copyScript": copyHTML, "fitScript": fitHTML, "cssv": func() string { return cssV }, "sub": func(a, b int) int { return a - b }}).Parse(`{{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}}</title>
@@ -145,12 +145,14 @@ f.addEventListener('change',function(){
 <h3 id="fediverse">Fediverse (ActivityPub)</h3>
 {{if .AP.Enabled}}<p>Switched on. People on Mastodon and other servers can find you as <strong>{{.AP.Handle}}</strong>; your address for them is <code>{{.AP.Actor}}</code>.</p>
 {{if .AP.Moved}}<p class="err" role="alert">Your address is no longer <code>{{.AP.Pinned}}</code>, the one this was switched on for, so nothing here answers the fediverse. Restore that address to go on.</p>{{end}}
-<p><small>For now you can be found and looked at. Following you, and sending your posts, come next. The address you are known by is fixed once this is on, so set up your own domain first if you want to use one.</small></p>
+<h4>Followers: {{.AP.Followers}}</h4>
+{{if .AP.FollowerList}}<ul>{{range .AP.FollowerList}}<li>{{if .Name}}{{.Name}} {{end}}<small>{{.Handle}}</small></li>{{end}}</ul>{{if gt .AP.Followers 50}}<p><small>and {{sub .AP.Followers 50}} more</small></p>{{end}}{{else}}<p><small>Nobody follows you yet. Someone on Mastodon can search for {{.AP.Handle}} and press Follow.</small></p>{{end}}
+<p><small>You can be found, looked at and followed. Sending your posts comes next. The address you are known by is fixed once this is on, so set up your own domain first if you want to use one.</small></p>
 <form method="post" action="/profile/activitypub/handle"><label>Domain of your handle (optional, such as example.com) <input type="text" name="handle_host" value="{{.AP.HandleHost}}" placeholder="example.com" maxlength="253"></label>
 <p><small>To be known as <strong>{{.Author}}</strong> at your own domain, put it here and make that domain's <code>/.well-known/webfinger</code> answer with the link to <code>{{.AP.Actor}}</code> (a redirect to <code>{{.AP.Pinned}}/.well-known/webfinger</code> does it). Leave it empty to be known by {{.AP.Pinned}}.</small></p>
 <p><button>Save</button></p></form>
 <form method="post" action="/profile/activitypub"><input type="hidden" name="enable" value="0"><button>Switch off</button></form>
-{{else}}<p>Let people on Mastodon and other servers find you. For now they can look you up and see your profile; following you and sending your posts come next.</p>
+{{else}}<p>Let people on Mastodon and other servers find you. They can look you up, see your profile and follow you; sending your posts comes next.</p>
 {{if .AP.Actor}}<p><small>You had this on before: your address stays <code>{{.AP.Actor}}</code>.</small></p>{{else}}<p><small>The address you are known by is fixed when you switch this on: {{.SiteURL}}. If you want a domain of your own, set it up first.</small></p>{{end}}
 <form method="post" action="/profile/activitypub"><input type="hidden" name="enable" value="1"><button>Switch on</button></form>{{end}}
 {{end}}

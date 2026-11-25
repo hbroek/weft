@@ -88,6 +88,8 @@ func (s *Server) actor(w http.ResponseWriter, r *http.Request, q *req) bool {
 		"url":                       id,
 		"inbox":                     id + "inbox",
 		"outbox":                    id + "outbox",
+		"followers":                 id + "followers",
+		"following":                 id + "following",
 		"manuallyApprovesFollowers": false,
 		"publicKey":                 map[string]string{"id": id + "#main-key", "owner": id, "publicKeyPem": a.PublicPEM},
 	}
@@ -118,13 +120,19 @@ func (s *Server) outbox(w http.ResponseWriter, r *http.Request, q *req) {
 	})
 }
 
-// inbox does not take activities yet (phase 2); saying so is better than a 404 that looks like a mistake.
-func (s *Server) inbox(w http.ResponseWriter, r *http.Request, q *req) {
-	if _, ok := s.apFor(r, q); !ok {
-		http.NotFound(w, r)
-		return
+// followers and following are collections that say how many there are and not who: a follower list is the account
+// holder's to show or not, and Weft shows it to the account holder only. (Following arrives with phase 5.)
+func (s *Server) collection(name string, count func(*req) int) func(http.ResponseWriter, *http.Request, *req) {
+	return func(w http.ResponseWriter, r *http.Request, q *req) {
+		a, ok := s.apFor(r, q)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeLD(w, activityJSON, map[string]any{
+			"@context": "https://www.w3.org/ns/activitystreams", "id": a.Actor + name, "type": "OrderedCollection", "totalItems": count(q),
+		})
 	}
-	http.Error(w, "This account does not accept activities yet.", http.StatusNotImplemented)
 }
 
 // webfinger names the actor of the account for acct:name@host, where host is this account's address (with or without
@@ -208,12 +216,14 @@ func (s *Server) nodeInfo(w http.ResponseWriter, r *http.Request, q *req) {
 
 // apView is the Fediverse section of the profile page.
 type apView struct {
-	Enabled    bool
-	Handle     string // @name@host: how someone finds the account
-	Actor      string
-	Moved      bool   // the account's address is no longer the one its identity was made for
-	Pinned     string // that address
-	HandleHost string // the domain the handle is shown with, if the owner set one
+	Enabled      bool
+	Handle       string // @name@host: how someone finds the account
+	Actor        string
+	Moved        bool   // the account's address is no longer the one its identity was made for
+	Pinned       string // that address
+	HandleHost   string // the domain the handle is shown with, if the owner set one
+	Followers    int
+	FollowerList []store.APFollower // the newest, for the owner to see
 }
 
 func (s *Server) apView(r *http.Request, q *req) *apView {
@@ -229,6 +239,8 @@ func (s *Server) apView(r *http.Request, q *req) *apView {
 		}
 		v.Moved = a.Enabled && strings.TrimSuffix(a.Actor, "/") != s.originOf(q.host.Name, r)
 		v.Pinned = strings.TrimSuffix(a.Actor, "/")
+		v.Followers = q.sp.APFollowerCount(q.host.ID)
+		v.FollowerList, _ = q.sp.APFollowers(q.host.ID, 50)
 	}
 	return v
 }

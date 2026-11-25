@@ -87,7 +87,8 @@ type Server struct {
 	cfg Config
 	st  *store.Instance
 
-	oauthPruned time.Time // when OAuth data was last pruned; used only by the poller's goroutine
+	apBackoff   []time.Duration // the waits between tries of an ActivityPub delivery; nil means the usual ones (tests set it)
+	oauthPruned time.Time       // when OAuth data was last pruned; used only by the poller's goroutine
 	mux         *http.ServeMux
 	web         *fetch.Client
 	// wake nudges the background worker after a Webmention job is queued.
@@ -162,6 +163,7 @@ func New(cfg Config, st *store.Instance) *Server {
 	s.mux.HandleFunc("GET /nodeinfo/2.1", s.user(s.nodeInfo))
 	s.mux.HandleFunc("GET /outbox", s.user(s.outbox))
 	s.mux.HandleFunc("POST /inbox", s.user(s.inbox))
+	s.mux.HandleFunc("GET /followers", s.user(s.collection("followers", func(q *req) int { return q.sp.APFollowerCount(q.host.ID) })))
 	s.mux.HandleFunc("POST /profile/activitypub", s.user(s.apSwitch))
 	s.mux.HandleFunc("POST /profile/activitypub/handle", s.user(s.apHandle))
 	s.mux.HandleFunc("GET /search", s.user(s.search))

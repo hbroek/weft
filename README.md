@@ -399,14 +399,16 @@ Behind a reverse proxy every request comes from the proxy, so start the server w
 
 ## The fediverse (ActivityPub)
 
-*Phase 1 of 6: an account can be found, and looked at, from Mastodon and the rest of the fediverse. It cannot be followed yet and sends nothing.*
+*Phase 2 of 6: an account can be found, looked at and followed from Mastodon and the rest of the fediverse. Its posts are not sent yet.*
 
 `weft serve -activitypub` (off by default) lets each account switch ActivityPub on, on its profile page (also off by default). Switched on, the account answers:
 
 - **WebFinger** at `/.well-known/webfinger?resource=acct:name@host` (or the actor's address), as `application/jrd+json`, naming the actor. `host` is the account's address with or without a port.
 - **The actor** at `/`, the same address as the home page: a request with `Accept: application/activity+json` (or `application/ld+json` with the ActivityStreams profile) gets a `Person` with the name, the bio as the summary, the picture, `inbox`, `outbox` and the public key. Every other `Accept` keeps getting the page or the Markdown.
 - **NodeInfo 2.1** at `/.well-known/nodeinfo` and `/nodeinfo/2.1`.
-- `/outbox` is an empty collection and `POST /inbox` answers 501 until the next phases.
+- **The inbox**, `POST /inbox`, and the collections `/followers` and `/following` (as the actor's `followers` and `following`; they say how many, not who). `/outbox` is an empty collection until posts are sent.
+
+**The inbox.** Every request must be signed (HTTP signatures as Mastodon sends them: `rsa-sha256` over `(request-target)`, `host`, `date` and the `Digest` of the body, which must match, with a `Date` within an hour). Weft fetches the key from the sender's actor (never from an address on its own network, and signed with the receiving account's key, because servers such as mastodon.social answer nothing else), keeps it for a day, and fetches it again, at most once a minute, if a signature does not fit, because keys change. An activity counts only if its `actor` is the one that signed it. Handled: `Follow` (the follower is stored, and a signed `Accept` goes back to its inbox; asking again is answered again), `Undo` of a `Follow` and `Delete` of the actor (the follower is removed). Every other activity is acknowledged with 202 and ignored until phase 4. Followers are listed on the profile page, for the owner only, and are part of an export. Accounts do not approve followers one by one. An `Accept` that cannot be delivered is tried again after 10 seconds, 2 minutes and 20 minutes, in memory: one lost in a restart is made up when the follower follows again.
 
 **The actor's id is pinned.** It is the account's origin and `/`, fixed when ActivityPub is first switched on (with the custom domain if the account has one), because servers that know the account know it by that address. The instance's own address redirects to the custom domain as for every page, and an address that is no longer the pinned one answers nothing here (the profile page says so). Set up a custom domain before switching it on if you want one. Switching off keeps the address and the key, so switching on again is the same account.
 

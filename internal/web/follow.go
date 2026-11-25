@@ -413,6 +413,12 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 }
 
 func (s *Server) followingPage(w http.ResponseWriter, r *http.Request, q *req) {
+	if wantsActivityJSON(r.Header.Get("Accept")) { // the actor's "following", for the fediverse: none yet
+		if a, ok := s.apFor(r, q); ok {
+			writeLD(w, activityJSON, map[string]any{"@context": "https://www.w3.org/ns/activitystreams", "id": a.Actor + "following", "type": "OrderedCollection", "totalItems": 0})
+			return
+		}
+	}
 	if s.requireOwner(w, r, q) {
 		s.renderFollowing(w, r, q, http.StatusOK, "")
 	}

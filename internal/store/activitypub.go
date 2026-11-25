@@ -115,3 +115,104 @@ func newKeyPair() (public, private string, err error) {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub})),
 		string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})), nil
 }
+
+// APActor is an actor on another server, as last fetched.
+type APActor struct {
+	ID, KeyID, PublicPEM string
+	Inbox, SharedInbox   string
+	Username, Name, Icon string
+	Fetched              time.Time
+}
+
+// APActorByID returns the cached actor, or ErrNotFound.
+func (in *Instance) APActorByID(id string) (*APActor, error) {
+	return in.apActor(`id=?`, id)
+}
+
+// APActorByKey returns the cached actor that has this key id, or ErrNotFound.
+func (in *Instance) APActorByKey(keyID string) (*APActor, error) {
+	return in.apActor(`key_id=?`, keyID)
+}
+
+func (in *Instance) apActor(where, arg string) (*APActor, error) {
+	a := &APActor{}
+	var fetched int64
+	err := in.db.QueryRow(`SELECT id,key_id,public_pem,inbox,shared_inbox,username,name,icon,fetched FROM ap_actors WHERE `+where+` LIMIT 1`, arg).
+		Scan(&a.ID, &a.KeyID, &a.PublicPEM, &a.Inbox, &a.SharedInbox, &a.Username, &a.Name, &a.Icon, &fetched)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	a.Fetched = time.Unix(fetched, 0)
+	return a, err
+}
+
+// PutAPActor stores or replaces an actor.
+func (in *Instance) PutAPActor(a *APActor) error {
+	_, err := in.db.Exec(`INSERT INTO ap_actors(id,key_id,public_pem,inbox,shared_inbox,username,name,icon,fetched) VALUES(?,?,?,?,?,?,?,?,?)
+ON CONFLICT(id) DO UPDATE SET key_id=excluded.key_id,public_pem=excluded.public_pem,inbox=excluded.inbox,shared_inbox=excluded.shared_inbox,
+  username=excluded.username,name=excluded.name,icon=excluded.icon,fetched=excluded.fetched`,
+		a.ID, a.KeyID, a.PublicPEM, a.Inbox, a.SharedInbox, a.Username, a.Name, a.Icon, time.Now().Unix())
+	return err
+}
+
+// APFollower is someone on the fediverse who follows the account.
+type APFollower struct {
+	Actor, FollowID    string
+	Inbox, SharedInbox string
+	Handle, Name       string
+	Since              time.Time
+}
+
+// APAddFollower records a follower, or refreshes what is known of one that already follows. It reports whether the
+// follower is new.
+func (s *Space) APAddFollower(userID int64, f APFollower) (isNew bool, err error) {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM ap_followers WHERE user_id=? AND actor=?`, userID, f.Actor).Scan(&n)
+	_, err = s.db.Exec(`INSERT INTO ap_followers(user_id,actor,follow_id,inbox,shared_inbox,handle,name,since) VALUES(?,?,?,?,?,?,?,?)
+ON CONFLICT(user_id,actor) DO UPDATE SET follow_id=excluded.follow_id,inbox=excluded.inbox,shared_inbox=excluded.shared_inbox,handle=excluded.handle,name=excluded.name`,
+		userID, f.Actor, f.FollowID, f.Inbox, f.SharedInbox, f.Handle, f.Name, time.Now().Unix())
+	return n == 0, err
+}
+
+// APRemoveFollower removes the follower with this actor address, or whose follow activity has this id (give "" for
+// the one you do not know). It reports whether there was one.
+func (s *Space) APRemoveFollower(userID int64, actor, followID string) (bool, error) {
+	res, err := s.db.Exec(`DELETE FROM ap_followers WHERE user_id=? AND ((?<>'' AND actor=?) OR (?<>'' AND follow_id=?))`, userID, actor, actor, followID, followID)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// APFollowers lists the followers, the newest first, at most limit of them (0: all).
+func (s *Space) APFollowers(userID int64, limit int) ([]APFollower, error) {
+	q := `SELECT actor,follow_id,inbox,shared_inbox,handle,name,since FROM ap_followers WHERE user_id=? ORDER BY since DESC, actor`
+	args := []any{userID}
+	if limit > 0 {
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []APFollower
+	for rows.Next() {
+		var f APFollower
+		var since int64
+		if err := rows.Scan(&f.Actor, &f.FollowID, &f.Inbox, &f.SharedInbox, &f.Handle, &f.Name, &since); err != nil {
+			return nil, err
+		}
+		f.Since = time.Unix(since, 0)
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// APFollowerCount is how many followers the account has.
+func (s *Space) APFollowerCount(userID int64) (n int) {
+	s.db.QueryRow(`SELECT COUNT(*) FROM ap_followers WHERE user_id=?`, userID).Scan(&n)
+	return n
+}
