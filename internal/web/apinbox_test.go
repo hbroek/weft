@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -50,6 +51,7 @@ type remote struct {
 	got    chan *http.Request
 	bodies chan []byte
 	gets   int
+	answer int    // if not 0, the status the inbox answers with
 	inbox  string // the inbox the actor names, if not its own server's
 	// verifyGet, if set, is asked about every fetch of bob's actor, and a refusal is a 401: a server that answers only
 	// signed requests
@@ -61,7 +63,7 @@ func newRemote(t *testing.T, key *rsa.PrivateKey) *remote {
 	r := &remote{key: key, got: make(chan *http.Request, 10), bodies: make(chan []byte, 10)}
 	r.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
 		switch {
-		case q.Method == "GET" && q.URL.Path == "/users/bob":
+		case q.Method == "GET" && (q.URL.Path == "/users/bob" || q.URL.Path == "/users/carol"):
 			if r.verifyGet != nil {
 				if err := r.verifyGet(q); err != nil {
 					http.Error(w, err.Error(), 401)
@@ -72,11 +74,26 @@ func newRemote(t *testing.T, key *rsa.PrivateKey) *remote {
 			r.gets++
 			k := r.key
 			r.mu.Unlock()
+			name := strings.TrimPrefix(q.URL.Path, "/users/")
+			id := r.srv.URL + q.URL.Path
+			inbox := r.srv.URL + q.URL.Path + "/inbox"
+			if name == "bob" {
+				inbox = r.inboxURL()
+			}
 			w.Header().Set("Content-Type", "application/activity+json")
-			fmt.Fprintf(w, `{"id":%q,"type":"Person","preferredUsername":"bob","name":"Bob B","inbox":%q,"endpoints":{"sharedInbox":%q},"publicKey":{"id":%q,"owner":%q,"publicKeyPem":%q}}`,
-				r.actor(), r.inboxURL(), r.srv.URL+"/inbox", r.actor()+"#main-key", r.actor(), pemOf(k))
-		case q.Method == "POST" && q.URL.Path == "/users/bob/inbox":
+			fmt.Fprintf(w, `{"id":%q,"type":"Person","preferredUsername":%q,"name":"Bob B","inbox":%q,"endpoints":{"sharedInbox":%q},"publicKey":{"id":%q,"owner":%q,"publicKeyPem":%q}}`,
+				id, name, inbox, r.srv.URL+"/inbox", id+"#main-key", id, pemOf(k))
+		case q.Method == "POST" && (q.URL.Path == "/users/bob/inbox" || q.URL.Path == "/users/carol/inbox" || q.URL.Path == "/inbox"):
 			b, _ := io.ReadAll(q.Body)
+			r.mu.Lock()
+			status := r.answer
+			r.mu.Unlock()
+			if status != 0 {
+				r.got <- q
+				r.bodies <- b
+				w.WriteHeader(status)
+				return
+			}
 			r.got <- q
 			r.bodies <- b
 			w.WriteHeader(202)
@@ -137,13 +154,15 @@ func inboxServer(t *testing.T) (*Server, string) {
 	s, _ := setup(t)
 	s.cfg.ActivityPub = true
 	s.web = fetch.New(true) // the other server in these tests is on this computer
-	s.apBackoff = []time.Duration{0, 0}
 	cookie := ownerCookie(t, s, "alice")
 	if w := send(s, "POST", alice, "/profile/activitypub", cookie, url.Values{"enable": {"1"}}); w.Code != 303 {
 		t.Fatalf("switch on: %d", w.Code)
 	}
 	return s, cookie
 }
+
+// flush runs the delivery queue once, as the poller does, so what was queued is sent.
+func flush(s *Server) { s.ProcessQueues(context.Background()) }
 
 func deliver(s *Server, r *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
@@ -177,6 +196,7 @@ func TestAFollowIsAcceptedAndUndone(t *testing.T) {
 		t.Fatalf("followers: %d", followerCount(s))
 	}
 	// the Accept comes back to bob's inbox, signed with the account's key, naming the Follow
+	flush(s)
 	var acc *http.Request
 	select {
 	case acc = <-rem.got:
@@ -206,6 +226,7 @@ func TestAFollowIsAcceptedAndUndone(t *testing.T) {
 	if followerCount(s) != 1 {
 		t.Errorf("a repeated follow made %d followers", followerCount(s))
 	}
+	flush(s)
 	select {
 	case <-rem.got:
 		<-rem.bodies
@@ -238,6 +259,7 @@ func TestAFollowIsAcceptedAndUndone(t *testing.T) {
 		t.Errorf("undo left %d followers", followerCount(s))
 	}
 	drain := func() {
+		flush(s)
 		select {
 		case <-rem.got:
 			<-rem.bodies
@@ -267,6 +289,7 @@ func TestAFollowIsAcceptedAndUndone(t *testing.T) {
 			t.Errorf("%v: %d, %d followers", act["type"], w.Code, followerCount(s))
 		}
 	}
+	flush(s)
 	select {
 	case <-rem.got:
 		t.Error("something was sent for an activity that was ignored")
@@ -422,5 +445,26 @@ func TestAnActorIsFetchedWithASignatureWhenTheServerWantsOne(t *testing.T) {
 	}
 	if sawKey != "http://"+alice+"/#main-key" {
 		t.Errorf("signed as %q", sawKey)
+	}
+}
+
+// A key address whose owner is another key address is not followed: one request is one fetch of a key and one of an actor.
+func TestAKeyThatLeadsToAKeyIsNotFollowed(t *testing.T) {
+	a, _ := testKeys(t)
+	s, _ := inboxServer(t)
+	s.web = fetch.New(true)
+	var gets int
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gets++
+		w.Header().Set("Content-Type", "application/activity+json")
+		// every address is a key that names the next address as its owner
+		fmt.Fprintf(w, `{"id":%q,"owner":%q,"publicKeyPem":%q}`, srv.URL+r.URL.Path, srv.URL+r.URL.Path+"x", pemOf(a))
+	}))
+	defer srv.Close()
+	b, _ := json.Marshal(map[string]any{"id": srv.URL + "/f", "type": "Follow", "actor": srv.URL + "/u", "object": "http://" + alice + "/"})
+	w := deliver(s, signedPost(alice, "/inbox", b, srv.URL+"/u#k", a, time.Now(), allSigned))
+	if w.Code != 401 || gets > 2 {
+		t.Errorf("%d, %d fetches", w.Code, gets)
 	}
 }

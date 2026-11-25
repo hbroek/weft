@@ -216,3 +216,95 @@ func (s *Space) APFollowerCount(userID int64) (n int) {
 	s.db.QueryRow(`SELECT COUNT(*) FROM ap_followers WHERE user_id=?`, userID).Scan(&n)
 	return n
 }
+
+// APPutActivity keeps an activity the account sends, by its id. postID is the post it is about (0: none).
+func (s *Space) APPutActivity(userID int64, id string, postID int64, typ, body string) error {
+	_, err := s.db.Exec(`INSERT INTO ap_outbox(user_id,id,post_id,type,body,created) VALUES(?,?,?,?,?,?)
+ON CONFLICT(user_id,id) DO UPDATE SET post_id=excluded.post_id,type=excluded.type,body=excluded.body`,
+		userID, id, postID, typ, body, time.Now().Unix())
+	return err
+}
+
+// APActivityBody is what to deliver for an activity id: "" if it is not known or was withdrawn.
+func (s *Space) APActivityBody(userID int64, id string) string {
+	var b string
+	s.db.QueryRow(`SELECT body FROM ap_outbox WHERE user_id=? AND id=?`, userID, id).Scan(&b)
+	return b
+}
+
+// APPostSent says whether a Create was made for the post, that is, whether the fediverse has it.
+func (s *Space) APPostSent(userID, postID int64) bool {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM ap_outbox WHERE user_id=? AND post_id=? AND type='Create'`, userID, postID).Scan(&n)
+	return n > 0
+}
+
+// APWithdrawPost empties the bodies of what was sent about a post, except the activity named keep, so that nothing
+// of a removed post stays in the account's file or goes out on a retry.
+func (s *Space) APWithdrawPost(userID, postID int64, keep string) error {
+	_, err := s.db.Exec(`UPDATE ap_outbox SET body='' WHERE user_id=? AND post_id=? AND id<>?`, userID, postID, keep)
+	return err
+}
+
+// APCreates returns the bodies of the latest Create activities that still have one, newest first.
+func (s *Space) APCreates(userID int64, limit int) ([]string, error) {
+	rows, err := s.db.Query(`SELECT body FROM ap_outbox WHERE user_id=? AND type='Create' AND body<>'' ORDER BY created DESC, rowid DESC LIMIT ?`, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var b string
+		if err := rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+// APCreateCount is how many posts have been sent and not removed.
+func (s *Space) APCreateCount(userID int64) (n int) {
+	s.db.QueryRow(`SELECT COUNT(*) FROM ap_outbox WHERE user_id=? AND type='Create' AND body<>''`, userID).Scan(&n)
+	return n
+}
+
+// APRemoveFollowersAt removes the followers whose inbox, or shared inbox, is this address: their server said it is gone.
+func (s *Space) APRemoveFollowersAt(userID int64, inbox string) error {
+	_, err := s.db.Exec(`DELETE FROM ap_followers WHERE user_id=? AND (inbox=? OR shared_inbox=?)`, userID, inbox, inbox)
+	return err
+}
+
+// RepliesBySource returns the replies recorded under this address, whichever post they answer.
+func (s *Space) RepliesBySource(source string) ([]Reply, error) {
+	rows, err := s.db.Query(`SELECT `+replyCols+` FROM replies WHERE source=?`, source)
+	if err != nil {
+		return nil, err
+	}
+	return scanReplies(rows)
+}
+
+// DeleteLikeInBySource removes the received like with this id, whichever post it was for.
+func (s *Space) DeleteLikeInBySource(source string) error {
+	_, err := s.db.Exec(`DELETE FROM likes_in WHERE source=?`, source)
+	return err
+}
+
+// APClaim says that the actor made what came under this address, and reports whether that is so: the first actor to
+// come with an address owns it, and nobody else may come with it again.
+func (s *Space) APClaim(source, actor string) bool {
+	s.db.Exec(`INSERT OR IGNORE INTO ap_owner(source,actor) VALUES(?,?)`, source, actor)
+	return s.APOwns(source, actor)
+}
+
+// APOwns reports whether the actor is the one that made what came under this address.
+func (s *Space) APOwns(source, actor string) bool {
+	var a string
+	return s.db.QueryRow(`SELECT actor FROM ap_owner WHERE source=?`, source).Scan(&a) == nil && a == actor
+}
+
+// APRelease forgets who owned an address, once what was under it is gone.
+func (s *Space) APRelease(source string) {
+	s.db.Exec(`DELETE FROM ap_owner WHERE source=?`, source)
+}

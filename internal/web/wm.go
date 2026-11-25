@@ -189,7 +189,7 @@ func (s *Server) processUser(ctx context.Context, name string) {
 		return
 	}
 	defer release()
-	for _, dir := range []string{store.QueueOut, store.QueueIn} {
+	for _, dir := range []string{store.QueueOut, store.QueueIn, store.QueueAP} {
 		items, err := sp.DueQueue(dir, 50)
 		if err != nil {
 			return
@@ -200,13 +200,18 @@ func (s *Server) processUser(ctx context.Context, name string) {
 			}
 			var note string
 			var retry bool
-			if dir == store.QueueOut {
+			delay, most := time.Duration(1<<it.Attempts)*time.Minute, int64(maxWMAttempts)
+			switch dir {
+			case store.QueueOut:
 				note, retry = s.sendMention(ctx, it)
-			} else {
+			case store.QueueAP:
+				note, retry = s.sendActivity(ctx, sp, it)
+				delay, most = apRetryDelay(it.Attempts), maxAPAttempts
+			default:
 				note, retry = s.receiveMention(ctx, sp, it)
 			}
 			if retry {
-				sp.RetryQueue(it.ID, time.Duration(1<<it.Attempts)*time.Minute, maxWMAttempts, note)
+				sp.RetryQueue(it.ID, delay, most, note)
 			} else {
 				sp.FinishQueue(it.ID, note)
 			}

@@ -443,6 +443,7 @@ func (s *Server) create(r *http.Request, u *store.User, title, markdown, slug st
 	if p.InReplyTo != "" {
 		s.notify(reqOf(r).sp, s.postURL(r, p.ID), p.InReplyTo)
 	}
+	s.federate(r, p, "create")
 	s.refreshOwnFeed(r)
 	return p, ""
 }
@@ -502,6 +503,7 @@ func (s *Server) update(r *http.Request, u *store.User, id int64, title, markdow
 	if p.InReplyTo != "" {
 		s.notify(reqOf(r).sp, s.postURL(r, p.ID), p.InReplyTo)
 	}
+	s.federate(r, p, "update")
 	s.refreshOwnFeed(r)
 	return p, ""
 }
@@ -515,6 +517,7 @@ func (s *Server) deletePost(r *http.Request, u *store.User, p *store.Post) error
 	if p.InReplyTo != "" {
 		s.notify(reqOf(r).sp, s.postURL(r, p.ID), p.InReplyTo)
 	}
+	s.federate(r, p, "delete")
 	s.refreshOwnFeed(r)
 	return nil
 }

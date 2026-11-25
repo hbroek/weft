@@ -207,6 +207,7 @@ func (s *Space) ApprovedCounts(userID int64) (map[int64]int, error) {
 
 const (
 	QueueOut = "out"
+	QueueAP  = "ap" // delivery of an activity to a server on the fediverse: source is the activity's id, target the inbox
 	QueueIn  = "in"
 )
 

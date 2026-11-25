@@ -106,20 +106,6 @@ func (s *Server) actor(w http.ResponseWriter, r *http.Request, q *req) bool {
 	return true
 }
 
-// outbox is empty until the account's posts are sent (phase 3), but it answers, so a server that looks finds a
-// collection and not an error.
-func (s *Server) outbox(w http.ResponseWriter, r *http.Request, q *req) {
-	a, ok := s.apFor(r, q)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	writeLD(w, activityJSON, map[string]any{
-		"@context": "https://www.w3.org/ns/activitystreams", "id": a.Actor + "outbox", "type": "OrderedCollection",
-		"totalItems": 0, "orderedItems": []any{},
-	})
-}
-
 // followers and following are collections that say how many there are and not who: a follower list is the account
 // holder's to show or not, and Weft shows it to the account holder only. (Following arrives with phase 5.)
 func (s *Server) collection(name string, count func(*req) int) func(http.ResponseWriter, *http.Request, *req) {

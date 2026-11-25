@@ -147,12 +147,12 @@ f.addEventListener('change',function(){
 {{if .AP.Moved}}<p class="err" role="alert">Your address is no longer <code>{{.AP.Pinned}}</code>, the one this was switched on for, so nothing here answers the fediverse. Restore that address to go on.</p>{{end}}
 <h4>Followers: {{.AP.Followers}}</h4>
 {{if .AP.FollowerList}}<ul>{{range .AP.FollowerList}}<li>{{if .Name}}{{.Name}} {{end}}<small>{{.Handle}}</small></li>{{end}}</ul>{{if gt .AP.Followers 50}}<p><small>and {{sub .AP.Followers 50}} more</small></p>{{end}}{{else}}<p><small>Nobody follows you yet. Someone on Mastodon can search for {{.AP.Handle}} and press Follow.</small></p>{{end}}
-<p><small>You can be found, looked at and followed. Sending your posts comes next. The address you are known by is fixed once this is on, so set up your own domain first if you want to use one.</small></p>
+<p><small>You can be found, looked at and followed, and your posts go to your followers: new ones, edits and removals. A reply or a repost stays here. The address you are known by is fixed once this is on, so set up your own domain first if you want to use one.</small></p>
 <form method="post" action="/profile/activitypub/handle"><label>Domain of your handle (optional, such as example.com) <input type="text" name="handle_host" value="{{.AP.HandleHost}}" placeholder="example.com" maxlength="253"></label>
 <p><small>To be known as <strong>{{.Author}}</strong> at your own domain, put it here and make that domain's <code>/.well-known/webfinger</code> answer with the link to <code>{{.AP.Actor}}</code> (a redirect to <code>{{.AP.Pinned}}/.well-known/webfinger</code> does it). Leave it empty to be known by {{.AP.Pinned}}.</small></p>
 <p><button>Save</button></p></form>
 <form method="post" action="/profile/activitypub"><input type="hidden" name="enable" value="0"><button>Switch off</button></form>
-{{else}}<p>Let people on Mastodon and other servers find you. They can look you up, see your profile and follow you; sending your posts comes next.</p>
+{{else}}<p>Let people on Mastodon and other servers find you. They can look you up, see your profile and follow you, and your new posts, edits and removals go to them.</p>
 {{if .AP.Actor}}<p><small>You had this on before: your address stays <code>{{.AP.Actor}}</code>.</small></p>{{else}}<p><small>The address you are known by is fixed when you switch this on: {{.SiteURL}}. If you want a domain of your own, set it up first.</small></p>{{end}}
 <form method="post" action="/profile/activitypub"><input type="hidden" name="enable" value="1"><button>Switch on</button></form>{{end}}
 {{end}}
@@ -702,11 +702,14 @@ func (s *Server) permalink(w http.ResponseWriter, r *http.Request, q *req) {
 		http.NotFound(w, r)
 		return
 	}
+	w.Header().Add("Vary", "Accept")
+	if s.serveNote(w, r, q, p) { // the post as ActivityStreams, for the fediverse (a removed one as a Tombstone)
+		return
+	}
 	if p.Deleted {
 		s.show(w, "tombstone", http.StatusGone, s.data(r, q, "Post removed"))
 		return
 	}
-	w.Header().Add("Vary", "Accept")
 	switch negotiate(r.Header.Get("Accept")) {
 	case "markdown":
 		base := s.base(r)

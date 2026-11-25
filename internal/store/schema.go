@@ -428,6 +428,31 @@ func spaceV7(tx *sql.Tx) error {
 	return err
 }
 
+// spaceV8 keeps the activities the account has sent to the fediverse, by their ids: the body that is delivered (to each
+// follower's inbox, from the delivery queue, which names the activity by its id), and which post it was about. A post
+// was sent out if a Create for it is here, which is how edits and removals know to follow.
+func spaceV8(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS ap_outbox (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  id TEXT NOT NULL,
+  post_id INTEGER NOT NULL DEFAULT 0,
+  type TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  PRIMARY KEY (user_id, id)
+);
+CREATE INDEX IF NOT EXISTS ap_outbox_post ON ap_outbox(user_id, post_id)`)
+	return err
+}
+
+// spaceV9 records which actor on the fediverse owns each reply or like that came from there, by the address it came
+// under. Servers hold many actors, so being on the same server is not being the same actor: only the actor that made
+// a reply or a like may change or take it back.
+func spaceV9(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS ap_owner (source TEXT PRIMARY KEY, actor TEXT NOT NULL)`)
+	return err
+}
+
 // instanceV18 caches the actors of other servers that have written to an account here: their key, to check what they
 // send, and their inbox. It is a cache: whatever is lost is fetched again.
 func instanceV18(tx *sql.Tx) error {

@@ -21,8 +21,8 @@ import (
 
 // ActivityPub, phase 2: the inbox. Every request is signed by the actor that sends it, and an activity counts only if
 // it comes from the actor that signed it. Follow adds a follower and is answered with a signed Accept; Undo of a Follow,
-// and the Delete of an actor, take the follower away. Everything else is acknowledged and ignored until it is handled
-// (phase 4).
+// and the Delete of an actor, take the follower away. Replies, likes and boosts are phase 4 (apreplies.go); anything else
+// is acknowledged and ignored.
 
 const (
 	maxInbox   = 256 << 10      // bytes of an activity; Mastodon's are a few kilobytes
@@ -78,6 +78,12 @@ func withoutFragment(u string) string {
 
 // fetchActor reads the actor at an address. wantKey, if not empty, is the key id the actor must have.
 func (s *Server) fetchActor(ctx context.Context, as *store.APAccount, addr, wantKey string) (*store.APActor, error) {
+	return s.fetchActorFrom(ctx, as, addr, wantKey, true)
+}
+
+// fetchActorFrom is fetchActor; viaKey is whether the address may be a key's, which leads to its owner, once: an owner
+// that is itself a key is refused, so that one request cannot make a chain of fetches.
+func (s *Server) fetchActorFrom(ctx context.Context, as *store.APAccount, addr, wantKey string, viaKey bool) (*store.APActor, error) {
 	// signed with the account's key: many servers answer nothing else, and the ones that do not mind
 	key, err := privateKey(as.PrivatePEM)
 	if err != nil {
@@ -92,10 +98,10 @@ func (s *Server) fetchActor(ctx context.Context, as *store.APAccount, addr, want
 		return nil, errors.New("the actor is not JSON")
 	}
 	if d.PublicKeyPem != "" && d.Owner != "" && d.PublicKey == nil { // the address was of a key: its owner is the actor
-		if !sameHost(d.Owner, addr) || d.Owner == addr {
+		if !viaKey || !sameHost(d.Owner, addr) || d.Owner == addr {
 			return nil, errors.New("the key's owner is not on its server")
 		}
-		return s.fetchActor(ctx, as, d.Owner, wantKey)
+		return s.fetchActorFrom(ctx, as, d.Owner, wantKey, false)
 	}
 	if !httpsOrHTTP(d.ID) || !sameHost(d.ID, res.URL) || (withoutFragment(d.ID) != withoutFragment(addr) && withoutFragment(d.ID) != withoutFragment(res.URL)) {
 		return nil, errors.New("the actor's id is not the address it was fetched from")
@@ -146,6 +152,8 @@ func (s *Server) fetchActor(ctx context.Context, as *store.APAccount, addr, want
 
 // actorForSignature finds the actor whose key signed the request, from the cache or from its server.
 func (s *Server) actorForSignature(ctx context.Context, as *store.APAccount, r *http.Request, sig *signature) (*store.APActor, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second) // all the fetching one request can cause
+	defer cancel()
 	cached, err := s.st.APActorByKey(sig.keyID)
 	if err == nil && time.Since(cached.Fetched) < actorFresh {
 		if sig.verify(r, cached.PublicPEM) == nil {
@@ -237,11 +245,15 @@ func (s *Server) inbox(w http.ResponseWriter, r *http.Request, q *req) {
 		}
 		s.inboxLog(r, "follow from %q accepted", signer.ID)
 	case "Undo":
-		s.apUnfollow(q, a, signer, act)
+		s.apUndo(q, a, signer, act)
 	case "Delete":
 		if idOf(act.Object) == signer.ID { // the actor is gone
 			q.sp.APRemoveFollower(q.host.ID, signer.ID, "")
+		} else {
+			s.apRemoved(q, signer, act)
 		}
+	case "Create", "Update", "Like", "Announce":
+		s.apInteraction(q, a, signer, act)
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
@@ -261,14 +273,14 @@ func (s *Server) apFollow(q *req, a *store.APAccount, who *store.APActor, act ac
 	}
 	// answered every time, so that a follower whose first Accept was lost can ask again
 	sum := sha256.Sum256([]byte(act.ID + who.ID))
-	s.send(a, who.Inbox, map[string]any{
+	id := a.Actor + "#accepts/" + hex.EncodeToString(sum[:8])
+	return s.deliverTo(q.sp, q.host.ID, id, "Accept", who.Inbox, map[string]any{
 		"@context": "https://www.w3.org/ns/activitystreams",
-		"id":       a.Actor + "#accepts/" + hex.EncodeToString(sum[:8]),
+		"id":       id,
 		"type":     "Accept",
 		"actor":    a.Actor,
 		"object":   map[string]any{"id": act.ID, "type": "Follow", "actor": who.ID, "object": a.Actor},
 	})
-	return nil
 }
 
 func (s *Server) apUnfollow(q *req, a *store.APAccount, who *store.APActor, act activity) {
@@ -293,45 +305,8 @@ func (s *Server) apUnfollow(q *req, a *store.APAccount, who *store.APActor, act 
 	}
 }
 
-// backoff is how long to wait before each new try of a delivery.
-func (s *Server) backoff() []time.Duration {
-	if s.apBackoff != nil {
-		return s.apBackoff
-	}
-	return []time.Duration{10 * time.Second, 2 * time.Minute, 20 * time.Minute}
-}
-
-// send delivers an activity to an inbox, signed as the account, and tries again later if the server cannot be reached
-// or is busy. The tries are kept in memory: an Accept that is lost with a restart is asked for again when the follower
-// follows again. (Posts will use a queue that survives restarts, in phase 3.)
-func (s *Server) send(a *store.APAccount, inbox string, act map[string]any) {
-	body, err := json.Marshal(act)
-	key, kerr := privateKey(a.PrivatePEM)
-	if err != nil || kerr != nil || !httpsOrHTTP(inbox) {
-		log.Printf("activitypub: cannot send %v to %s: %v %v", act["type"], inbox, err, kerr)
-		return
-	}
-	go func() {
-		wait := s.backoff()
-		for try := 0; ; try++ {
-			status, err := s.post(inbox, body, a.Actor+"#main-key", key)
-			if err == nil && status >= 200 && status < 300 {
-				return
-			}
-			retry := err != nil || status == 429 || status == 408 || status >= 500
-			if !retry || try >= len(wait) {
-				log.Printf("activitypub: gave up sending %v to %s (status %d, %v)", act["type"], inbox, status, err)
-				return
-			}
-			time.Sleep(wait[try])
-		}
-	}()
-}
-
 // post sends one signed POST to an inbox.
-func (s *Server) post(inbox string, body []byte, keyID string, key *rsa.PrivateKey) (int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+func (s *Server) post(ctx context.Context, inbox string, body []byte, keyID string, key *rsa.PrivateKey) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, "POST", inbox, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
