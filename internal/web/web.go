@@ -88,6 +88,7 @@ type Server struct {
 	st  *store.Instance
 
 	apBackoff   []time.Duration // the waits between tries of an ActivityPub delivery; nil means the usual ones (tests set it)
+	apWG        sync.WaitGroup  // lookups of replies and likes that go on after the request that made them
 	oauthPruned time.Time       // when OAuth data was last pruned; used only by the poller's goroutine
 	mux         *http.ServeMux
 	web         *fetch.Client

@@ -315,3 +315,10 @@ func (s *Space) APWithdrawUpdates(userID, postID int64, keep string) error {
 	_, err := s.db.Exec(`UPDATE ap_outbox SET body='' WHERE user_id=? AND post_id=? AND type='Update' AND id<>?`, userID, postID, keep)
 	return err
 }
+
+// APOwnerOf is the actor that made what came under this address, or "".
+func (s *Space) APOwnerOf(source string) string {
+	var a string
+	s.db.QueryRow(`SELECT actor FROM ap_owner WHERE source=?`, source).Scan(&a)
+	return a
+}

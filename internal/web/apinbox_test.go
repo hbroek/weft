@@ -45,14 +45,15 @@ func pemOf(k *rsa.PrivateKey) string {
 
 // A remote server with one actor, bob, who signs with whatever key the test hands him, and an inbox that keeps what it gets.
 type remote struct {
-	srv    *httptest.Server
-	mu     sync.Mutex
-	key    *rsa.PrivateKey // the key bob's actor document shows
-	got    chan *http.Request
-	bodies chan []byte
-	gets   int
-	answer int    // if not 0, the status the inbox answers with
-	inbox  string // the inbox the actor names, if not its own server's
+	srv      *httptest.Server
+	mu       sync.Mutex
+	key      *rsa.PrivateKey // the key bob's actor document shows
+	got      chan *http.Request
+	bodies   chan []byte
+	gets     int
+	noteGets int    // how often a post of bob's was asked for
+	answer   int    // if not 0, the status the inbox answers with
+	inbox    string // the inbox the actor names, if not its own server's
 	// verifyGet, if set, is asked about every fetch of bob's actor, and a refusal is a 401: a server that answers only
 	// signed requests
 	verifyGet func(*http.Request) error
@@ -83,6 +84,17 @@ func newRemote(t *testing.T, key *rsa.PrivateKey) *remote {
 			w.Header().Set("Content-Type", "application/activity+json")
 			fmt.Fprintf(w, `{"id":%q,"type":"Person","preferredUsername":%q,"name":"Bob B","inbox":%q,"endpoints":{"sharedInbox":%q},"publicKey":{"id":%q,"owner":%q,"publicKeyPem":%q}}`,
 				id, name, inbox, r.srv.URL+"/inbox", id+"#main-key", id, pemOf(k))
+		case q.Method == "GET" && strings.HasPrefix(q.URL.Path, "/users/bob/statuses/"): // a post, for those who ask for ActivityStreams
+			if q.Header.Get("Signature") != "" { // the lookups of a reply or a like are signed; a page's preview card is not
+				r.mu.Lock()
+				r.noteGets++
+				r.mu.Unlock()
+			}
+			w.Header().Set("Content-Type", "application/activity+json")
+			fmt.Fprintf(w, `{"id":%q,"type":"Note","attributedTo":%q,"content":"<p>A post of bob's</p>","to":["https://www.w3.org/ns/activitystreams#Public"]}`, r.srv.URL+q.URL.Path, r.actor())
+		case q.Method == "GET" && q.URL.Path == "/page": // an ordinary web page
+			w.Header().Set("Content-Type", "text/html")
+			io.WriteString(w, "<html><body>Not a post on the fediverse.</body></html>")
 		case q.Method == "POST" && (q.URL.Path == "/users/bob/inbox" || q.URL.Path == "/users/carol/inbox" || q.URL.Path == "/inbox"):
 			b, _ := io.ReadAll(q.Body)
 			r.mu.Lock()

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hbroek/weft/internal/fetch"
 	"github.com/hbroek/weft/internal/store"
 )
 
@@ -84,12 +85,7 @@ func (s *Server) fetchActor(ctx context.Context, as *store.APAccount, addr, want
 // fetchActorFrom is fetchActor; viaKey is whether the address may be a key's, which leads to its owner, once: an owner
 // that is itself a key is refused, so that one request cannot make a chain of fetches.
 func (s *Server) fetchActorFrom(ctx context.Context, as *store.APAccount, addr, wantKey string, viaKey bool) (*store.APActor, error) {
-	// signed with the account's key: many servers answer nothing else, and the ones that do not mind
-	key, err := privateKey(as.PrivatePEM)
-	if err != nil {
-		return nil, err
-	}
-	res, err := s.web.GetSigned(ctx, addr, asAccept, func(r *http.Request) error { return signGet(r, as.Actor+"#main-key", key) })
+	res, err := s.getSigned(ctx, as, addr) // signed with the account's key: many servers answer nothing else
 	if err != nil {
 		return nil, err
 	}
@@ -317,4 +313,13 @@ func (s *Server) post(ctx context.Context, inbox string, body []byte, keyID stri
 		return 0, err
 	}
 	return s.web.Send(req)
+}
+
+// getSigned asks an address for ActivityStreams, signed as the account.
+func (s *Server) getSigned(ctx context.Context, as *store.APAccount, addr string) (*fetch.Result, error) {
+	key, err := privateKey(as.PrivatePEM)
+	if err != nil {
+		return nil, err
+	}
+	return s.web.GetSigned(ctx, addr, asAccept, func(r *http.Request) error { return signGet(r, as.Actor+"#main-key", key) })
 }

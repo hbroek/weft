@@ -34,6 +34,9 @@ func (s *Server) setLike(r *http.Request, u *store.User, target, feedHint string
 		s.nudgeTally(sp, target, 1)
 	}
 	s.notify(sp, s.likeURL(r, x.ID), target)
+	if !was {
+		s.federateLike(r, target, true)
+	}
 	return x, ""
 }
 
@@ -45,6 +48,7 @@ func (s *Server) removeLike(r *http.Request, u *store.User, target string) error
 	}
 	s.nudgeTally(sp, x.Target, -1)
 	s.notify(sp, s.likeURL(r, x.ID), x.Target)
+	s.federateLike(r, x.Target, false)
 	return nil
 }
 
