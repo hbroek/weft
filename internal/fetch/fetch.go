@@ -91,9 +91,29 @@ func New(allowPrivate bool) *Client {
 }
 
 func isPrivate(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified() || ip.IsMulticast()
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	for _, n := range notPublic {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
+
+// notPublic are ranges that are not the public internet and that IsPrivate does not cover: "this network", the shared
+// address space of carrier-grade NAT (which VPNs such as Tailscale use), the protocol assignments, benchmarking, the
+// reserved class E and broadcast, and the IPv6 prefixes that map to IPv4 (an address there is the IPv4 one it embeds).
+var notPublic = func() []*net.IPNet {
+	var out []*net.IPNet
+	for _, c := range []string{"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "198.18.0.0/15", "240.0.0.0/4", "64:ff9b::/96", "64:ff9b:1::/48", "100::/64", "2001:db8::/32"} {
+		_, n, _ := net.ParseCIDR(c)
+		out = append(out, n)
+	}
+	return out
+}()
 
 // Result is a fetched document.
 type Result struct {

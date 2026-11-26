@@ -97,6 +97,18 @@ func TestAReplyToAPageThatIsNotAFediversePostStaysOnTheSite(t *testing.T) {
 	nothing(t, rem, "a repost")
 }
 
+// A post whose author is not on the server of the post is not followed to its author, and the reply stays here.
+func TestAPostWhoseAuthorIsOnAnotherServerIsNotFollowed(t *testing.T) {
+	s, tok, rem := federated(t)
+	createPost(t, s, tok, fmt.Sprintf(`{"markdown":"a reply","in_reply_to":%q}`, rem.srv.URL+"/users/bob/statuses/foreign"))
+	s.WaitFederation()
+	flush(s)
+	nothing(t, rem, "a post whose author is elsewhere")
+	if rem.noteGets != 1 {
+		t.Errorf("%d signed look-ups of the post", rem.noteGets)
+	}
+}
+
 func TestAReplyToYourOwnPostAndToAReplyUnderItGoOut(t *testing.T) {
 	a, _ := testKeys(t)
 	s, tok, rem := federated(t)
@@ -198,4 +210,51 @@ func TestNothingGoesOutWhenActivityPubIsOff(t *testing.T) {
 	_ = url.Values{}
 	_ = time.Second
 	_ = store.StatusPending
+}
+
+// Another actor on bob's server cannot make a reply to bob's post go to it: a Like that carries the address of bob's post as
+// its id takes nothing of that address.
+func TestALikeCannotTakeTheAddressOfSomebodysPost(t *testing.T) {
+	a, _ := testKeys(t)
+	s, tok, rem := federated(t)
+	path := createPost(t, s, tok, `{"markdown":"A post."}`)
+	flush(s)
+	take(t, rem)
+	permalink := "http://" + alice + path
+	note := rem.srv.URL + "/users/bob/statuses/1"
+	carol := rem.srv.URL + "/users/carol"
+	forged, _ := json.Marshal(map[string]any{"id": note, "type": "Like", "actor": carol, "object": permalink})
+	if w := deliver(s, signedPost(alice, "/inbox", forged, carol+"#main-key", a, time.Now(), allSigned)); w.Code != 202 {
+		t.Fatalf("carol's like: %d", w.Code)
+	}
+	// bob's real reply, with the address carol used for her like, is still recorded as bob's
+	rem.post(s, replyActivity(rem, "Create", note, permalink, "<p>bob's reply</p>", publicAudience), a)
+	sp := s.space("alice")
+	p, _ := sp.PostBySlug(sp.UID(), strings.TrimPrefix(path, "/posts/"))
+	if rs, _ := sp.RepliesFor(p.ID, store.StatusPending); len(rs) != 1 || !strings.Contains(rs[0].Author, "bob") {
+		t.Fatalf("bob's reply: %+v", rs)
+	}
+	if sp.APOwnerOf(note) != rem.actor() {
+		t.Errorf("the address is owned by %q", sp.APOwnerOf(note))
+	}
+	// answering it goes to bob
+	createPost(t, s, tok, fmt.Sprintf(`{"markdown":"Thanks.","in_reply_to":%q}`, note))
+	s.WaitFederation()
+	flush(s)
+	_, body := take(t, rem)
+	if d := decodeReply(t, body); len(d.Object.Tag) < 1 || d.Object.Tag[0].Href != rem.actor() {
+		t.Errorf("the reply is addressed to %+v", d.Object.Tag)
+	}
+	// and an address that is only claimed, with no reply behind it, is looked up and not believed
+	claimed := rem.srv.URL + "/users/bob/statuses/9"
+	forged, _ = json.Marshal(map[string]any{"id": "x", "type": "Delete", "actor": carol, "object": claimed})
+	deliver(s, signedPost(alice, "/inbox", forged, carol+"#main-key", a, time.Now(), allSigned))
+	sp.APClaim(claimed, carol)
+	createPost(t, s, tok, fmt.Sprintf(`{"markdown":"Hm.","in_reply_to":%q}`, claimed))
+	s.WaitFederation()
+	flush(s)
+	_, body = take(t, rem)
+	if d := decodeReply(t, body); len(d.Object.Tag) < 1 || d.Object.Tag[0].Href != rem.actor() {
+		t.Errorf("a claim with nothing behind it was believed: %+v", d.Object.Tag)
+	}
 }

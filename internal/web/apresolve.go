@@ -37,8 +37,14 @@ func (s *Server) resolveObject(ctx context.Context, as *store.APAccount, sp *sto
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	// a reply that came from the fediverse is already known by its object id and its author
-	if owner := sp.APOwnerOf(addr); owner != "" {
+	// a reply that came from the fediverse is already known by its object id and its author: it was kept only after its
+	// author was checked against the signature, so the owner on record for it is the author (a bare record is not
+	// enough: it says who first came with an address, not who wrote what is there)
+	if rs, _ := sp.RepliesBySource(addr); len(rs) > 0 {
+		owner := sp.APOwnerOf(addr)
+		if owner == "" {
+			return nil, errors.New("the author of that reply is not known")
+		}
 		who, err := s.cachedActor(ctx, as, owner)
 		if err != nil {
 			return nil, err
@@ -68,6 +74,9 @@ func (s *Server) resolveObject(ctx context.Context, as *store.APAccount, sp *sto
 	authors := toList(obj.AttributedTo)
 	if len(authors) == 0 {
 		return nil, errors.New("the post has no author")
+	}
+	if !httpsOrHTTP(authors[0]) || !sameHost(authors[0], obj.ID) { // an author is on the server of the post, as the inbox also asks
+		return nil, errors.New("the post's author is not on the server of the post")
 	}
 	who, err := s.cachedActor(ctx, as, authors[0])
 	if err != nil {

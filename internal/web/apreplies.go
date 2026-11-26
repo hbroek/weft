@@ -154,7 +154,7 @@ func (s *Server) apInteraction(q *req, a *store.APAccount, who *store.APActor, a
 		if !httpsOrHTTP(id) || !sameHost(id, who.ID) { // an id of ours to give it, when the sender gave none
 			id = who.ID + "#" + strings.ToLower(act.Type) + "-" + strings.TrimSuffix(a.Actor, "/") + "-" + idOf(act.Object)
 		}
-		if !sp.APClaim(id, who.ID) {
+		if !sp.APClaim(activityKey(id), who.ID) { // in its own namespace: a Like's id must not take the address of somebody's post
 			return
 		}
 		name := personName(who)
@@ -184,23 +184,28 @@ func (s *Server) apUndo(q *req, a *store.APAccount, who *store.APActor, act acti
 
 // dropLike removes a received like or boost that the sender made.
 func (s *Server) dropLike(q *req, who *store.APActor, id string) {
-	if id != "" && q.sp.APOwns(id, who.ID) {
+	if id != "" && q.sp.APOwns(activityKey(id), who.ID) {
 		q.sp.DeleteLikeInBySource(id)
-		q.sp.APRelease(id)
+		q.sp.APRelease(activityKey(id))
 	}
 }
+
+// activityKey is how the ownership of a Like or Announce is kept: apart from the ownership of a post, which is kept by
+// the address of the post. A server's actors can write any address on that server as the id of an activity, and an
+// activity must not be able to take the address of somebody else's post that way.
+func activityKey(id string) string { return "activity:" + id }
 
 // apRemoved handles the Delete of an object: a reply the sender wrote is removed.
 func (s *Server) apRemoved(q *req, who *store.APActor, act activity) {
 	id := idOf(act.Object)
 	if id == "" || !q.sp.APOwns(id, who.ID) { // only the actor that wrote it may remove it, not another on the same server
+		s.dropLike(q, who, id) // a server that removes a like with Delete and not Undo
 		return
 	}
 	rs, _ := q.sp.RepliesBySource(id)
 	for _, r := range rs {
 		q.sp.DeleteReply(r.PostID, id)
 	}
-	q.sp.DeleteLikeInBySource(id)
 	q.sp.APRelease(id)
 }
 

@@ -91,7 +91,11 @@ func newRemote(t *testing.T, key *rsa.PrivateKey) *remote {
 				r.mu.Unlock()
 			}
 			w.Header().Set("Content-Type", "application/activity+json")
-			fmt.Fprintf(w, `{"id":%q,"type":"Note","attributedTo":%q,"content":"<p>A post of bob's</p>","to":["https://www.w3.org/ns/activitystreams#Public"]}`, r.srv.URL+q.URL.Path, r.actor())
+			author := r.actor()
+			if strings.HasSuffix(q.URL.Path, "/foreign") { // an author on another host (the same computer, by another name)
+				author = strings.Replace(r.srv.URL, "127.0.0.1", "localhost", 1) + "/users/bob"
+			}
+			fmt.Fprintf(w, `{"id":%q,"type":"Note","attributedTo":%q,"content":"<p>A post of bob's</p>","to":["https://www.w3.org/ns/activitystreams#Public"]}`, r.srv.URL+q.URL.Path, author)
 		case q.Method == "GET" && q.URL.Path == "/page": // an ordinary web page
 			w.Header().Set("Content-Type", "text/html")
 			io.WriteString(w, "<html><body>Not a post on the fediverse.</body></html>")
