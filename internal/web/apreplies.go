@@ -326,7 +326,7 @@ func htmlToMarkdown(markup string) string {
 					b.WriteString(mdSpecial.Replace(strings.Join(strings.Fields(plain(n)), " ")))
 					return
 				}
-				if t := b.String(); strings.HasSuffix(t, "!") && !strings.HasSuffix(t, `\!`) {
+				if t := b.String(); strings.HasSuffix(t, "!") && !escaped(t[:len(t)-1]) {
 					b.Reset()
 					b.WriteString(t[:len(t)-1] + `\!`)
 				}
@@ -366,4 +366,14 @@ func longestRun(s string, c rune) int {
 		}
 	}
 	return best
+}
+
+// escaped says whether what follows s is escaped: it is when s ends in an odd number of backslashes (an even number is
+// escaped backslashes, and leaves the next character as it is).
+func escaped(s string) bool {
+	n := 0
+	for i := len(s) - 1; i >= 0 && s[i] == '\\'; i-- {
+		n++
+	}
+	return n%2 == 1
 }

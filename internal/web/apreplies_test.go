@@ -239,3 +239,19 @@ func TestAStrangersTextCannotBecomeAnImageOrAList(t *testing.T) {
 		t.Errorf("rendered: %s", h)
 	}
 }
+
+// A backslash before the "!" must not hide it: "\\!" is an escaped backslash and then a "!" that makes an image of the link.
+func TestABackslashDoesNotHideTheBangBeforeALink(t *testing.T) {
+	for _, in := range []string{`<p>\!<a href="https://t.example/p.png">x</a></p>`, `<p>\\!<a href="https://t.example/p.png">x</a></p>`, `<p>!<a href="https://t.example/p.png">x</a></p>`, `<p>a\<a href="https://t.example/p.png">x</a></p>`} {
+		md := htmlToMarkdown(in)
+		if h := string(renderRemote(md, "")); strings.Contains(h, "<img") {
+			t.Errorf("%q became an image: %q -> %s", in, md, h)
+		}
+		if !strings.Contains(string(renderRemote(md, "")), `href="https://t.example/p.png"`) {
+			t.Errorf("%q lost its link: %q", in, md)
+		}
+	}
+	if !escaped(`a\`) || escaped(`a\\`) || escaped(`a`) || !escaped(`\\\`) {
+		t.Errorf("escaped")
+	}
+}
