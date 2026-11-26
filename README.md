@@ -399,7 +399,7 @@ Behind a reverse proxy every request comes from the proxy, so start the server w
 
 ## The fediverse (ActivityPub)
 
-*Phase 4 of 6: an account can be found and followed from Mastodon and the rest of the fediverse, its posts go out to its followers, replies, likes and boosts from the fediverse come back, and its own replies and likes to posts there go out. Following people, and the move of an account, come next.*
+*Phase 5 of 6: an account can be found and followed from Mastodon and the rest of the fediverse, its posts go out to its followers, replies, likes and boosts from the fediverse come back, its own replies and likes to posts there go out, and it can follow accounts there, whose posts and boosts come into its timeline. The move of an account comes next.*
 
 `weft serve -activitypub` (off by default) lets each account switch ActivityPub on, on its profile page (also off by default). Switched on, the account answers:
 
@@ -426,6 +426,8 @@ Behind a reverse proxy every request comes from the proxy, so start the server w
 - **A like** (`Like`) is a received like, in the tally and the "liked by" list of the post, with the sender's name and handle. A boost (`Announce`) is counted with the likes and shown as "(boosted)" in the list. `Undo` of either takes it back.
 
 Everything must come from the actor that signed it, and an object it names must live on that actor's own server: one actor cannot change or remove what another sent.
+
+**Following people there.** On the Following page, give `@name@server` instead of a feed address (ActivityPub must be on for the account). Weft finds the account with WebFinger, sends it a signed `Follow` and keeps it as a followed feed whose address is the actor's. Its public posts arrive two ways: the account's server delivers them to the inbox once it has accepted the follow, and the outbox is read on the timeline's usual refresh, which also brings in what was posted before. A boost shows the original post in the booster's feed under "Boosted from", with the original address as its canonical link, as a repost is on Weft. Posts for followers only, direct messages and posts whose author is not the account that sent them are not shown; what the account removes is removed from the timeline; at most the newest 500 posts of an account are kept. Unfollowing sends `Undo` of the `Follow`. Replying to or liking one of these posts goes out as in the section above, because its address is the post's own.
 
 **The actor's id is pinned.** It is the account's origin and `/`, fixed when ActivityPub is first switched on (with the custom domain if the account has one), because servers that know the account know it by that address. The instance's own address redirects to the custom domain as for every page, and an address that is no longer the pinned one answers nothing here (the profile page says so). Set up a custom domain before switching it on if you want one. Switching off keeps the address and the key, so switching on again is the same account.
 

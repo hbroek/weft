@@ -538,3 +538,25 @@ ALTER TABLE oauth_clients ADD COLUMN logo BLOB;
 ALTER TABLE oauth_clients ADD COLUMN logo_mime TEXT NOT NULL DEFAULT '';`)
 	return err
 }
+
+// spaceV10 keeps the accounts on the fediverse that the account follows: the Follow that was sent (to undo it), the
+// inbox it went to, and whether the other server accepted. What they post is kept with the feeds, in the instance.
+func spaceV10(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS ap_following (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  actor TEXT NOT NULL,
+  follow_id TEXT NOT NULL,
+  inbox TEXT NOT NULL,
+  accepted INTEGER NOT NULL DEFAULT 0,
+  since INTEGER NOT NULL,
+  PRIMARY KEY (user_id, actor)
+)`)
+	return err
+}
+
+// instanceV19 marks the feeds that are accounts on the fediverse, read from their outbox and from what they send,
+// not from an RSS address.
+func instanceV19(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS ap_feeds (url TEXT PRIMARY KEY)`)
+	return err
+}

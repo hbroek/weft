@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"slices"
 	"strconv"
 	"time"
@@ -151,7 +152,7 @@ func (s *Instance) DropFeed(feedURL string) error {
 	if s.Followed(feedURL) {
 		return nil
 	}
-	for _, q := range []string{`DELETE FROM items WHERE feed_url=?`, `DELETE FROM feed_likes WHERE feed_url=?`, `DELETE FROM feeds WHERE url=?`} {
+	for _, q := range []string{`DELETE FROM items WHERE feed_url=?`, `DELETE FROM feed_likes WHERE feed_url=?`, `DELETE FROM ap_feeds WHERE url=?`, `DELETE FROM feeds WHERE url=?`} {
 		if _, err := s.db.Exec(q, feedURL); err != nil {
 			return err
 		}
@@ -216,17 +217,77 @@ func (s *Instance) SaveFeed(feedURL string, p *feed.Parsed) error {
 		}
 	}
 	for _, it := range p.Items {
-		var upd any
-		if !it.Updated.IsZero() {
-			upd = it.Updated.Unix()
-		}
-		if _, err := tx.Exec(`INSERT OR REPLACE INTO items(feed_url,guid,link,title,text,markdown,published,updated,in_reply_to,in_reply_to_feed,root,root_feed,likes,replies_href,replies_count,keywords,parent_title,parent_desc,parent_image,likes_href,canonical)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, feedURL, it.GUID, it.Link, it.Title, it.Text, it.Markdown,
-			it.Published.Unix(), upd, it.InReplyTo, it.InReplyToFeed, it.Root, it.RootFeed, it.Likes, it.RepliesHref, it.RepliesCount, packKeywords(it.Keywords), it.Parent.Title, it.Parent.Description, it.Parent.Image, it.LikesHref, it.Canonical); err != nil {
+		if err := putItem(tx, feedURL, it); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+func putItem(tx *sql.Tx, feedURL string, it feed.ParsedItem) error {
+	var upd any
+	if !it.Updated.IsZero() {
+		upd = it.Updated.Unix()
+	}
+	_, err := tx.Exec(`INSERT OR REPLACE INTO items(feed_url,guid,link,title,text,markdown,published,updated,in_reply_to,in_reply_to_feed,root,root_feed,likes,replies_href,replies_count,keywords,parent_title,parent_desc,parent_image,likes_href,canonical)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, feedURL, it.GUID, it.Link, it.Title, it.Text, it.Markdown,
+		it.Published.Unix(), upd, it.InReplyTo, it.InReplyToFeed, it.Root, it.RootFeed, it.Likes, it.RepliesHref, it.RepliesCount, packKeywords(it.Keywords), it.Parent.Title, it.Parent.Description, it.Parent.Image, it.LikesHref, it.Canonical)
+	return err
+}
+
+// maxRemoteItems is how many posts of an account on the fediverse are kept; the oldest go first.
+const maxRemoteItems = 500
+
+// SaveRemoteItems adds posts to the feed of an account on the fediverse, replacing the ones with the same address, and
+// updates what the feed says about its author (title and link and image when given). Nothing is removed except what is
+// past the newest maxRemoteItems: an outbox shows only the latest posts, so what it no longer shows is not gone.
+func (s *Instance) SaveRemoteItems(feedURL, title, link, image string, items []feed.ParsedItem) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO feeds(url,title,link,fetched,error,image) VALUES(?,?,?,?,'',?)
+		ON CONFLICT(url) DO UPDATE SET title=CASE WHEN excluded.title<>'' THEN excluded.title ELSE feeds.title END,
+		link=CASE WHEN excluded.link<>'' THEN excluded.link ELSE feeds.link END,
+		image=CASE WHEN excluded.image<>'' THEN excluded.image ELSE feeds.image END, fetched=excluded.fetched, error='', fails=0, next_try=0`,
+		feedURL, title, link, time.Now().Unix(), image); err != nil {
+		return err
+	}
+	for _, it := range items {
+		if err := putItem(tx, feedURL, it); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM items WHERE feed_url=? AND guid NOT IN (SELECT guid FROM items WHERE feed_url=? ORDER BY published DESC, guid LIMIT ?)`, feedURL, feedURL, maxRemoteItems); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// HasItem reports whether the feed has the item cached.
+func (s *Instance) HasItem(feedURL, guid string) bool {
+	var n int
+	s.rdb.QueryRow(`SELECT COUNT(*) FROM items WHERE feed_url=? AND guid=?`, feedURL, guid).Scan(&n)
+	return n > 0
+}
+
+// DeleteItem removes one cached item of a feed.
+func (s *Instance) DeleteItem(feedURL, guid string) error {
+	_, err := s.db.Exec(`DELETE FROM items WHERE feed_url=? AND guid=?`, feedURL, guid)
+	return err
+}
+
+// APFeedMark records that the feed at this address is an account on the fediverse, and IsAPFeed asks.
+func (s *Instance) APFeedMark(feedURL string) error {
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO ap_feeds(url) VALUES(?)`, feedURL)
+	return err
+}
+
+func (s *Instance) IsAPFeed(feedURL string) bool {
+	var n int
+	s.rdb.QueryRow(`SELECT COUNT(*) FROM ap_feeds WHERE url=?`, feedURL).Scan(&n)
+	return n > 0
 }
 
 // SaveFeedError records a failed fetch without discarding cached items.

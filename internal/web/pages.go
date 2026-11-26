@@ -344,7 +344,7 @@ document.querySelectorAll('form.react').forEach(function(f){
 <form method="post" action="/images/delete" style="display:inline"><input type="hidden" name="name" value="{{.Name}}">{{if .Used}}<input type="hidden" name="force" value="1"><button class="linkbtn">Delete anyway</button>{{else}}<button class="linkbtn">Delete</button>{{end}}</form></li>{{end}}</ul>{{else}}<p>No pictures yet.</p>{{end}}
 {{template "foot"}}{{end}}
 {{define "following"}}{{template "head" .}}<h2>Following</h2>{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
-<form method="post" action="/following"><label>Feed or site URL <input type="text" name="url" placeholder="http://bob.localhost:8080/" required></label>
+<form method="post" action="/following"><label>Feed, site URL or fediverse account <input type="text" name="url" placeholder="http://bob.localhost:8080/ or @name@mastodon.social" required></label>
 <p><button>Follow</button></p></form>
 <ul>{{range .Follows}}<li><a href="/timeline?feed={{.URL | urlquery}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a> <small>{{.URL}}{{if .Err}} <span class="err">{{.Err}}</span>{{end}}</small>
 <form method="post" action="/following/remove" style="display:inline"><input type="hidden" name="url" value="{{.URL}}"><button class="linkbtn">Unfollow</button></form></li>{{else}}<li>Not following anyone yet.</li>{{end}}</ul>

@@ -322,3 +322,53 @@ func (s *Space) APOwnerOf(source string) string {
 	s.db.QueryRow(`SELECT actor FROM ap_owner WHERE source=?`, source).Scan(&a)
 	return a
 }
+
+// APFollowing is an account on the fediverse that the account follows.
+type APFollowing struct {
+	Actor, FollowID, Inbox string
+	Accepted               bool
+	Since                  time.Time
+}
+
+// APFollowingAdd records a follow that was sent, replacing an earlier one of the same actor.
+func (s *Space) APFollowingAdd(userID int64, f APFollowing) error {
+	_, err := s.db.Exec(`INSERT OR REPLACE INTO ap_following(user_id,actor,follow_id,inbox,accepted,since) VALUES(?,?,?,?,?,?)`,
+		userID, f.Actor, f.FollowID, f.Inbox, f.Accepted, time.Now().Unix())
+	return err
+}
+
+// APFollowingGet returns the follow of this actor, or ErrNotFound.
+func (s *Space) APFollowingGet(userID int64, actor string) (*APFollowing, error) {
+	f := &APFollowing{}
+	var since int64
+	err := s.db.QueryRow(`SELECT actor,follow_id,inbox,accepted,since FROM ap_following WHERE user_id=? AND actor=?`, userID, actor).
+		Scan(&f.Actor, &f.FollowID, &f.Inbox, &f.Accepted, &since)
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	f.Since = time.Unix(since, 0)
+	return f, err
+}
+
+// APFollowingRemove forgets the follow of this actor.
+func (s *Space) APFollowingRemove(userID int64, actor string) error {
+	_, err := s.db.Exec(`DELETE FROM ap_following WHERE user_id=? AND actor=?`, userID, actor)
+	return err
+}
+
+// APFollowingAccept marks the follow of this actor accepted, if followID is its id (or is not given). It reports
+// whether there was such a follow.
+func (s *Space) APFollowingAccept(userID int64, actor, followID string) bool {
+	res, err := s.db.Exec(`UPDATE ap_following SET accepted=1 WHERE user_id=? AND actor=? AND (?='' OR follow_id=?)`, userID, actor, followID, followID)
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n > 0
+}
+
+// APFollowingCount is how many accounts on the fediverse the user follows.
+func (s *Space) APFollowingCount(userID int64) (n int) {
+	s.db.QueryRow(`SELECT COUNT(*) FROM ap_following WHERE user_id=?`, userID).Scan(&n)
+	return n
+}

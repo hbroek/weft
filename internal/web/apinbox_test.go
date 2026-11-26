@@ -57,6 +57,8 @@ type remote struct {
 	// verifyGet, if set, is asked about every fetch of bob's actor, and a refusal is a 401: a server that answers only
 	// signed requests
 	verifyGet func(*http.Request) error
+	// extra answers what nothing above does (a test's own pages); true means it did
+	extra func(w http.ResponseWriter, q *http.Request) bool
 }
 
 func newRemote(t *testing.T, key *rsa.PrivateKey) *remote {
@@ -82,8 +84,8 @@ func newRemote(t *testing.T, key *rsa.PrivateKey) *remote {
 				inbox = r.inboxURL()
 			}
 			w.Header().Set("Content-Type", "application/activity+json")
-			fmt.Fprintf(w, `{"id":%q,"type":"Person","preferredUsername":%q,"name":"Bob B","inbox":%q,"endpoints":{"sharedInbox":%q},"publicKey":{"id":%q,"owner":%q,"publicKeyPem":%q}}`,
-				id, name, inbox, r.srv.URL+"/inbox", id+"#main-key", id, pemOf(k))
+			fmt.Fprintf(w, `{"id":%q,"type":"Person","preferredUsername":%q,"name":"Bob B","url":%q,"outbox":%q,"inbox":%q,"endpoints":{"sharedInbox":%q},"publicKey":{"id":%q,"owner":%q,"publicKeyPem":%q}}`,
+				id, name, r.srv.URL+"/@"+name, id+"/outbox", inbox, r.srv.URL+"/inbox", id+"#main-key", id, pemOf(k))
 		case q.Method == "GET" && strings.HasPrefix(q.URL.Path, "/users/bob/statuses/"): // a post, for those who ask for ActivityStreams
 			if q.Header.Get("Signature") != "" { // the lookups of a reply or a like are signed; a page's preview card is not
 				r.mu.Lock()
@@ -114,6 +116,9 @@ func newRemote(t *testing.T, key *rsa.PrivateKey) *remote {
 			r.bodies <- b
 			w.WriteHeader(202)
 		default:
+			if r.extra != nil && r.extra(w, q) {
+				return
+			}
 			http.NotFound(w, q)
 		}
 	}))

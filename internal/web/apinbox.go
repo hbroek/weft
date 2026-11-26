@@ -38,11 +38,13 @@ const asAccept = `application/activity+json, application/ld+json; profile="https
 
 // remoteActor is the part of an actor document that is read.
 type remoteActor struct {
-	ID                string `json:"id"`
-	Type              string `json:"type"`
-	Inbox             string `json:"inbox"`
-	PreferredUsername string `json:"preferredUsername"`
-	Name              string `json:"name"`
+	ID                string          `json:"id"`
+	Type              string          `json:"type"`
+	Inbox             string          `json:"inbox"`
+	Outbox            string          `json:"outbox"`
+	URL               json.RawMessage `json:"url"`
+	PreferredUsername string          `json:"preferredUsername"`
+	Name              string          `json:"name"`
 	Endpoints         struct {
 		SharedInbox string `json:"sharedInbox"`
 	} `json:"endpoints"`
@@ -188,6 +190,8 @@ type activity struct {
 	Type   string          `json:"type"`
 	Actor  json.RawMessage `json:"actor"`
 	Object json.RawMessage `json:"object"`
+	To     json.RawMessage `json:"to"`
+	CC     json.RawMessage `json:"cc"`
 }
 
 // inboxLog says what became of a request to an inbox. Refusals are always logged, with what the sender gave quoted: an
@@ -246,9 +250,13 @@ func (s *Server) inbox(w http.ResponseWriter, r *http.Request, q *req) {
 		if idOf(act.Object) == signer.ID { // the actor is gone
 			q.sp.APRemoveFollower(q.host.ID, signer.ID, "")
 		} else {
+			s.st.DeleteItem(signer.ID, idOf(act.Object)) // a post of an account we follow
 			s.apRemoved(q, signer, act)
 		}
+	case "Accept":
+		q.sp.APFollowingAccept(q.host.ID, signer.ID, idOf(act.Object)) // the account we asked to follow says yes
 	case "Create", "Update", "Like", "Announce":
+		s.apFeedPush(q, a, signer, act) // what an account we follow posts or boosts goes to the timeline
 		s.apInteraction(q, a, signer, act)
 	}
 	w.WriteHeader(http.StatusAccepted)

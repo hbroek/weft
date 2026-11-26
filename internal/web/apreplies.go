@@ -36,6 +36,12 @@ type noteIn struct {
 	Updated      string          `json:"updated"`
 	To           json.RawMessage `json:"to"`
 	CC           json.RawMessage `json:"cc"`
+	// what a post that is read in a timeline shows (phase 5)
+	Name       string          `json:"name"`
+	Summary    string          `json:"summary"`
+	URL        json.RawMessage `json:"url"`
+	Attachment json.RawMessage `json:"attachment"`
+	Tag        json.RawMessage `json:"tag"`
 }
 
 // toList reads a field that is one address or a list of them.

@@ -413,9 +413,9 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request, q *req) {
 }
 
 func (s *Server) followingPage(w http.ResponseWriter, r *http.Request, q *req) {
-	if wantsActivityJSON(r.Header.Get("Accept")) { // the actor's "following", for the fediverse: none yet
+	if wantsActivityJSON(r.Header.Get("Accept")) { // the actor's "following", for the fediverse: the number of accounts followed on the fediverse
 		if a, ok := s.apFor(r, q); ok {
-			writeLD(w, activityJSON, map[string]any{"@context": "https://www.w3.org/ns/activitystreams", "id": a.Actor + "following", "type": "OrderedCollection", "totalItems": 0})
+			writeLD(w, activityJSON, map[string]any{"@context": "https://www.w3.org/ns/activitystreams", "id": a.Actor + "following", "type": "OrderedCollection", "totalItems": q.sp.APFollowingCount(q.host.ID)})
 			return
 		}
 	}
@@ -474,9 +474,12 @@ func (s *Server) refreshForm(w http.ResponseWriter, r *http.Request, q *req) {
 // follow resolves a feed or site URL to a feed, fetches it and records the follow.
 func (s *Server) follow(ctx context.Context, sp *store.Space, raw string) (string, error) {
 	userID := sp.UID()
+	if name, host, ok := fediHandle(raw); ok { // @name@server: an account on the fediverse
+		return s.followActor(ctx, sp, name, host)
+	}
 	raw = httpURL(raw)
 	if raw == "" {
-		return "", errors.New("Enter a full http:// or https:// address.")
+		return "", errors.New("Enter a full http:// or https:// address, or @name@server for an account on the fediverse.")
 	}
 	res, err := s.web.Get(ctx, raw)
 	if err != nil {
@@ -512,6 +515,7 @@ func (s *Server) follow(ctx context.Context, sp *store.Space, raw string) (strin
 // unfollow stops following a feed and recounts the likes on the user's posts.
 func (s *Server) unfollow(sp *store.Space, feedURL string) error {
 	userID := sp.UID()
+	s.unfollowActor(sp, feedURL) // takes back the Follow, if it is an account on the fediverse
 	if err := sp.Unfollow(userID, feedURL); err != nil {
 		return err
 	}
@@ -550,6 +554,12 @@ func (s *Server) Follow(ctx context.Context, name, raw string) (string, error) {
 
 // Refresh re-fetches one feed and replaces its cached items. Failures are recorded, not returned.
 func (s *Server) Refresh(ctx context.Context, feedURL string) {
+	if s.st.IsAPFeed(feedURL) { // an account on the fediverse: its outbox, not a feed
+		if err := s.refreshActor(ctx, feedURL); err != nil {
+			s.st.SaveFeedError(feedURL, err.Error())
+		}
+		return
+	}
 	etag, modified := s.st.Validators(feedURL)
 	res, err := s.web.GetIf(ctx, feedURL, etag, modified)
 	if err == nil && res.NotModified {
