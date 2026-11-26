@@ -203,3 +203,39 @@ func TestACodeBlockCannotEndItsFence(t *testing.T) {
 		t.Errorf("longestRun")
 	}
 }
+
+// Nothing in inline code or a link may carry a line break that would end the paragraph and free the text after it.
+func TestInlineCodeAndLinksStayOnOneLine(t *testing.T) {
+	md := htmlToMarkdown("<p>a <code>x\n\n![t](https://tracker.example/p.png)\n\ny</code> and <a href=\"https://e.example/p\">la\n\nbel</a> and <a href=\"https://e.example/p\nq\">broken</a></p>")
+	if strings.Contains(md, "\n") {
+		t.Errorf("a line break inside the paragraph:\n%q", md)
+	}
+	for _, want := range []string{"`x ![t](https://tracker.example/p.png) y`", "[la bel](https://e.example/p)", " and broken"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("lacks %q in %q", want, md)
+		}
+	}
+	if strings.Contains(md, "](https://e.example/p%0A") || strings.Contains(md, "[broken]") { // an address with a line break makes no link
+		t.Errorf("a link with a broken address: %q", md)
+	}
+}
+
+// "!" before a link would make it an image; other markup characters at the start of a line are text too.
+func TestAStrangersTextCannotBecomeAnImageOrAList(t *testing.T) {
+	md := htmlToMarkdown(`<p>!<a href="https://tracker.example/p.png">x</a></p><p>1. not a list<br>- not one<br>+ nor this<br>a = b | c</p><p>![i](https://t.example/i.png)</p>`)
+	if strings.Contains(md, "![") && !strings.Contains(md, `\![`) {
+		t.Errorf("an image: %q", md)
+	}
+	if strings.Contains(md, "\n![") || strings.HasPrefix(md, "![") || strings.Contains(md, "(https://t.example/i.png)") && !strings.Contains(md, `\[i\]`) {
+		t.Errorf("an image from text: %q", md)
+	}
+	for _, want := range []string{`\![x](https://tracker.example/p.png)`, `1\. not a list`, `\- not one`, `\+ nor this`, `a \= b \| c`} {
+		if !strings.Contains(md, want) {
+			t.Errorf("lacks %q in %q", want, md)
+		}
+	}
+	// the rendered reply has no <img> at all
+	if h := string(renderRemote(md, "")); strings.Contains(h, "<img") || strings.Contains(h, "<ul") || strings.Contains(h, "<ol") {
+		t.Errorf("rendered: %s", h)
+	}
+}

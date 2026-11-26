@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -232,7 +233,12 @@ func stripMentionOf(md, name string) string {
 	return rest
 }
 
-var mdSpecial = strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`, "<", `\<`, ">", `\>`, "#", `\#`, "~", `\~`)
+// mdSpecial escapes what Markdown would take for markup in the text of a stranger. (A "!" is escaped only where it
+// stands right before a link, where it would make an image that the reader's browser loads from the stranger's server.)
+var mdSpecial = strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`, "<", `\<`, ">", `\>`,
+	"#", `\#`, "~", `\~`, "|", `\|`, "=", `\=`, "+", `\+`, "-", `\-`)
+
+var numberedLine = regexp.MustCompile(`(?m)^(\s*\d+)([.)])`)
 
 // htmlToMarkdown makes Markdown of the HTML a Mastodon post carries: paragraphs, line breaks, links, emphasis, code,
 // lists and quotes; mentions and hashtags become plain text, and what servers hide is left out. It is for reading
@@ -294,7 +300,8 @@ func htmlToMarkdown(markup string) string {
 				kids(n, b)
 				b.WriteString("*")
 			case "code":
-				b.WriteString("`" + strings.ReplaceAll(plain(n), "`", "'") + "`")
+				// on one line: a blank line inside a code span would end the paragraph and free what follows
+				b.WriteString("`" + strings.ReplaceAll(strings.Join(strings.Fields(plain(n)), " "), "`", "'") + "`")
 			case "pre":
 				code := strings.TrimSpace(plain(n))
 				fence := strings.Repeat("`", max(3, longestRun(code, '`')+1)) // longer than any run inside, so the text cannot end it
@@ -316,10 +323,19 @@ func htmlToMarkdown(markup string) string {
 			case "a":
 				cls, href := attr(n, "class"), attr(n, "href")
 				if strings.Contains(cls, "hashtag") || strings.Contains(cls, "mention") || !httpsOrHTTP(href) {
-					b.WriteString(mdSpecial.Replace(plain(n)))
+					b.WriteString(mdSpecial.Replace(strings.Join(strings.Fields(plain(n)), " ")))
 					return
 				}
-				b.WriteString("[" + mdSpecial.Replace(plain(n)) + "](" + strings.NewReplacer("(", "%28", ")", "%29", " ", "%20").Replace(href) + ")")
+				if t := b.String(); strings.HasSuffix(t, "!") && !strings.HasSuffix(t, `\!`) {
+					b.Reset()
+					b.WriteString(t[:len(t)-1] + `\!`)
+				}
+				label := mdSpecial.Replace(strings.Join(strings.Fields(plain(n)), " "))
+				dest := strings.NewReplacer("(", "%28", ")", "%29", " ", "%20", "<", "%3C", ">", "%3E", `\`, "%5C", "`", "%60", `"`, "%22", "'", "%27").Replace(href)
+				if u, err := url.Parse(href); err == nil { // rebuilt from its parts, so that nothing odd survives in it
+					dest = strings.NewReplacer("(", "%28", ")", "%29", "<", "%3C", ">", "%3E", `\`, "%5C", "`", "%60", `"`, "%22", "'", "%27").Replace(u.String())
+				}
+				b.WriteString("[" + label + "](" + dest + ")")
 			case "span":
 				if !strings.Contains(attr(n, "class"), "invisible") {
 					kids(n, b)
@@ -334,7 +350,8 @@ func htmlToMarkdown(markup string) string {
 	for _, n := range top {
 		walk(n, &b)
 	}
-	return strings.TrimSpace(strings.ReplaceAll(b.String(), "\r", ""))
+	out := numberedLine.ReplaceAllString(strings.ReplaceAll(b.String(), "\r", ""), `$1\$2`) // "1." at a line start is a list
+	return strings.TrimSpace(out)
 }
 
 // longestRun is the length of the longest run of c in s.

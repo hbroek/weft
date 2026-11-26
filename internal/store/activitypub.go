@@ -308,3 +308,10 @@ func (s *Space) APOwns(source, actor string) bool {
 func (s *Space) APRelease(source string) {
 	s.db.Exec(`DELETE FROM ap_owner WHERE source=?`, source)
 }
+
+// APWithdrawUpdates empties the bodies of the earlier Updates sent for a post, except the one named keep: an edit
+// replaces what was sent before, and the old words must not stay in the file.
+func (s *Space) APWithdrawUpdates(userID, postID int64, keep string) error {
+	_, err := s.db.Exec(`UPDATE ap_outbox SET body='' WHERE user_id=? AND post_id=? AND type='Update' AND id<>?`, userID, postID, keep)
+	return err
+}

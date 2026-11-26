@@ -148,6 +148,14 @@ func TestAPostGoesToFollowersAndItsEditsAndRemovalFollow(t *testing.T) {
 		t.Errorf("update: %s", body)
 	}
 
+	// the outbox shows the post as it is now, and the words that were edited out stay nowhere in the account's file
+	if o := apGet(s, alice, "/outbox?page=true", activityJSON).Body.String(); !strings.Contains(o, "Changed words.") || strings.Contains(o, "Short <em>post</em>") {
+		t.Errorf("the outbox after an edit: %s", o)
+	}
+	if b := s.space("alice"); b.APActivityBody(b.UID(), permalink+"#create") == "" || strings.Contains(b.APActivityBody(b.UID(), permalink+"#create"), "Short <em>post</em>") {
+		t.Errorf("the stored Create still has the old words")
+	}
+
 	// removing it is a Delete of a Tombstone, and nothing of the post stays
 	if w := do(s, "DELETE", alice, "/api/posts/1", tok, ""); w.Code != 204 && w.Code != 200 {
 		t.Fatalf("delete: %d %s", w.Code, w.Body)

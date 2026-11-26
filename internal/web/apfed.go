@@ -115,8 +115,17 @@ func (s *Server) federate(r *http.Request, p *store.Post, kind string) {
 	if err := sp.APPutActivity(uid, id, p.ID, typ, string(body)); err != nil {
 		return
 	}
-	if kind == "delete" { // nothing of the post stays, and an earlier send that is still waiting has nothing left to send
+	switch kind {
+	case "delete": // nothing of the post stays, and an earlier send that is still waiting has nothing left to send
 		sp.APWithdrawPost(uid, p.ID, id)
+	case "update":
+		// the Create now says what the post says (the outbox shows it, and a send of it that is still waiting sends the
+		// new words); the Updates before this one are emptied, so the words that were edited out stay nowhere
+		create := activityOf(a, "Create", permalink+"#create", noteObject(a, p), p.Created)
+		if cb, err := json.Marshal(create); err == nil {
+			sp.APPutActivity(uid, permalink+"#create", p.ID, "Create", string(cb))
+		}
+		sp.APWithdrawUpdates(uid, p.ID, id)
 	}
 	s.deliverToFollowers(sp, uid, id)
 }
